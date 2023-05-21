@@ -6,6 +6,8 @@
 #include <functional>
 #include <vector>
 
+// PS : Support only c++20 or above
+
 namespace lux::cxx
 {
     using SubProgramFunc = std::function<int (int, char*[])>;
