@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.18)
 project(lux-cxx)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 find_package(LUX-CMAKE-TOOLSET CONFIG REQUIRED)
 include(${LUX_CMAKE_COMPONENT_TOOLSET_DIR}/add_component.cmake)
 include(${LUX_CMAKE_COMPONENT_TOOLSET_DIR}/install_project.cmake)

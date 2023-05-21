@@ -24,10 +24,12 @@ namespace lux::cxx
 
     using FunctionMap = std::unordered_map<std::string, SubProgramFunc>;
 
+    // need c++17
+    inline FunctionMap __inline_map;
+
     static inline FunctionMap& getMap()
     {
-        static inline FunctionMap map;
-        return map;
+        return __inline_map;
     }
 
     #define __func_map getMap()
@@ -35,7 +37,7 @@ namespace lux::cxx
     class SubProgramRegister
     {
     public:
-        void registProgram(const std::string& name, SubProgramFunc func)
+        static void registProgram(const std::string& name, SubProgramFunc func)
         {
             if(!__func_map.count(name))
             {
@@ -43,12 +45,12 @@ namespace lux::cxx
             }
         }
 
-        bool hasSubProgram(const std::string& name)
+        static bool hasSubProgram(const std::string& name)
         {
             return __func_map.count(name);
         }
 
-        std::vector<std::string> listSubProgram()
+        static std::vector<std::string> listSubProgram()
         {
             std::vector<std::string> list;
             for(auto& [key, func] : __func_map)
@@ -58,7 +60,7 @@ namespace lux::cxx
             return list;
         }
 
-        std::vector<std::string> listSortedSubProgram()
+        static std::vector<std::string> listSortedSubProgram()
         {
             std::vector<std::string> list;
             for(auto& [key, func] : __func_map)
@@ -70,7 +72,7 @@ namespace lux::cxx
         }
 
         // if not exist, return -255
-        int invokeSubProgram(const std::string& name, int argc, char* argv[])
+        static int invokeSubProgram(const std::string& name, int argc, char* argv[])
         {
             if(__func_map.count(name)) return __func_map[name](argc, argv);
             return -255;
