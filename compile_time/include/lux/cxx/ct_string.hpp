@@ -39,16 +39,21 @@ namespace lux::cxx
     struct ct_string
     {
         using char_type = typename decltype(_str)::char_type;
-        static constexpr char_type* data() { return _str.data; }
-        static constexpr std::size_t size() { return _str.size; }
-        static constexpr std::basic_string_view<char_type> view() { return _str.data; }
-        constexpr operator std::basic_string_view<char_type>() { return view(); }
+        static constexpr    char_type* data() { return _str.data; }
+        static constexpr    std::size_t size() { return _str.size; }
+        static constexpr    std::basic_string_view<char_type> view() { return _str.data; }
+        constexpr operator  std::basic_string_view<char_type>() { return view(); }
     };
 
     template<char... C> using ct_string_s =
         ct_string < __ct_string<char, sizeof...(C)>{std::in_place, C...} > ;
     template<auto c> using ct_string_c =
         ct_string <__ct_string<decltype(c), 1>(c)>;
+
+    template<typename T>
+    struct is_ct_string : public is_template_of<ct_string, T> {}
+
+    template<typename T> constexpr bool is_ct_string_v = is_ct_string<T>::value;
 
 #define MAKE_CT_STRING(str)\
 ([]{\
