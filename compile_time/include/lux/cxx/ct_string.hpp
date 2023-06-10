@@ -2,7 +2,6 @@
 #include "extended_type_traits.hpp"
 
 // need c++ 20
-
 namespace lux::cxx
 {
     template<typename T, std::size_t N>
@@ -39,6 +38,7 @@ namespace lux::cxx
     struct ct_string
     {
         using char_type = typename decltype(_str)::char_type;
+        using __ct_string_type = __ct_string;
         static constexpr    char_type* data() { return _str.data; }
         static constexpr    std::size_t size() { return _str.size; }
         static constexpr    std::basic_string_view<char_type> view() { return _str.data; }
@@ -50,10 +50,14 @@ namespace lux::cxx
     template<auto c> using ct_string_c =
         ct_string <__ct_string<decltype(c), 1>(c)>;
 
+    // lux::cxx::is_type_template_of can not be used here
+    // because __ct_string is a LiteralType
     template<typename T>
-    struct is_ct_string : public is_template_of<ct_string, T> {}
+    struct is_ct_string : public is_none_type_template_of<ct_string, T> {};
 
     template<typename T> constexpr bool is_ct_string_v = is_ct_string<T>::value;
+    
+    template<typename T> concept ct_string_type = is_ct_string_v<T>;
 
 #define MAKE_CT_STRING(str)\
 ([]{\

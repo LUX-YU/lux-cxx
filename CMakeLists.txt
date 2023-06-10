@@ -12,11 +12,17 @@ add_subdirectory(compile_time)
 add_subdirectory(subprogram)
 add_subdirectory(visibility)
 
+set(ENABLE_COMPONENTS visibility subprogram compile_time)
+
+set(ENABLE_REFLECTION OFF CACHE BOOL "ENABLE REFLECTION SUPPORT")
+if(ENABLE_REFLECTION)
+add_subdirectory(reflection)
+list(APPEND ENABLE_COMPONENTS reflection)
+endif()
+
 install_projects(
     PROJECT_NAME    lux-cxx
     VERSION         0.0.2
     NAMESPACE       lux::cxx
-    COMPONENTS      visibility
-                    subprogram
-                    compile_time
+    COMPONENTS      ${ENABLE_COMPONENTS}
 )

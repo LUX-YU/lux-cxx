@@ -125,13 +125,13 @@ namespace lux::cxx
         class SampleClass
         {
         public:
-            Test(int, double){}
+            SampleClass(int, double){}
 
             int operator()(){}
             or
             int operator()(int argc, char* argv[]){}
         };
-        RegistClassSubprogramEntry(Test, "test_class" ,  1, 2.125)
+        RegistClassSubprogramEntry(SampleClass, "test_class" ,  1, 2.125)
     */
     #define RegistClassSubprogramEntry(type, title, ...)\
     static ::lux::cxx::ProgramClassEntryRegister<type> func_name ## _regist_helper(title, __VA_ARGS__);

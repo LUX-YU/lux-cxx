@@ -10,8 +10,22 @@ template<class T> concept has_member_ ## func_name = requires(T x){\
 
 namespace lux::cxx
 {
+    template<template<typename...> class T, class U>
+    class is_type_template_of
+    {
+    private:
+        template<typename... _TPack>
+        static constexpr auto _d(T<_TPack...>*) -> std::true_type;
+        static constexpr auto _d(...) -> std::false_type;
+    public:
+        static constexpr bool value = decltype(_d((U*)nullptr))::value;
+    };
+
+    template<template<typename...> class T, class U>
+    constexpr inline bool is_type_template_of_v = is_type_template_of<T, U>::value;
+
     template<template<auto...> class T, class U>
-    class is_template_of
+    class is_none_type_template_of
     {
     private:
         template<auto... _TPack>
@@ -22,7 +36,7 @@ namespace lux::cxx
     };
 
     template<template<auto...> class T, class U> 
-    constexpr inline bool is_template_of_v = is_template_of<T, U>::value;
+    constexpr inline bool is_none_type_template_of_v = is_none_type_template_of<T, U>::value;
 
     /**
      * @brief convert a integer to integer sequence(std::integer_sequence<char, ...>).
