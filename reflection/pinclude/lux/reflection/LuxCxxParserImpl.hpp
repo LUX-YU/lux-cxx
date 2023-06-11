@@ -1,17 +1,17 @@
 #pragma once
 #include <lux/reflection/libclang.hpp>
-#include <lux/cxx/visibility_control.h> // TODO remove LUX_EXPORT
+#include <lux/cxx/visibility.h> // TODO remove LUX_EXPORT
 
 namespace lux::reflection
 {
     class LuxCxxParserImpl
     {
     public:
-        LUX_EXPORT LuxCxxParserImpl();
+        LUX_CXX_PUBLIC LuxCxxParserImpl();
 
-        LUX_EXPORT ~LuxCxxParserImpl();
+        LUX_CXX_PUBLIC ~LuxCxxParserImpl();
 
-        LUX_EXPORT TranslationUnit translate(const std::string& file, const std::vector<std::string>& commands);
+        LUX_CXX_PUBLIC TranslationUnit translate(const std::string& file, const std::vector<std::string>& commands);
 
     private:
         // shared context for creating translation units

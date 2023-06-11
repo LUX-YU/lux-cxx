@@ -1,6 +1,6 @@
 #pragma once
 #include <memory>
-#include <lux/cxx/visibility_control.h>
+#include <lux/cxx/visibility.h>
 
 namespace lux::reflection
 {
@@ -9,9 +9,9 @@ namespace lux::reflection
     class LuxCxxParser
     {
     public:
-        LUX_EXPORT LuxCxxParser();
+        LUX_CXX_PUBLIC LuxCxxParser();
 
-        LUX_EXPORT ~LuxCxxParser();
+        LUX_CXX_PUBLIC ~LuxCxxParser();
 
     private:
         std::unique_ptr<LuxCxxParserImpl> _impl;
