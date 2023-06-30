@@ -5,12 +5,12 @@ namespace lux::cxx::dref::runtime
 {
 	std::size_t	ClassInstance::align() const
 	{
-		return classType().classMeta()->align;
+		return classMeta()->align;
 	}
 
 	Field ClassInstance::getField(std::string_view name)
 	{
-		auto  class_meta = classType().classMeta();
+		auto  class_meta = classMeta();
 		auto& list = class_meta->field_meta_list;
 		auto  iter = std::find_if(list.begin(), list.end(),
 			[name](FieldMeta* meta)
@@ -23,7 +23,7 @@ namespace lux::cxx::dref::runtime
 
 	Method ClassInstance::getMethod(std::string_view name)
 	{
-		auto  class_meta = classType().classMeta();
+		auto  class_meta = classMeta();
 		auto& list = class_meta->method_meta_list;
 		auto  iter = std::find_if(list.begin(), list.end(),
 			[name](MethodMeta* meta)
@@ -49,19 +49,19 @@ namespace lux::cxx::dref::runtime
 
 	}
 
-	Class const ClassInstance::classType() const
+	ClassMeta* const ClassInstance::classMeta() const
 	{
-		return Class(static_cast<ClassMeta* const>(typeMeta()));
+		return static_cast<ClassMeta* const>(typeMeta());
 	}
 
-	ClassInstance::ClassInstance(Class* _c, std::string_view name, void** args)
-	: Instance(_c->classMeta()){
+	ClassInstance::ClassInstance(ClassMeta* _c, std::string_view name, void** args)
+	: Instance(_c){
 
 	}
 
 	ClassInstance Class::createInstance(std::string_view name, void** args)
 	{
-		return ClassInstance(this, name, args);
+		return ClassInstance(classMeta(), name, args);
 	}
 
 	void Class::invokeStaticMethod(std::string_view, FuncArg result, void* args)

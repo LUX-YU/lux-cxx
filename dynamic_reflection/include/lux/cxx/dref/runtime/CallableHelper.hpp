@@ -1,12 +1,11 @@
 #pragma once
 #include "hash.hpp"
+#include "MetaType.hpp"
 #include <nameof.hpp>
 #include <vector>
 
 namespace lux::cxx::dref::runtime
 {
-	struct TypeMeta;
-
 	struct FunctionCallArgument
 	{
 		size_t	type_id;

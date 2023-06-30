@@ -1,6 +1,7 @@
 #pragma once
 #include <clang-c/Index.h>
 #include <string>
+#include <cstring>
 #include <type_traits>
 #include <functional>
 #include <vector>
@@ -8,7 +9,6 @@
 
 namespace lux::cxx::dref 
 {
-
 	class Cursor;
 
 	class TranslationUnit
@@ -567,7 +567,7 @@ namespace lux::cxx::dref
 
 		[[nodiscard]] size_t hash() const
 		{
-			clang_hashCursor(_cursor);
+			return clang_hashCursor(_cursor);
 		}
 
 		[[nodiscard]] CursorKind cursorKind() const

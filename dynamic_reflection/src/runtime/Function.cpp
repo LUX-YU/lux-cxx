@@ -7,7 +7,7 @@ namespace lux::cxx::dref::runtime
 		if (_meta->parameters_list.size() != 0 || _meta->result_info->type_id != TFnv1a("void"))
 			return false;
 
-		auto func_ptr = static_cast<Function::InvokerPtr>(_meta->func_wrap_ptr);
+		auto func_ptr = reinterpret_cast<Function::InvokerPtr>(_meta->func_wrap_ptr);
 		func_ptr(nullptr);
 		return true;
 	}
@@ -17,7 +17,7 @@ namespace lux::cxx::dref::runtime
 		if (_meta->parameters_list.size() != 0 || _meta->result_info->type_id != ret.type_id)
 			return false;
 
-		auto func_ptr = static_cast<Function::InvokerPtr>(_meta->func_wrap_ptr);
+		auto func_ptr = reinterpret_cast<Function::InvokerPtr>(_meta->func_wrap_ptr);
 
 		func_ptr(&ret.data);
 		return true;

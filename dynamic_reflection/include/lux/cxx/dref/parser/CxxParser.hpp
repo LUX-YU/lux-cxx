@@ -17,7 +17,7 @@ namespace lux::cxx::dref
 
         [[nodiscard]] LUX_CXX_PUBLIC ParserResult parse(const std::string& file, std::vector<std::string> commands);
 
-        [[maybe_nouse]] LUX_CXX_PUBLIC void setPCHFile(const std::string& file);
+        LUX_CXX_PUBLIC void setPCHFile(const std::string& file);
 
         // for debug use
         LUX_CXX_PUBLIC void parseAll(const std::string& file, std::vector<std::string> commands);

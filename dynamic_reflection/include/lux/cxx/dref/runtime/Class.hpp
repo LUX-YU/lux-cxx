@@ -56,10 +56,10 @@ namespace lux::cxx::dref::runtime
 
 		LUX_CXX_PUBLIC void					invokeStaticMethod(std::string_view name, FuncArg result, void* args);
 
-		LUX_CXX_PUBLIC Class  const			classType() const;
+		LUX_CXX_PUBLIC ClassMeta*  const	classMeta() const;
 
 	private:
-		LUX_CXX_PUBLIC ClassInstance(Class*, std::string_view, void** args);
+		LUX_CXX_PUBLIC ClassInstance(ClassMeta*, std::string_view, void** args);
 	};
 
 	class Class

@@ -26,7 +26,7 @@ namespace lux::cxx::dref::runtime
 			if (!tArgsCheck(_meta->parameters_list, std::forward<Args>(args)...))
 				return false;
 
-			auto func_ptr = static_cast<InvokerPtr>(_meta->func_wrap_ptr);
+			auto func_ptr = reinterpret_cast<InvokerPtr>(_meta->func_wrap_ptr);
 
 			std::array<void*, sizeof...(Args) + 1> _args{ret.data, args.data...};
 
