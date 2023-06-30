@@ -1,5 +1,6 @@
 /.vs
 /.vscode
+/cpp.hint
 /build
 /out
 /CMakeSettings.json

@@ -13,13 +13,15 @@ generate_visibility_header(
 
 add_subdirectory(compile_time)
 add_subdirectory(subprogram)
+add_subdirectory(lan_model)
+add_subdirectory(static_reflection)
 
-set(ENABLE_COMPONENTS subprogram compile_time)
+set(ENABLE_COMPONENTS subprogram compile_time lan_model static_reflection)
 
-set(ENABLE_REFLECTION OFF CACHE BOOL "ENABLE REFLECTION SUPPORT")
-if(ENABLE_REFLECTION)
-add_subdirectory(reflection)
-list(APPEND ENABLE_COMPONENTS reflection)
+set(ENABLE_DYNAMIC_REFLECTION OFF CACHE BOOL "ENABLE REFLECTION SUPPORT")
+if(ENABLE_DYNAMIC_REFLECTION)
+    add_subdirectory(dynamic_reflection)
+    list(APPEND ENABLE_COMPONENTS dynamic_reflection)
 endif()
 
 install_projects(
