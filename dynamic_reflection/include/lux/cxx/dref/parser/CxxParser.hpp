@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <lux/cxx/visibility.h>
+#include <lux/cxx/dref/runtime/MetaUnit.hpp>
 
 #include "ParserResult.hpp"
 
@@ -15,7 +16,7 @@ namespace lux::cxx::dref
 
         LUX_CXX_PUBLIC ~CxxParser();
 
-        [[nodiscard]] LUX_CXX_PUBLIC ParserResult parse(const std::string& file, std::vector<std::string> commands);
+        [[nodiscard]] LUX_CXX_PUBLIC ParserResult parse(const std::string& file, std::vector<std::string> commands, runtime::MetaUnit& unit);
 
         LUX_CXX_PUBLIC void setPCHFile(const std::string& file);
 

@@ -17,7 +17,7 @@ namespace lux::cxx::dref
 
     CxxParser::~CxxParser() = default;
 
-    ParserResult CxxParser::parse(const std::string& file, std::vector<std::string> commands)
+    ParserResult CxxParser::parse(const std::string& file, std::vector<std::string> commands, runtime::MetaUnit& unit)
     {
         ParserResult result;
         auto translate_unit = _impl->translate(file, std::move(commands));

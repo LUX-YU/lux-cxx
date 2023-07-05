@@ -34,21 +34,6 @@ namespace lux::cxx::dref::runtime
 		return iter == list.end() ? Method(nullptr) : Method(*iter);
 	}
 
-	void ClassInstance::invokeConstMethod(std::string_view name, FuncArg result, void* args) const
-	{
-
-	}
-
-	void ClassInstance::invokeMethod(std::string_view name, FuncArg result, void* args)
-	{
-
-	}
-
-	void ClassInstance::invokeStaticMethod(std::string_view name, FuncArg result, void* args)
-	{
-
-	}
-
 	ClassMeta* const ClassInstance::classMeta() const
 	{
 		return static_cast<ClassMeta* const>(typeMeta());
@@ -62,11 +47,6 @@ namespace lux::cxx::dref::runtime
 	ClassInstance Class::createInstance(std::string_view name, void** args)
 	{
 		return ClassInstance(classMeta(), name, args);
-	}
-
-	void Class::invokeStaticMethod(std::string_view, FuncArg result, void* args)
-	{
-
 	}
 
 	ClassMeta* const	Class::classMeta() const

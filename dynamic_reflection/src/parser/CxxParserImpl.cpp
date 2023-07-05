@@ -26,7 +26,9 @@ namespace lux::cxx::dref
 		clang_disposeIndex(_clang_index);
 	}
 
-	TranslationUnit CxxParserImpl::translate(const std::string& file_path, std::vector<std::string> commands)
+	TranslationUnit CxxParserImpl::translate(
+		const std::string& file_path, 
+		std::vector<std::string> commands, runtime::MetaUnit& unit)
 	{
 		CXTranslationUnit translation_unit;
 		commands.push_back("-D__LUX_PARSE_TIME__=1");
@@ -130,51 +132,7 @@ namespace lux::cxx::dref
 			case CXCursorKind::CXCursor_StructDecl:
 			case CXCursorKind::CXCursor_ClassDecl: // implement
 			{
-				auto meta = new ClassMeta;
-
-				meta->type_id = runtime::fnv1a(cursor_type.typeSpelling().c_str());
-				meta->type_name = cursor_type.typeSpelling().c_str();
-				meta->type_underlying_name = cursor.typedefDeclUnderlyingType().typeSpelling().c_str();
-
-				meta->meta_type = runtime::ClassMeta::self_meta_type;
-				// data type meta
-				meta->size = cursor_type.typeSizeof();
-				meta->is_const = cursor_type.isConstQualifiedType();
-				meta->is_volatile = cursor_type.isVolatileQualifiedType();
-
-				// class meta
-				meta->align = cursor_type.typeAlignof();
-
-				cursor.visitChildren(
-					[this, meta, ret, rst_impl](Cursor cursor, Cursor parent_cursor) -> CXChildVisitResult
-					{
-						auto type_meta = this->cursorTypeDispatch(cursor, rst_impl);
-
-						if(type_meta == nullptr) 
-							return CXChildVisitResult::CXChildVisit_Continue;
-
-						if (type_meta->meta_type == FieldMeta::self_meta_type)
-						{
-							auto field_meta = static_cast<FieldMeta*>(type_meta);
-							field_meta->owner_info = meta;
-							meta->field_meta_list.push_back(static_cast<FieldMeta*>(type_meta));
-						}
-						else if (type_meta->meta_type == ClassMeta::self_meta_type)
-						{
-							meta->parents_list.push_back(static_cast<ClassMeta*>(type_meta));
-						}
-						else if (type_meta->meta_type == MethodMeta::self_meta_type)
-						{
-							auto method_meta = static_cast<MethodMeta*>(type_meta);
-							method_meta->owner_info = meta;
-							meta->method_meta_list.push_back(method_meta);
-						}
-
-						return CXChildVisitResult::CXChildVisit_Continue;
-					}
-				);
-
-				ret = meta;
+				
 				break;
 			}
 			case CXCursorKind::CXCursor_CXXAccessSpecifier: // skip
@@ -187,54 +145,12 @@ namespace lux::cxx::dref
 				// enum declaration
 				break;
 			}
-			case CXCursorKind::CXCursor_FieldDecl: // implement
-			{
-				auto meta = new FieldMeta;
-
-				meta->type_id = runtime::fnv1a(cursor_type.typeSpelling().c_str());
-				meta->type_name = cursor_type.typeSpelling().c_str();
-				meta->type_underlying_name = cursor.typedefDeclUnderlyingType().typeSpelling().c_str();
-				meta->meta_type = FieldMeta::self_meta_type;
-
-				// field data meta
-				meta->field_name = cursor.cursorSpelling().c_str();
-				meta->offset	 = cursor.offsetOfField();
-				
-				// data type
-				meta->size		 = cursor_type.typeSizeof();
-				meta->is_const	 = cursor_type.isConstQualifiedType();
-				meta->is_volatile = cursor_type.isVolatileQualifiedType();
-				// field declaration
-				ret = meta;
-
-				break;
-			}
 			case CXCursorKind::CXCursor_ParmDecl:
 			{
 				break;
 			}
 			case CXCursorKind::CXCursor_CXXMethod: // implement
 			{
-				auto meta = new MethodMeta;
-
-				meta->type_id = runtime::fnv1a(cursor_type.typeSpelling().c_str());
-				meta->type_name			= cursor_type.typeSpelling().c_str();
-				meta->type_underlying_name = cursor.typedefDeclUnderlyingType().typeSpelling().c_str();
-				meta->meta_type			= MethodMeta::self_meta_type;
-
-				meta->is_const			= cursor.isMethodConst();
-				meta->is_virtual		= cursor.isMethodVirtual();
-				meta->is_pure_virtual	= cursor.isMethodPureVirtual();
-				// meta->is_pure_virtual init in class
-				meta->is_static			= cursor.isMethodStatic();
-
-				meta->func_name			= cursor.cursorSpelling().c_str();
-
-				auto rst_type = cursor_type.resultType();
-				auto rst_spelling_name	= rst_type.typeSpelling().c_str();
-				auto rst_type_cursor	= Cursor::fromTypeDeclaration(rst_type);
-				meta->result_info		= cursorTypeDispatch(rst_type_cursor, rst_impl);
-
 				break;
 			}
 			case CXCursorKind::CXCursor_FunctionDecl:
@@ -267,6 +183,94 @@ namespace lux::cxx::dref
 		}
 
 		return ret;
+	}
+
+	void CxxParserImpl::handleClassCursor(Cursor& class_cursor)
+	{
+		using namespace runtime;
+		auto cursor_type = class_cursor.cursorType();
+		auto meta = new ClassMeta;
+
+		meta->type_id		= runtime::fnv1a(cursor_type.typeSpelling().c_str());
+		meta->type_name		= cursor_type.typeSpelling().c_str();
+		meta->type_underlying_name = class_cursor.typedefDeclUnderlyingType().typeSpelling().c_str();
+
+		meta->meta_type		= runtime::ClassMeta::self_meta_type;
+		// data type meta
+		meta->size			= cursor_type.typeSizeof();
+		meta->is_const		= cursor_type.isConstQualifiedType();
+		meta->is_volatile	= cursor_type.isVolatileQualifiedType();
+
+		// class meta
+		meta->align = cursor_type.typeAlignof();
+
+		class_cursor.visitChildren(
+			[this, meta](Cursor cursor, Cursor parent_cursor) -> CXChildVisitResult
+			{
+				auto cursor_type = cursor.cursorType();
+				auto cursor_kind = cursor.cursorKind();
+
+				if (cursor_kind == CXCursorKind::CXCursor_FieldDecl)
+				{
+					FieldInfo field_info;
+
+					field_info.type_id				= runtime::fnv1a(cursor_type.typeSpelling().c_str());
+					field_info.type_name			= cursor_type.typeSpelling().c_str();
+					field_info.type_underlying_name = cursor.typedefDeclUnderlyingType().typeSpelling().c_str();
+					field_info.meta_type			= FieldMeta::self_meta_type;
+
+					// field data meta
+					meta->field_name				= cursor.cursorSpelling().c_str();
+					meta->offset					= cursor.offsetOfField();
+
+					// data type
+					meta->size						= cursor_type.typeSizeof();
+					meta->is_const					= cursor_type.isConstQualifiedType();
+					meta->is_volatile				= cursor_type.isVolatileQualifiedType();
+					field_meta->owner_info			= meta;
+					meta->field_meta_list.push_back(static_cast<FieldMeta*>(type_meta));
+				}
+				else if (cursor_kind == CXCursorKind::CXCursor_CXXBaseSpecifier)
+				{
+					meta->parents_list.push_back(static_cast<ClassMeta*>(type_meta));
+				}
+				else if (cursor_kind == CXCursorKind::CXCursor_CXXMethod)
+				{
+					auto meta = new MethodMeta;
+
+					meta->type_id = runtime::fnv1a(cursor_type.typeSpelling().c_str());
+					meta->type_name = cursor_type.typeSpelling().c_str();
+					meta->type_underlying_name = cursor.typedefDeclUnderlyingType().typeSpelling().c_str();
+					meta->meta_type = MethodMeta::self_meta_type;
+
+					meta->is_const = cursor.isMethodConst();
+					meta->is_virtual = cursor.isMethodVirtual();
+					meta->is_pure_virtual = cursor.isMethodPureVirtual();
+					// meta->is_pure_virtual init in class
+					meta->is_static = cursor.isMethodStatic();
+
+					meta->func_name = cursor.cursorSpelling().c_str();
+
+					auto rst_type = cursor_type.resultType();
+					auto rst_spelling_name = rst_type.typeSpelling().c_str();
+					auto rst_type_cursor = Cursor::fromTypeDeclaration(rst_type);
+					meta->result_info = cursorTypeDispatch(rst_type_cursor, rst_impl);
+
+					auto method_meta = static_cast<MethodMeta*>(type_meta);
+					method_meta->owner_info = meta;
+					meta->method_meta_list.push_back(method_meta);
+				}
+
+				return CXChildVisitResult::CXChildVisit_Continue;
+			}
+		);
+
+		ret = meta;
+	}
+
+	void CxxParserImpl::handleClassField(Cursor& root_cursor)
+	{
+
 	}
 
 	std::unique_ptr<ParserResultImpl> CxxParserImpl::extractCursor(Cursor& root_cursor)

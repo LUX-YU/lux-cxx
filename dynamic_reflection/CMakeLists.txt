@@ -19,6 +19,9 @@ set(DREF_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/Function.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/Instance.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/Enumeration.cpp
+
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnit.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/BasicMetaUnit.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaRegistry.cpp
 )
 

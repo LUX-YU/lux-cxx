@@ -26,6 +26,7 @@ namespace lux::cxx::dref::runtime
 
 		std::size_t			type_id;
 		std::string			type_name;
+		std::size_t			meta_unit_id;
 		std::string			type_underlying_name; // currently no use and maybe not correct
 		MetaType			meta_type;
 	};

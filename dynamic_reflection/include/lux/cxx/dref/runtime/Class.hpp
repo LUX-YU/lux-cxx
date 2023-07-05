@@ -9,13 +9,14 @@ namespace lux::cxx::dref::runtime
 {
 	class MethodMeta;
 
-	struct FieldMeta : public DataTypeMeta
+	struct FieldInfo
 	{
 		static constexpr MetaType self_meta_type = MetaType::FIELD ;
 
 		std::string			field_name;
 		size_t				offset;
-		ClassMeta*			owner_info;
+		DataTypeMeta*		type_meta;
+		ClassMeta*			owner_meta;
 	};
 
 	struct ClassMeta : public DataTypeMeta
@@ -25,7 +26,7 @@ namespace lux::cxx::dref::runtime
 		std::size_t						align;
 
 		// remember : the type meta doesn't contain the name
-		std::vector<FieldMeta*>			field_meta_list;
+		std::vector<FieldInfo>			field_meta_list;
 		std::vector<ClassMeta*>			parents_list;
 		std::vector<MethodMeta*>		method_meta_list;
 	};
@@ -33,11 +34,11 @@ namespace lux::cxx::dref::runtime
 	class Field
 	{
 	public:
-		Field(FieldMeta* const meta)
+		Field(FieldInfo* const meta)
 			: _meta(meta){}
 
 	private:
-		FieldMeta* const _meta;
+		FieldInfo* const _meta;
 	};
 
 	class ClassInstance : public Instance
@@ -49,12 +50,6 @@ namespace lux::cxx::dref::runtime
 		LUX_CXX_PUBLIC Field				getField(std::string_view name);
 
 		LUX_CXX_PUBLIC Method				getMethod(std::string_view name);
-
-		LUX_CXX_PUBLIC void					invokeConstMethod(std::string_view name, FuncArg result, void* args) const;
-
-		LUX_CXX_PUBLIC void					invokeMethod(std::string_view name, FuncArg result, void* args);
-
-		LUX_CXX_PUBLIC void					invokeStaticMethod(std::string_view name, FuncArg result, void* args);
 
 		LUX_CXX_PUBLIC ClassMeta*  const	classMeta() const;
 
@@ -69,8 +64,6 @@ namespace lux::cxx::dref::runtime
 			: _meta(meta){}
 
 		LUX_CXX_PUBLIC ClassInstance		createInstance(std::string_view, void** args);
-
-		LUX_CXX_PUBLIC void					invokeStaticMethod(std::string_view, FuncArg result, void* args);
 
 		LUX_CXX_PUBLIC ClassMeta* const		classMeta() const;
 

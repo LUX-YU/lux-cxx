@@ -4,6 +4,7 @@
 #include <lux/cxx/dref/runtime/Class.hpp>
 #include <lux/cxx/dref/runtime/Method.hpp>
 #include <lux/cxx/dref/runtime/Enumeration.hpp>
+#include <lux/cxx/dref/runtime/MetaUnit.hpp>
 #include <memory>
 #include <stack>
 
@@ -23,12 +24,16 @@ namespace lux::cxx::dref
 
         ~CxxParserImpl();
 
-        [[nodiscard]] TranslationUnit translate(const std::string& file, std::vector<std::string> commands);
+        [[nodiscard]] TranslationUnit translate(const std::string& file, std::vector<std::string> commands, runtime::MetaUnit& unit);
 
         std::unique_ptr<ParserResultImpl> extractCursor(Cursor& cursor);
 
     private:
         std::vector<Cursor> findMarkedCursors(Cursor& root_cursor);
+
+        void handleClassCursor(Cursor& root_cursor);
+
+        void handleClassField(Cursor& root_cursor);
 
         runtime::TypeMeta* cursorTypeDispatch(Cursor& cursor, ParserResultImpl* );
 
