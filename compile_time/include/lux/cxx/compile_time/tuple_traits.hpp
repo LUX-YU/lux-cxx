@@ -44,4 +44,56 @@ namespace lux::cxx
 			);
 		}
 	};
+
+	template<typename... T>
+	struct remove_repeated_elements
+	{
+	private:
+		template<typename ... input_t>
+		using tuple_cat_t = decltype(std::tuple_cat(std::declval<input_t>()...));
+
+		template<typename TupleType, typename U, size_t... I>
+		static constexpr bool has_type(std::index_sequence<I...>)
+		{
+			return (std::is_same_v<std::tuple_element_t<I, TupleType>, U> || ...);
+		}
+
+		template<typename CurrentTupleType, typename U>
+		static constexpr auto strategy(U&&)
+		{
+			if constexpr (has_type<CurrentTupleType, U>())
+			{
+				return CurrentTupleType{};
+			}
+			else
+			{
+				return tuple_cat_t<CurrentTupleType, std::tuple<U>>{};
+			}
+		}
+
+		template<typename CurrentTupleType, typename U, typename... Args>
+		static constexpr auto strategy(U&&, Args&&...)
+		{
+			if constexpr (has_type<CurrentTupleType, U>())
+			{
+				return strategy<CurrentTupleType, Args...>(Args{}...);
+			}
+			else
+			{
+				using next_tuple_type = tuple_cat_t<CurrentTupleType, std::tuple<U>>;
+				return strategy<next_tuple_type, Args...>(Args{}...);
+			}
+		}
+	public:
+
+		template<typename TupleType, typename U>
+		static constexpr bool has_type()
+		{
+			return has_type<TupleType, U>(
+				std::make_index_sequence<std::tuple_size_v<TupleType>>()
+			);
+		}
+
+		using tuple_type = decltype(strategy<std::tuple<>, T...>(T{}...));
+	};
 }
