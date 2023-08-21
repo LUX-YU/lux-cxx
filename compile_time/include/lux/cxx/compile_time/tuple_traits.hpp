@@ -45,23 +45,41 @@ namespace lux::cxx
 		}
 	};
 
+	template<typename TupleType, typename U>
+	struct tuple_has_type
+	{
+	private:
+		template<size_t... I>
+		static constexpr bool __func(std::index_sequence<I...>)
+		{
+			return (std::is_same_v<std::tuple_element_t<I, TupleType>, U> || ...);
+		}
+
+		static constexpr bool __func()
+		{
+			return __func(
+				std::make_index_sequence<std::tuple_size_v<TupleType>>()
+			);
+		}
+
+	public:
+		static constexpr bool value = __func();
+	};
+
+	template<typename TupleType, typename U> 
+	static inline constexpr bool tuple_has_type_v = tuple_has_type<TupleType, U>::value;
+
 	template<typename... T>
-	struct remove_repeated_elements
+	struct remove_repeated_types
 	{
 	private:
 		template<typename ... input_t>
 		using tuple_cat_t = decltype(std::tuple_cat(std::declval<input_t>()...));
 
-		template<typename TupleType, typename U, size_t... I>
-		static constexpr bool has_type(std::index_sequence<I...>)
-		{
-			return (std::is_same_v<std::tuple_element_t<I, TupleType>, U> || ...);
-		}
-
 		template<typename CurrentTupleType, typename U>
 		static constexpr auto strategy(U&&)
 		{
-			if constexpr (has_type<CurrentTupleType, U>())
+			if constexpr (tuple_has_type_v<CurrentTupleType, U>)
 			{
 				return CurrentTupleType{};
 			}
@@ -74,7 +92,7 @@ namespace lux::cxx
 		template<typename CurrentTupleType, typename U, typename... Args>
 		static constexpr auto strategy(U&&, Args&&...)
 		{
-			if constexpr (has_type<CurrentTupleType, U>())
+			if constexpr (tuple_has_type_v<CurrentTupleType, U>)
 			{
 				return strategy<CurrentTupleType, Args...>(Args{}...);
 			}
@@ -86,14 +104,7 @@ namespace lux::cxx
 		}
 	public:
 
-		template<typename TupleType, typename U>
-		static constexpr bool has_type()
-		{
-			return has_type<TupleType, U>(
-				std::make_index_sequence<std::tuple_size_v<TupleType>>()
-			);
-		}
-
 		using tuple_type = decltype(strategy<std::tuple<>, T...>(T{}...));
 	};
 }
+	
