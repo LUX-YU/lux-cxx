@@ -22,7 +22,6 @@ add_subdirectory(compile_time)
 add_subdirectory(subprogram)
 add_subdirectory(lan_model)
 add_subdirectory(algorithm)
-add_subdirectory(static_reflection)
 
 set(ENABLE_COMPONENTS 
     container
@@ -32,7 +31,6 @@ set(ENABLE_COMPONENTS
     lan_model 
     algorithm 
     static_reflection
-    concurrent
 )
 
 set(ENABLE_DYNAMIC_REFLECTION OFF CACHE BOOL "ENABLE REFLECTION SUPPORT")
