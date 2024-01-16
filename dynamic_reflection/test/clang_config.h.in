@@ -1,0 +1,4 @@
+#pragma once
+
+#define __LUX_CXX_INCLUDE_DIR_DEF__	"-I@LUX_CXX_INCLUDE_DIR_DEF@"
+#define __LUX_CXX_STANDARD__		"-std=c++20"

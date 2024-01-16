@@ -95,8 +95,7 @@ namespace lux::cxx::dref
 		return _impl->_data->_markable_decl_list;
 	}
 
-	// Actually, 
-	Declaration* const MetaUnit::findDeclarationByName(EDeclarationKind kind, const std::string& name)
+	const Declaration* MetaUnit::findDeclarationByName(EDeclarationKind kind, const std::string& name) const
 	{
 		if (_impl->_data == nullptr) 
 			return nullptr;
@@ -112,14 +111,14 @@ namespace lux::cxx::dref
 		return _impl->_data->_meta_type_list;
 	}
 
-	TypeMeta* const MetaUnit::findTypeMetaByName(const std::string& name) const
+	const TypeMeta* MetaUnit::findTypeMetaByName(std::string_view name) const
 	{
 		if (_impl->_data == nullptr)
 			return nullptr;
 
 		auto& map = _impl->_data->_meta_type_map;
 
-		size_t id = calculateTypeMetaId(name.c_str());
+		size_t id = calculateTypeMetaId(name.data());
 		return map.count(id) > 0 ? map[id] : nullptr;
 	}
 }

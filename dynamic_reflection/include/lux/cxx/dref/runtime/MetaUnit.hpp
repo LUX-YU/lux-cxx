@@ -3,8 +3,8 @@
 #include <lux/cxx/lan_model/declaration.hpp>
 #include <lux/cxx/lan_model/type.hpp>
 #include <unordered_map>
+#include <string_view>
 #include <vector>
-#include <string>
 #include <memory>
 
 namespace lux::cxx::dref
@@ -44,11 +44,11 @@ namespace lux::cxx::dref
 
 		LUX_CXX_PUBLIC const std::vector<Declaration*>& markedDeclarationList() const;
 
-		LUX_CXX_PUBLIC Declaration* const findDeclarationByName(EDeclarationKind kind, const std::string& name);
+		LUX_CXX_PUBLIC const Declaration* findDeclarationByName(EDeclarationKind kind, const std::string& name) const;
 
 		LUX_CXX_PUBLIC const std::vector<TypeMeta*>& typeMetaList() const;
 
-		LUX_CXX_PUBLIC TypeMeta* const findTypeMetaByName(const std::string& name) const;
+		LUX_CXX_PUBLIC const TypeMeta* findTypeMetaByName(std::string_view name) const;
 
 	private:
 		std::unique_ptr<MetaUnitImpl> _impl;

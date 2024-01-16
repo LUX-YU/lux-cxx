@@ -3,7 +3,7 @@
 
 namespace lux::cxx::lan_model
 {
-	struct Declaration;
+	struct FunctionDeclaration;
 
 	/*
 	* https://en.cppreference.com/w/cpp/language/functions
@@ -27,7 +27,7 @@ namespace lux::cxx::lan_model
 	*/
 	struct Function : public Entity
 	{
-		Declaration*	declaration;
-		void*			body;
+		FunctionDeclaration*	declaration;
+		void*					body;
 	};
 }

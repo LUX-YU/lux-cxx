@@ -1,5 +1,5 @@
 #pragma once
-#include "hash.hpp"
+#include <lux/cxx/algotithm/hash.hpp>
 #include "MetaType.hpp"
 #include <nameof.hpp>
 #include <vector>
@@ -10,7 +10,7 @@ namespace lux::cxx::dref
 	struct FunctionCallArgument
 	{
 		size_t	type_id{};
-		void* data{ nullptr };
+		void*	data{ nullptr };
 	};
 
 	using FuncArg = FunctionCallArgument;

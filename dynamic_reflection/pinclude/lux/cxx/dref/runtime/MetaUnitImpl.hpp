@@ -513,8 +513,8 @@ namespace lux::cxx::dref
 	private:
 		bool							_delete_flat{false};
 		size_t							_id;
+		std::unique_ptr<MetaUnitData>	_data;
 		std::string						_name;
 		std::string						_version;
-		std::unique_ptr<MetaUnitData>	_data;
 	};
 }

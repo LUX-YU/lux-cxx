@@ -12,7 +12,20 @@ namespace lux::cxx::lan_model
 		size_t		align;
 		Type*		type;
 
+		void*		value;
+
 		// optional
 		const char* name;
 	};
+
+	static constexpr Object null_object()
+	{
+		Object obj;
+		obj.size	= 0;
+		obj.align	= 0;
+		obj.type	= nullptr;
+		obj.value	= nullptr;
+		obj.name	= nullptr;
+		return obj;
+	}
 }

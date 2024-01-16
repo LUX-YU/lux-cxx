@@ -1,3 +1,13 @@
+find_package(Clang QUIET)
+
+if(Clang_FOUND)
+    return()
+endif()
+
+if(NOT UNIX)
+    message(FATAL_MESSAGE "Couldn't find libclang")
+endif()
+
 file(GLOB CLANG_SEARCH_PATH
     "/usr/lib/llvm-*" "/usr/lib/llvm-*/lib" "/usr/lib/llvm-*/include"
 )

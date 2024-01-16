@@ -3,16 +3,6 @@
 
 #include <lux/cxx/dref/runtime/MetaUnit.hpp>
 
-// types
-#include <lux/cxx/lan_model/types/arithmetic.hpp>
-#include <lux/cxx/lan_model/types/array.hpp>
-
-#include <lux/cxx/lan_model/types/enumeration.hpp>
-#include <lux/cxx/lan_model/types/function_type.hpp>
-#include <lux/cxx/lan_model/types/member_pointer_type.hpp>
-#include <lux/cxx/lan_model/types/pointer_type.hpp>
-#include <lux/cxx/lan_model/types/reference_type.hpp>
-
 #include <numeric>
 #include <iostream>
 #include <sstream>
@@ -34,13 +24,13 @@ namespace lux::cxx::dref
 		return declaration_id(decl->kind, decl->name);
 	}
 
-	bool CxxParserImpl::hasDeclarationInContextById(size_t id)
+	bool CxxParserImpl::hasDeclarationInContextById(size_t id) const
 	{
 		return _meta_unit_data->_markable_decl_map.count(id) > 0
 			|| _meta_unit_data->_unmarkable_decl_map.count(id) > 0;
 	}
 
-	bool CxxParserImpl::hasDeclarationInContextByName(EDeclarationKind kind, const char* name)
+	bool CxxParserImpl::hasDeclarationInContextByName(EDeclarationKind kind, const char* name) const
 	{
 		auto id = MetaUnit::calculateDeclarationId(kind, name);
 		return hasDeclarationInContextById(id);
@@ -61,12 +51,12 @@ namespace lux::cxx::dref
 		return getDeclarationFromContextById(id);
 	}
 
-	bool CxxParserImpl::hasTypeMetaInContextById(size_t id)
+	bool CxxParserImpl::hasTypeMetaInContextById(size_t id) const
 	{
 		return _meta_unit_data->_meta_type_map.count(id) > 0;
 	}
 
-	bool CxxParserImpl::hasTypeMetaInContextByName(const char* name)
+	bool CxxParserImpl::hasTypeMetaInContextByName(const char* name) const
 	{
 		auto id = MetaUnit::calculateTypeMetaId(name);
 		return hasTypeMetaInContextById(id);
@@ -121,11 +111,11 @@ namespace lux::cxx::dref
 		return ret;
 	}
 
-	char* CxxParserImpl::nameFromStdString(const std::string& str)
+	char* CxxParserImpl::nameFromStdString(std::string_view str)
 	{
 		auto string_len = str.size();
 		char* ret = new char[string_len + 1];
-		std::strcpy(ret, str.c_str());
+		std::strcpy(ret, str.data());
 
 		return ret;
 	}
@@ -219,7 +209,7 @@ namespace lux::cxx::dref
 		clang_disposeIndex(_clang_index);
 	}
 
-	ParseResult CxxParserImpl::parse(const std::string& file, std::vector<std::string> commands, std::string name, std::string version)
+	ParseResult CxxParserImpl::parse(std::string_view file, std::vector<std::string_view> commands, std::string_view name, std::string_view version)
 	{
 		auto translate_unit = translate(file, std::move(commands));
 		auto error_list = translate_unit.diagnostics();
@@ -246,7 +236,8 @@ namespace lux::cxx::dref
 
 		auto meta_unit_impl = std::make_unique<MetaUnitImpl>(
 			std::move(_meta_unit_data),
-			std::move(name), std::move(version)
+			std::string(name), 
+			std::string(version)
 		);
 
 		meta_unit_impl->setDeleteFlat(true);
@@ -319,6 +310,7 @@ namespace lux::cxx::dref
 						return CXChildVisitResult::CXChildVisit_Break;
 					}
 				);
+
 				return CXChildVisitResult::CXChildVisit_Continue;
 			}
 		);
@@ -327,8 +319,8 @@ namespace lux::cxx::dref
 	}
 
 	TranslationUnit CxxParserImpl::translate(
-		const std::string& file_path, 
-		std::vector<std::string> commands)
+		std::string_view file_path,
+		std::vector<std::string_view> commands)
 	{
 		CXTranslationUnit translation_unit;
 		commands.emplace_back("-D__LUX_PARSE_TIME__=1");
@@ -339,12 +331,12 @@ namespace lux::cxx::dref
 
         for (size_t i = 0; i < commands_size; i++)
 		{
-			_c_commands[i] = commands[i].c_str();
+			_c_commands[i] = commands[i].data();
 		}
 
 		CXErrorCode error_code = clang_parseTranslationUnit2(
 			_clang_index,           // CXIndex
-			file_path.c_str(),      // source_filename
+			file_path.data(),       // source_filename
 			_c_commands,            // command line args
 			commands_size,          // num_command_line_args
 			nullptr,                // unsaved_files

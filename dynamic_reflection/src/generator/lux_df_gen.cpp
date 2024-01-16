@@ -134,8 +134,8 @@ int main(int argc, char* argv[])
 
 	static const char* file_wait_for_parsing = "D:/CodeBase/lux-projects/lux-tests/cxx_test/dynamic_reflection/test_header.hpp";
 
-	lux::cxx::dref::CxxParser	cxx_parser;
-	std::vector<std::string>    options{ __LUX_CXX_STANDARD__, __LUX_CXX_INCLUDE_DIR__};
+	lux::cxx::dref::CxxParser		cxx_parser;
+	std::vector<std::string_view>   options{ __LUX_CXX_STANDARD__, __LUX_CXX_INCLUDE_DIR__};
 	auto [parse_rst, data] = cxx_parser.parse(file_wait_for_parsing, std::move(options), "test_unit", "1.0.0");
 
 	if (parse_rst != lux::cxx::dref::EParseResult::SUCCESS)

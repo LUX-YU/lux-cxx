@@ -1,7 +1,4 @@
 #pragma once
-#include <type_traits>
-#include <string>
-#include <vector>
 
 // see https://en.cppreference.com/w/cpp/language/type
 

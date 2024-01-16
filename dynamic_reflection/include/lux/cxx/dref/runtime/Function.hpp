@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/cxx/dref/meta/MetaType.hpp>
+#include <lux/cxx/lan_model/function.hpp>
 
 #include "Instance.hpp"
 #include "CallableHelper.hpp"
@@ -7,17 +7,19 @@
 
 namespace lux::cxx::dref
 {
+	using FunctionMeta = lux::cxx::lan_model::Function;
+
 	class Function : public CallableHelper
 	{
 	public:
 		using InvokerPtr = void (*)(void** args);
 
-		explicit Function(FunctionTypeMeta* const meta): _meta(meta){}
+		explicit Function(FunctionMeta* const meta): _meta(meta){}
 
 		template<typename T, typename... Args>
 		void tInvokeNoCheck(T&& ret, Args&&... args)
 		{
-			auto func_ptr = reinterpret_cast<InvokerPtr>(_meta->func_wrap_ptr);
+			auto func_ptr = reinterpret_cast<InvokerPtr>(_meta->body);
 
 			std::array<void*, sizeof...(Args) + 1> _args{ret.data, args.data...};
 
@@ -42,11 +44,11 @@ namespace lux::cxx::dref
 		
 	protected:
 
-		FunctionTypeMeta* const func_mata() const
+		FunctionMeta* const func_mata() const
 		{
 			return _meta;
 		}
 
-		FunctionTypeMeta* const _meta;
+		FunctionMeta* const _meta;
 	};
 }

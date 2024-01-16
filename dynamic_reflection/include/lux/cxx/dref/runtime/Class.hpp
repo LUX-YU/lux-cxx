@@ -1,11 +1,13 @@
 #pragma once
-#include <lux/cxx/dref/meta/MetaType.hpp>
+#include <lux/cxx/lan_model/declaration.hpp>
 #include "Method.hpp"
 #include <vector>
 #include <cstdlib>
 
 namespace lux::cxx::dref
 {
+	using ClassMeta = lux::cxx::lan_model::ClassDeclaration;
+
 	class Class
 	{
 	public:

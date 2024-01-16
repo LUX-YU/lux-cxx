@@ -56,46 +56,48 @@ namespace lux::cxx::dref
 		std::vector<ClassDeclaration*>			base_class_buffer;
 	};
 
-	static void fillMemberDeclarationByContext(ClassDeclaration* class_decl, ParseContext& context)
-	{
-		class_decl->base_class_num = context.base_class_buffer.size();
-		class_decl->base_class_decls = class_decl->base_class_num > 0 ?
-			new ClassDeclaration * [class_decl->base_class_num] : nullptr;
-		for (size_t i = 0; i < class_decl->base_class_num; i++)
+	namespace {
+		void fill_member_declaration_by_context(ClassDeclaration* class_decl, const ParseContext& context)
 		{
-			class_decl->base_class_decls[i] = context.base_class_buffer[i];
-		}
+			class_decl->base_class_num = context.base_class_buffer.size();
+			class_decl->base_class_decls = class_decl->base_class_num > 0 ?
+				new ClassDeclaration * [class_decl->base_class_num] : nullptr;
+			for (size_t i = 0; i < class_decl->base_class_num; i++)
+			{
+				class_decl->base_class_decls[i] = context.base_class_buffer[i];
+			}
 
-		class_decl->constructor_num = context.constructor_buffer.size();
-		class_decl->constructor_decls = class_decl->constructor_num > 0 ? 
-			new ConstructorDeclaration * [class_decl->constructor_num] : nullptr;
-		for (size_t i = 0; i < class_decl->constructor_num; i++)
-		{
-			class_decl->constructor_decls[i] = context.constructor_buffer[i];
-		}
+			class_decl->constructor_num = context.constructor_buffer.size();
+			class_decl->constructor_decls = class_decl->constructor_num > 0 ?
+				new ConstructorDeclaration * [class_decl->constructor_num] : nullptr;
+			for (size_t i = 0; i < class_decl->constructor_num; i++)
+			{
+				class_decl->constructor_decls[i] = context.constructor_buffer[i];
+			}
 
-		class_decl->field_num = context.member_data_buffer.size();
-		class_decl->field_decls = class_decl->field_num > 0 ?
-			new FieldDeclaration * [class_decl->field_num] : nullptr;
-		for (size_t i = 0; i < class_decl->field_num; i++)
-		{
-			class_decl->field_decls[i] = context.member_data_buffer[i];
-		}
+			class_decl->field_num = context.member_data_buffer.size();
+			class_decl->field_decls = class_decl->field_num > 0 ?
+				new FieldDeclaration * [class_decl->field_num] : nullptr;
+			for (size_t i = 0; i < class_decl->field_num; i++)
+			{
+				class_decl->field_decls[i] = context.member_data_buffer[i];
+			}
 
-		class_decl->member_function_num = context.member_function_buffer.size();
-		class_decl->member_function_decls = class_decl->member_function_num > 0 ?
-			new MemberFunctionDeclaration * [class_decl->member_function_num] : nullptr;
-		for (size_t i = 0; i < class_decl->member_function_num; i++)
-		{
-			class_decl->member_function_decls[i] = context.member_function_buffer[i];
-		}
+			class_decl->member_function_num = context.member_function_buffer.size();
+			class_decl->member_function_decls = class_decl->member_function_num > 0 ?
+				new MemberFunctionDeclaration * [class_decl->member_function_num] : nullptr;
+			for (size_t i = 0; i < class_decl->member_function_num; i++)
+			{
+				class_decl->member_function_decls[i] = context.member_function_buffer[i];
+			}
 
-		class_decl->static_member_function_num = context.static_member_function_buffer.size();
-		class_decl->static_member_function_decls = class_decl->static_member_function_num > 0 ?
-			new MemberFunctionDeclaration * [class_decl->static_member_function_num] : nullptr;
-		for (size_t i = 0; i < class_decl->static_member_function_num; i++)
-		{
-			class_decl->static_member_function_decls[i] = context.static_member_function_buffer[i];
+			class_decl->static_member_function_num = context.static_member_function_buffer.size();
+			class_decl->static_member_function_decls = class_decl->static_member_function_num > 0 ?
+				new MemberFunctionDeclaration * [class_decl->static_member_function_num] : nullptr;
+			for (size_t i = 0; i < class_decl->static_member_function_num; i++)
+			{
+				class_decl->static_member_function_decls[i] = context.static_member_function_buffer[i];
+			}
 		}
 	}
 
@@ -106,7 +108,7 @@ namespace lux::cxx::dref
 		cursor.visitChildren(
 			[this, declaration, &context](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
 			{
-				auto cursor_kind = cursor.cursorKind();
+				const auto cursor_kind = cursor.cursorKind();
 
 				if (cursor_kind == CXCursorKind::CXCursor_FieldDecl)
 				{
@@ -116,7 +118,7 @@ namespace lux::cxx::dref
 				}
 				else if (cursor_kind == CXCursorKind::CXCursor_CXXMethod)
 				{
-					auto decl = TParseDeclarationDecorator<EDeclarationKind::MEMBER_FUNCTION>(cursor);
+					const auto decl = TParseDeclarationDecorator<EDeclarationKind::MEMBER_FUNCTION>(cursor);
 					decl->class_declaration = declaration;
 					if (decl->is_static)
 					{
@@ -129,18 +131,18 @@ namespace lux::cxx::dref
 				}
 				else if (cursor_kind == CXCursorKind::CXCursor_CXXBaseSpecifier)
 				{
-					auto decl = TParseDeclarationDecorator<EDeclarationKind::CLASS>(cursor.getDefinition());
+					const auto decl = TParseDeclarationDecorator<EDeclarationKind::CLASS>(cursor.getDefinition());
 					context.base_class_buffer.push_back(decl);
 				}
 				else if (cursor_kind == CXCursorKind::CXCursor_Constructor) // implement
 				{
-					auto decl = TParseDeclarationDecorator<EDeclarationKind::CONSTRUCTOR>(cursor);
+					const auto decl = TParseDeclarationDecorator<EDeclarationKind::CONSTRUCTOR>(cursor);
 					decl->class_declaration = declaration;
 					context.constructor_buffer.push_back(decl);
 				}
 				else if (cursor_kind == CXCursorKind::CXCursor_Destructor) // implement
 				{
-					auto decl = TParseDeclarationDecorator<EDeclarationKind::DESTRUCTOR>(cursor);
+					const auto decl = TParseDeclarationDecorator<EDeclarationKind::DESTRUCTOR>(cursor);
 					decl->class_declaration = declaration;
 					declaration->destructor_decl = decl;
 				}
@@ -149,7 +151,7 @@ namespace lux::cxx::dref
 			}
 		);
 
-		fillMemberDeclarationByContext(declaration, context);
+		fill_member_declaration_by_context(declaration, context);
 
 		return declaration;
 	}

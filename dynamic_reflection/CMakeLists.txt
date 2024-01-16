@@ -1,9 +1,5 @@
-find_package(Clang          QUIET)
-if(NOT Clang_FOUND)
-    if(UNIX)
-        include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang_unix.cmake)
-    endif(UNIX)
-endif()
+# import target libclang
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang_unix.cmake)
 
 # see https://mustache.github.io/mustache.5.html
 find_package(mstch CONFIG   REQUIRED)
@@ -60,3 +56,8 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     pinclude
 )
+
+set(ENABLE_DYNAMIC_REFLECTION_TEST true BOOL "Enable dynamic reflection test")
+if(ENABLE_DYNAMIC_REFLECTION_TEST)
+    add_subdirectory(test)    
+endif()

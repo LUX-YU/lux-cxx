@@ -32,14 +32,14 @@ namespace lux::cxx::lan_model
 	template<> struct type_kind_map<ETypeKind::UNSUPPORTED> { using type = Unsupported; };
 
 	template<typename T>
-	static consteval inline bool is_object()
+	static consteval bool is_object()
 	requires std::is_base_of_v<Type, T>
 	{
 		return is_object(T::kind);
 	}
 
 	template<typename T>
-	static constexpr inline bool is_incomplete()
+	static constexpr bool is_incomplete()
 	requires std::is_base_of_v<Type, T>
 	{
 		return is_incomplete(T::kind);

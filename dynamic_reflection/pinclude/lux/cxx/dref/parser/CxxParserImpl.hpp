@@ -6,7 +6,6 @@
 #include <lux/cxx/lan_model/type.hpp>
 #include <lux/cxx/lan_model/types/class_type.hpp>
 #include <lux/cxx/lan_model/types/enumeration.hpp>
-#include <unordered_map>
 #include <memory>
 
 namespace lux::cxx::dref
@@ -20,7 +19,7 @@ namespace lux::cxx::dref
 
         ~CxxParserImpl();
 
-        ParseResult parse(const std::string& file, std::vector<std::string> commands, std::string name, std::string version);
+        ParseResult parse(std::string_view file, std::vector<std::string_view> commands, std::string_view name, std::string_view version);
 
         // static size_t declaration_id(const Cursor& cursor);
         static size_t declaration_id(EDeclarationKind kind, const char* name);
@@ -32,16 +31,16 @@ namespace lux::cxx::dref
 
         // the return string should be deleted by user
         static char* nameFromClangString(const String&);
-        static char* nameFromStdString(const std::string&);
+        static char* nameFromStdString(std::string_view);
         static ::lux::cxx::lan_model::Visibility visibiltyFromClangVisibility(CX_CXXAccessSpecifier);
 
         static char* annotationFromClangCursor(const Cursor&);
     private:
         
-        [[nodiscard]] TranslationUnit   translate(const std::string& file, std::vector<std::string> commands);
+        [[nodiscard]] TranslationUnit   translate(std::string_view file, std::vector<std::string_view> commands);
 
         std::vector<Cursor>             findMarkedCursors(const Cursor& root_cursor);
-        Declaration*                    parseDeclaration(const Cursor& cursor);
+        Declaration*              parseDeclaration(const Cursor& cursor);
 
         template<EDeclarationKind E, typename T = typename lux::cxx::lan_model::declaration_kind_map<E>::type>
         T* TParseDeclaration(const Cursor&, T*);
@@ -181,15 +180,14 @@ namespace lux::cxx::dref
         }
 
         TypeMeta* parseUncertainTypeMeta(const Type& type);
-
         
-        bool hasDeclarationInContextById(size_t id);
-        bool hasDeclarationInContextByName(EDeclarationKind kind, const char* name);
+        bool hasDeclarationInContextById(size_t id) const;
+        bool hasDeclarationInContextByName(EDeclarationKind kind, const char* name) const;
         Declaration* getDeclarationFromContextById(size_t id);
         Declaration* getDeclarationFromContextByName(EDeclarationKind kind, const char* name);
 
-        bool hasTypeMetaInContextById(size_t id);
-        bool hasTypeMetaInContextByName(const char* name);
+        bool hasTypeMetaInContextById(size_t id) const;
+        bool hasTypeMetaInContextByName(const char* name) const;
         TypeMeta* getTypeMetaFromContextById(size_t id);
         TypeMeta* getTypeMetaFromContextByName(EDeclarationKind kind, const char* name);
 
