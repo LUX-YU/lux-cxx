@@ -8,9 +8,13 @@ namespace lux::cxx::dref
 {
 	using LuxDRefObject = lux::cxx::lan_model::Object;
 
+<<<<<<< HEAD
 	constexpr inline LuxDRefObject null_dref_object{
 		lux::cxx::lan_model::null_object()
 	};
+=======
+	static constexpr inline LuxDRefObject null_dref_object{nullptr, nullptr};
+>>>>>>> 4d81ad501c51cc725108451331bc99a390d21107
 
 	static constexpr bool is_dref_obj_vaild(const LuxDRefObject& obj)
 	{

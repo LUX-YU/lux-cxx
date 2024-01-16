@@ -52,16 +52,16 @@ namespace lux::cxx::dref
 
             if constexpr (E == EDeclarationKind::CLASS)
             {
-                type_meta = TParseTypeMetaDecorator<TypeMetaKind::CLASS>(cursor.cursorType());
+                type_meta = TParseTypeMetaDecorator<ETypeMetaKind::CLASS>(cursor.cursorType());
             }
             else if constexpr (E == EDeclarationKind::MEMBER_FUNCTION || E == EDeclarationKind::CONSTRUCTOR
                 || E == EDeclarationKind::DESTRUCTOR || E == EDeclarationKind::FUNCTION)
             {
-                type_meta = TParseTypeMetaDecorator<TypeMetaKind::FUNCTION>(cursor.cursorType());
+                type_meta = TParseTypeMetaDecorator<ETypeMetaKind::FUNCTION>(cursor.cursorType());
             }
             else if constexpr (E == EDeclarationKind::ENUMERATION)
             {
-                type_meta = TParseTypeMetaDecorator<TypeMetaKind::ENUMERATION>(cursor.cursorType());
+                type_meta = TParseTypeMetaDecorator<ETypeMetaKind::ENUMERATION>(cursor.cursorType());
             }
             else
             {
@@ -148,10 +148,10 @@ namespace lux::cxx::dref
             return declaration;
         }
 
-        template<TypeMetaKind E, typename T = typename lux::cxx::lan_model::type_kind_map<E>::type>
+        template<ETypeMetaKind E, typename T = typename lux::cxx::lan_model::type_kind_map<E>::type>
         T* TParseTypeMeta(const Type&, T*);
 
-        template<TypeMetaKind E, typename T = typename lux::cxx::lan_model::type_kind_map<E>::type>
+        template<ETypeMetaKind E, typename T = typename lux::cxx::lan_model::type_kind_map<E>::type>
         T* TParseTypeMetaDecorator(const Type& type)
         {
             auto id = type_meta_id(type.typeSpelling().c_str());
@@ -163,7 +163,7 @@ namespace lux::cxx::dref
             return TParseTypeMetaDecoratorNoCheck<E>(type, id);
         }
 
-        template<TypeMetaKind E, typename T = typename lux::cxx::lan_model::type_kind_map<E>::type>
+        template<ETypeMetaKind E, typename T = typename lux::cxx::lan_model::type_kind_map<E>::type>
         T* TParseTypeMetaDecoratorNoCheck(const Type& type, size_t id)
         {
             T* meta_type = new T();
@@ -216,7 +216,7 @@ namespace lux::cxx::dref
 
         static Type rootAnonicalType(const Type& type);
 
-        template<TypeMetaKind E1, TypeMetaKind E2>
+        template<ETypeMetaKind E1, ETypeMetaKind E2>
         TypeMeta* parseReferenceSemtantic(const Type& type, size_t id)
         {
             auto ref_type = rootAnonicalType(type.getPointeeType());

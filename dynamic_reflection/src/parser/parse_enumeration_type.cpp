@@ -9,7 +9,7 @@ namespace lux::cxx::dref
 	using namespace ::lux::cxx::lan_model;
 
 	template<>
-	EnumerationType* CxxParserImpl::TParseTypeMeta<TypeMetaKind::ENUMERATION>(const Type& type, EnumerationType* type_meta)
+	EnumerationType* CxxParserImpl::TParseTypeMeta<ETypeMetaKind::ENUMERATION>(const Type& type, EnumerationType* type_meta)
 	{
 		return type_meta;
 	}

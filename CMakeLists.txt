@@ -15,14 +15,18 @@ generate_visibility_header(
     GENERATE_FILE_PATH  lux/cxx/visibility.h
 )
 
+add_subdirectory(container)
+add_subdirectory(concurrent)
+add_subdirectory(static_reflection)
 add_subdirectory(compile_time)
 add_subdirectory(subprogram)
 add_subdirectory(lan_model)
 add_subdirectory(algorithm)
 add_subdirectory(static_reflection)
-add_subdirectory(concurrent)
 
 set(ENABLE_COMPONENTS 
+    container
+    concurrent
     subprogram 
     compile_time 
     lan_model 
