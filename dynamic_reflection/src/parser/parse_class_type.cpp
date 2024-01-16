@@ -6,7 +6,7 @@ namespace lux::cxx::dref
 	using namespace ::lux::cxx::lan_model;
 
 	template<>
-	ClassType* CxxParserImpl::TParseTypeMeta<TypeMetaKind::CLASS>(const Type& type, ClassType* class_meta)
+	ClassType* CxxParserImpl::TParseTypeMeta<ETypeMetaKind::CLASS>(const Type& type, ClassType* class_meta)
 	{
 		class_meta->size		= type.typeSizeof();
 		class_meta->align		= type.typeAlignof();

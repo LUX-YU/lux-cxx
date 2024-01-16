@@ -12,7 +12,7 @@ namespace lux::cxx::dref
 	class MetaUnitImpl;
 
 	using TypeMeta			= ::lux::cxx::lan_model::Type;
-	using TypeMetaKind		= ::lux::cxx::lan_model::ETypeKind;
+	using ETypeMetaKind		= ::lux::cxx::lan_model::ETypeKind;
 
 	using Declaration		= ::lux::cxx::lan_model::Declaration;
 	using EDeclarationKind	= ::lux::cxx::lan_model::EDeclarationKind;

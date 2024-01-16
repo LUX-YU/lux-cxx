@@ -9,7 +9,7 @@ namespace lux::cxx
     class TTreeNodeBase
     {
     public:
-        [[nodiscard]] size_t depth()
+        [[nodiscard]] size_t depth() const
         {
             if (_parent == nullptr)
             {
@@ -18,49 +18,54 @@ namespace lux::cxx
             return 1 + _parent->depth();
         }
 
+        bool isRoot() const
+        {
+            return _parent == nullptr;
+        }
+
         template<class U>
         void set(U&& value)
         {
             _value = std::forward<U>(value);
         }
 
-        constexpr T& get()
+        constexpr inline T& value()
         {
             return _value;
         }
 
-        constexpr const T& get() const
+        constexpr inline const T& value() const
         {
             return _value;
         }
 
-        TTreeNodeBase()
+        constexpr TTreeNodeBase()
             : _parent(nullptr) {}
 
-        template<class U>
+        template<class U> constexpr
         explicit TTreeNodeBase(U&& value)
             : _parent(nullptr), _value(std::forward<U>(value)) {}
 
     protected:
-        TTreeNodeBase*  _parent;
-        T               _value;
+        TTreeNodeBase* _parent;
+        T              _value;
     };
 
     template<class T, size_t N, bool isStatic = true>
-    class TreeNode : public TTreeNodeBase<T>
+    class TTreeNode : public TTreeNodeBase<T>
     {
     public:
         using TTreeNodeBase<T>::TTreeNodeBase;
 
         template<size_t I>
-        void TSetChild(TreeNode* child)
+        void TSetChild(TTreeNode* child)
         {
             static_assert(I < N, "Index out of bound");
             _children[I] = child;
             child->_parent = this;
         }
 
-        TreeNode* getChild(size_t index)
+        TTreeNode* getChild(size_t index)
         {
             if (index >= N)
                 return nullptr;
@@ -68,7 +73,7 @@ namespace lux::cxx
             return _children[index];
         }
 
-        const TreeNode* getChild(size_t index) const
+        const TTreeNode* getChild(size_t index) const
         {
             if (index >= N)
                 return nullptr;
@@ -77,7 +82,7 @@ namespace lux::cxx
         }
 
         template<size_t I>
-        TreeNode* TGetChild()
+        TTreeNode* TGetChild()
         {
             if (I >= N)
                 return nullptr;
@@ -86,7 +91,7 @@ namespace lux::cxx
         }
 
         template<size_t I>
-        const TreeNode* TGetChild() const
+        const TTreeNode* TGetChild() const
         {
             if (I >= N)
                 return nullptr;
@@ -94,7 +99,7 @@ namespace lux::cxx
             return _children[I];
         }
 
-        [[nodiscard]] bool setChild(size_t index, TreeNode* child)
+        [[nodiscard]] bool setChild(size_t index, TTreeNode* child)
         {
             if (index >= N)
                 return false;
@@ -102,42 +107,43 @@ namespace lux::cxx
             child->_parent = this;
             return true;
         }
+
     private:
-        std::array<TreeNode*, N> _children;
+        std::array<TTreeNode*, N> _children;
     };
 
-    template<class T, size_t N>
-    class TreeNode<T, N, false> : public TTreeNodeBase<T>
+    template<class T, class Alloc = std::allocator<T>>
+    class DynamicTreeNode : public TTreeNodeBase<T>
     {
     public:
         using TTreeNodeBase<T>::TTreeNodeBase;
 
-        [[nodiscard]] bool addChild(TreeNode* child)
+        [[nodiscard]] bool addChild(DynamicTreeNode* child)
         {
-            if (_children.size() >= N)
+            if (child == nullptr)
                 return false;
+
             child->_parent = this;
             _children.push_back(child);
             return true;
         }
 
-        TreeNode* getChild(size_t index)
+        constexpr inline DynamicTreeNode* getChild(size_t index)
         {
-            if (index >= _children.size())
-                return nullptr;
-
-            return _children[index];
+            return index >= _children.size() ?
+                nullptr : _children[index];
         }
 
-        const TreeNode* getChild(size_t index) const
+        constexpr inline const DynamicTreeNode* getChild(size_t index) const
         {
-            if (index >= _children.size())
-                return nullptr;
-
-            return _children[index];
+            return index >= _children.size() ?
+                nullptr : _children[index];
         }
 
     private:
-        std::vector<TreeNode*> _children;
+        std::vector<DynamicTreeNode*, Alloc> _children;
     };
+
+    template<typename T> using BinaryTree   = TTreeNode<T, 2, true>;
+    template<typename T> using Octree       = TTreeNode<T, 8, true>;
 }

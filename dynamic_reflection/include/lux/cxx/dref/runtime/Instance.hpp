@@ -11,7 +11,7 @@ namespace lux::cxx::dref
 		void* object;
 	};
 
-	constexpr inline LuxDRefObject null_dref_object{nullptr, nullptr};
+	static constexpr inline LuxDRefObject null_dref_object{nullptr, nullptr};
 
 	static constexpr bool is_dref_obj_vaild(const LuxDRefObject& obj)
 	{

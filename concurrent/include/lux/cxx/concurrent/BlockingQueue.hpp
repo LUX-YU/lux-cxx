@@ -6,7 +6,7 @@
 
 namespace lux::cxx
 {
-	template<typename T>
+	template<typename T, class _Container = std::deque<T>>
 	class BlockingQueue
 	{
 	public:
@@ -119,6 +119,6 @@ namespace lux::cxx
 		std::condition_variable		_cv;
 		mutable  std::mutex			_mutex;
 		std::atomic_bool			_exit;
-		std::queue<T>				_queue;
+		std::queue<T, _Container>   _queue;
 	};
 }
