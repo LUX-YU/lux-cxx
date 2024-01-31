@@ -19,23 +19,50 @@ set(DREF_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_enumeration_type.cpp
 )
 
+# start constructing component dynamic_reflection
 add_component(
     COMPONENT_NAME                  dynamic_reflection
     NAMESPACE                       lux::cxx
     SOURCE_FILES                    ${DREF_SRCS}
-    BUILD_TIME_EXPORT_INCLUDE_DIRS  ${CMAKE_CURRENT_SOURCE_DIR}/include
-                                    ${LUX_GENERATE_HEADER_DIR}
-    INSTALL_TIME_INCLUDE_PREFIX     include
-    PRIVATE_INCLUDE_DIRS            pinclude
-                                    ${CLANG_INCLUDE_DIRS}
-    PUBLIC_LIBRARIES                libclang
-                                    mstch::mstch
-    INTERNAL_DEPENDENCIES           lux::cxx::lan_model
-                                    lux::cxx::algorithm
-    PRIVATE_DEFINITIONS             LUX_CXX_LIBRARY
-    TRANSITIVE_PACKAGES_COMMANDS    "find_package(mstch CONFIG   REQUIRED)"
-                                    "find_package(Clang          REQUIRED)"
 )
+
+component_include_directories(
+    dynamic_reflection
+    BUILD_TIME_EXPORT
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${LUX_GENERATE_HEADER_DIR}
+    INSTALL_TIME
+        include
+    PRIVATE
+        pinclude
+        ${CLANG_INCLUDE_DIRS}
+)
+
+target_link_libraries(
+    dynamic_reflection
+    PUBLIC
+        libclang
+        mstch::mstch
+)
+
+component_add_internal_dependencies(
+    dynamic_reflection
+        lux::cxx::lan_model
+        lux::cxx::algorithm
+)
+
+target_compile_definitions(
+    dynamic_reflection
+    PRIVATE
+    LUX_CXX_LIBRARY
+)
+
+component_add_transitive_commands(
+    dynamic_reflection
+    "find_package(Clang REQUIRED)"
+)
+
+# stop constructing component dynamic_reflection
 
 add_executable(
 	lux_reflection_gen

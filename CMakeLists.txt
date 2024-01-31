@@ -39,7 +39,7 @@ if(ENABLE_DYNAMIC_REFLECTION)
     list(APPEND ENABLE_COMPONENTS dynamic_reflection)
 endif()
 
-install_projects(
+install_components(
     PROJECT_NAME    lux-cxx
     VERSION         0.0.2
     NAMESPACE       lux::cxx
