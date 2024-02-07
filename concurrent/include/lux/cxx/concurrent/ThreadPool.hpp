@@ -29,6 +29,12 @@ namespace lux::cxx
 			}
 		}
 
+		ThreadPool(const ThreadPool&) = delete;
+		ThreadPool& operator=(const ThreadPool&) = delete;
+
+		ThreadPool(ThreadPool&& other) noexcept = delete;
+		ThreadPool& operator=(ThreadPool&& other) noexcept = delete;
+
 		~ThreadPool()
 		{
 			stop = true;
@@ -45,14 +51,13 @@ namespace lux::cxx
 			typename RetType = typename std::invoke_result<Func, Args...>::type>
 		auto pushTask(Func&& func, Args&&... args) -> std::future<RetType>
 		{
-			auto bind_lambda =
+			auto task = new std::packaged_task<RetType()>(
 				[...args = std::forward<Args>(args), _func = std::forward<Func>(func)]
 				() -> RetType
 				{
 					return _func(args...);
-				};
-
-			auto task = new std::packaged_task<RetType()>(std::move(bind_lambda));
+				}
+			);
 
 			auto future = task->get_future();
 
@@ -98,11 +103,10 @@ namespace lux::cxx
 			}
 		}
 
-		std::vector<Worker> workers;
-		std::queue<std::function<void()>> tasks;
-
-		std::mutex tasks_mutex;
-		std::condition_variable condition;
-		std::atomic_bool stop;
+		std::vector<Worker>					workers;
+		std::queue<std::function<void()>>	tasks;
+		std::mutex							tasks_mutex;
+		std::condition_variable				condition;
+		std::atomic_bool					stop;
 	};
 }

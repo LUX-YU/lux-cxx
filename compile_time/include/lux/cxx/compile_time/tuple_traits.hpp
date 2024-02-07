@@ -31,16 +31,49 @@ namespace lux::cxx
 			);
 		}
 
-		// FUNC: only accept template lambda and template function now ?
+		/* FUNC: only accept template lambda and template function now ?
+		 * example:
+		 * lux::cxx::tuple_traits::for_each_type<test_tuple>(
+		 *     []<typename T, size_t I>
+		 *     {
+		 *			// ...
+		 *     },
+		 *	   tuple_install
+		 * );
+		*/
 		template<typename T, typename FUNC>
-		static inline constexpr void for_each_type(FUNC&& func)
+		static inline constexpr void for_each_type(FUNC&& func, T&& tuple)
 		{
-			auto  __hander = []<typename U, typename _FUNC, size_t... I>(FUNC && func, std::index_sequence<I...>) {
-				(func.template operator() < std::tuple_element_t<I, T> > (), ...);
+			using TupleType = std::remove_reference_t<std::remove_cv_t<T>>;
+			auto __hander = []<typename U, typename _FUNC, size_t... I>(_FUNC&& func, U&& tuple, std::index_sequence<I...>) {
+				(func.template operator() < std::tuple_element_t<I, TupleType>, I >(std::get<I>(tuple)), ...);
 			};
 			__hander.template operator() < T, FUNC > (
 				std::forward<FUNC>(func),
-				std::make_index_sequence<std::tuple_size<T>::value>{}
+				std::forward<T>(tuple),
+				std::make_index_sequence<std::tuple_size<TupleType>::value>{}
+			);
+		}
+
+		/* FUNC: only accept template lambda and template function now ?
+		 * example:
+		 * lux::cxx::tuple_traits::for_each_type<test_tuple>(
+		 *     []<typename T, size_t I>
+		 *     {
+		 *			// ...
+		 *     }
+		 * );
+		*/
+		template<typename T, typename FUNC>
+		static inline constexpr void for_each_type(FUNC&& func)
+		{
+			using TupleType = std::remove_reference_t<std::remove_cv_t<T>>;
+			auto __hander = []<typename U, typename _FUNC, size_t... I>(_FUNC&& func, std::index_sequence<I...>) {
+				(func.template operator() < std::tuple_element_t<I, TupleType>, I >(), ...);
+			};
+			__hander.template operator() < T, FUNC > (
+				std::forward<FUNC>(func),
+				std::make_index_sequence<std::tuple_size<TupleType>::value>{}
 			);
 		}
 	};
