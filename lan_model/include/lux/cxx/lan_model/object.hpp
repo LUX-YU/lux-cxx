@@ -18,7 +18,7 @@ namespace lux::cxx::lan_model
 		const char* name;
 	};
 
-	static constexpr Object null_object()
+	static constexpr inline Object null_object()
 	{
 		Object obj;
 		obj.size	= 0;

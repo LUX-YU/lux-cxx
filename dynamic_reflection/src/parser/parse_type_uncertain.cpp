@@ -9,7 +9,6 @@
 #include <lux/cxx/lan_model/types/reference_type.hpp>
 
 #include <cstring>
-#include <vector>
 
 namespace lux::cxx::dref
 {
