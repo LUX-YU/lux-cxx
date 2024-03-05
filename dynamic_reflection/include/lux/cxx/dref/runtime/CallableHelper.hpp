@@ -1,9 +1,9 @@
 #pragma once
-#include <lux/cxx/algotithm/hash.hpp>
 #include "MetaType.hpp"
+#include <array>
+#include <lux/cxx/algotithm/hash.hpp>
 #include <nameof.hpp>
 #include <vector>
-#include <array>
 
 namespace lux::cxx::dref
 {

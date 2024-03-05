@@ -108,13 +108,13 @@ namespace lux::cxx::dref
             declaration->attribute = annotationFromClangCursor(cursor);
             if constexpr (E == EDeclarationKind::CLASS)
             {
-                static_cast<::lux::cxx::lan_model::ClassType*>(type_meta)
-                    ->declaration = declaration;
+                auto _tm = static_cast<::lux::cxx::lan_model::ClassType*>(type_meta);
+                _tm->declaration = declaration;
             }
             else if constexpr (E == EDeclarationKind::ENUMERATION)
             {
-                static_cast<::lux::cxx::lan_model::EnumerationType*>(type_meta)
-                    ->declaration = declaration;
+                auto _tm = static_cast<::lux::cxx::lan_model::EnumerationType*>(type_meta);
+                _tm->declaration = declaration;
             }
 
             TParseDeclaration<E>(cursor, declaration);
