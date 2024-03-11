@@ -60,7 +60,7 @@ target_compile_definitions(
 component_add_transitive_commands(
     dynamic_reflection
     "find_package(Clang REQUIRED)"
-    "find_package(mstch CONFIG REQUIRED)"
+    "find_package(mstch CONFIG   REQUIRED)"
 )
 
 # stop constructing component dynamic_reflection
@@ -75,7 +75,6 @@ target_link_libraries(
 	lux_reflection_gen
 	PRIVATE
 	lux::cxx::dynamic_reflection
-	mstch::mstch
 )
 
 target_include_directories(
