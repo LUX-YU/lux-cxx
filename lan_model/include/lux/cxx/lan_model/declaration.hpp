@@ -20,8 +20,8 @@ namespace lux::cxx::lan_model
 		
 		UNKNOWN
 	};
-
 	template<EDeclarationKind> struct declaration_kind_map;
+#define LUX_DECLARE_DECLARATION_KIND_MAP(kind, _type) template<> struct declaration_kind_map<kind> { using type = _type; };
 
 	struct Declaration
 	{
@@ -40,8 +40,6 @@ namespace lux::cxx::lan_model
 		const char*			name;
 		const char*			attribute;
 	};
-
-	template<> struct declaration_kind_map<EDeclarationKind::BASIC> { using type = Declaration; };
 
 	enum class Visibility
 	{
@@ -63,7 +61,6 @@ namespace lux::cxx::lan_model
 		static constexpr EDeclarationKind kind = EDeclarationKind::MEMBER_DATA;
 		size_t offset;
 	};
-	template<> struct declaration_kind_map<EDeclarationKind::MEMBER_DATA> { using type = FieldDeclaration; };
 
 	struct ConstructorDeclaration;
 	struct DestructorDeclaration;
@@ -89,13 +86,11 @@ namespace lux::cxx::lan_model
 		MemberFunctionDeclaration** static_member_function_decls;
 		size_t						static_member_function_num;
 	};
-	template<> struct declaration_kind_map<EDeclarationKind::CLASS> { using type = ClassDeclaration; };
 
 	struct ParameterDeclaration : public Declaration
 	{
 		size_t index;
 	};
-	template<> struct declaration_kind_map<EDeclarationKind::PARAMETER> { using type = ParameterDeclaration; };
 
 	struct CallableDeclCommon
 	{
@@ -108,7 +103,6 @@ namespace lux::cxx::lan_model
 	{
 		static constexpr EDeclarationKind kind = EDeclarationKind::FUNCTION;
 	};
-	template<> struct declaration_kind_map<EDeclarationKind::FUNCTION> { using type = FunctionDeclaration; };
 
 	struct MemberFunctionDeclaration : public MemberDeclaration, public CallableDeclCommon
 	{
@@ -116,21 +110,19 @@ namespace lux::cxx::lan_model
 		bool is_static;
 		bool is_virtual;
 	};
-	template<> struct declaration_kind_map<EDeclarationKind::MEMBER_FUNCTION> { using type = MemberFunctionDeclaration; };
 
 	struct ConstructorDeclaration : 
 		public MemberDeclaration, public CallableDeclCommon
 	{
 		static constexpr EDeclarationKind kind = EDeclarationKind::CONSTRUCTOR;
 	};
+
 	struct DestructorDeclaration : 
 		public MemberDeclaration, public CallableDeclCommon 
 	{
 		static constexpr EDeclarationKind kind = EDeclarationKind::DESTRUCTOR;
 		bool is_virtual;
 	};
-	template<> struct declaration_kind_map<EDeclarationKind::CONSTRUCTOR> { using type = ConstructorDeclaration; };
-	template<> struct declaration_kind_map<EDeclarationKind::DESTRUCTOR> { using type = DestructorDeclaration; };
 
 	struct EnumerationDeclaration : public Declaration
 	{
@@ -140,5 +132,14 @@ namespace lux::cxx::lan_model
 		bool		  is_scope;
 		Type*		  underlying_type;
 	};
-	template<> struct declaration_kind_map<EDeclarationKind::ENUMERATION> { using type = EnumerationDeclaration; };
+
+	LUX_DECLARE_DECLARATION_KIND_MAP(EDeclarationKind::BASIC,			Declaration)
+	LUX_DECLARE_DECLARATION_KIND_MAP(EDeclarationKind::CLASS,			ClassDeclaration)
+	LUX_DECLARE_DECLARATION_KIND_MAP(EDeclarationKind::FUNCTION,		FunctionDeclaration)
+	LUX_DECLARE_DECLARATION_KIND_MAP(EDeclarationKind::PARAMETER,		ParameterDeclaration)
+	LUX_DECLARE_DECLARATION_KIND_MAP(EDeclarationKind::MEMBER_DATA,		FieldDeclaration)
+	LUX_DECLARE_DECLARATION_KIND_MAP(EDeclarationKind::MEMBER_FUNCTION, MemberFunctionDeclaration)
+	LUX_DECLARE_DECLARATION_KIND_MAP(EDeclarationKind::CONSTRUCTOR,		ConstructorDeclaration)
+	LUX_DECLARE_DECLARATION_KIND_MAP(EDeclarationKind::DESTRUCTOR,		DestructorDeclaration)
+	LUX_DECLARE_DECLARATION_KIND_MAP(EDeclarationKind::ENUMERATION,		EnumerationDeclaration)
 }

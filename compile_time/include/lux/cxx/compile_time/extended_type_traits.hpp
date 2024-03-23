@@ -8,8 +8,26 @@ template<class T> concept has_member_ ## func_name = requires(T x){\
     x.func_name();\
 };
 
+#if defined __clang__ || defined __GNUC__
+#    define LUX_FUNCTION_NAME __PRETTY_FUNCTION__
+#    define LUX_FUNCTION_NAME_PREFIX '='
+#    define LUX_FUNCTION_NAME_SUFFIX ']'
+#elif defined _MSC_VER
+#    define LUX_FUNCTION __FUNCSIG__
+#    define LUX_FUNCTION_NAME_PREFIX '<'
+#    define LUX_FUNCTION_NAME_SUFFIX '>'
+#endif
+
 namespace lux::cxx
 {
+    template<typename Type>
+    [[nodiscard]] consteval auto strip_type_name() noexcept {
+        std::string_view function_name{ LUX_FUNCTION_NAME };
+        auto first = function_name.find_first_not_of(' ', function_name.find_first_of(LUX_FUNCTION_NAME_PREFIX) + 1);
+        auto value = function_name.substr(first, function_name.find_last_of(LUX_FUNCTION_NAME_SUFFIX) - first);
+        return value;
+    }
+
     template<template<typename...> class T, class U>
     class is_type_template_of
     {
