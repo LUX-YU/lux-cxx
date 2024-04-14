@@ -13,7 +13,7 @@ template<class T> concept has_member_ ## func_name = requires(T x){\
 #    define LUX_FUNCTION_NAME_PREFIX '='
 #    define LUX_FUNCTION_NAME_SUFFIX ']'
 #elif defined _MSC_VER
-#    define LUX_FUNCTION __FUNCSIG__
+#    define LUX_FUNCTION_NAME __FUNCSIG__
 #    define LUX_FUNCTION_NAME_PREFIX '<'
 #    define LUX_FUNCTION_NAME_SUFFIX '>'
 #endif
