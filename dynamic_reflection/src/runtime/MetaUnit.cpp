@@ -26,7 +26,7 @@ namespace lux::cxx::dref
 
 	size_t MetaUnit::calculateTypeMetaId(const char* name)
 	{
-		return hash(name);
+		return lux::cxx::algorithm::fnv1a(name);
 	}
 
 	size_t MetaUnit::calculateTypeMetaId(TypeMeta* const meta)
@@ -36,7 +36,7 @@ namespace lux::cxx::dref
 
 	size_t MetaUnit::calculateDeclarationId(EDeclarationKind kind, const char* name)
 	{
-		return hash(name + declKind2Str(kind));
+		return lux::cxx::algorithm::fnv1a(name + declKind2Str(kind));
 	}
 
 	size_t MetaUnit::calculateDeclarationId(Declaration* const decl)

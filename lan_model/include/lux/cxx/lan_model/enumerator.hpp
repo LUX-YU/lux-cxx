@@ -1,5 +1,6 @@
 #pragma once
 #include "entity.hpp"
+#include <cstddef>
 
 namespace lux::cxx::lan_model
 {

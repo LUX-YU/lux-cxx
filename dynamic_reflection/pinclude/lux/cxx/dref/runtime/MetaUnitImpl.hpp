@@ -25,8 +25,6 @@ namespace lux::cxx::dref
 		std::unordered_map<std::size_t, TypeMeta*>		_meta_type_map;
 	};
 
-	constexpr auto& hash = lux::cxx::algorithm::hash;
-
 	static inline void type_delete(TypeMeta* meta)
 	{
 		using namespace ::lux::cxx::lan_model;
@@ -489,7 +487,7 @@ namespace lux::cxx::dref
 			: _data(std::move(data)), _name(std::move(unit_name)), _version(std::move(unit_version))
 		{
 			std::string id_str = _name + _version;
-			_id = hash(id_str);
+			_id = lux::cxx::algorithm::fnv1a(id_str);
 		}
 
 		void setDeleteFlat(bool flag)

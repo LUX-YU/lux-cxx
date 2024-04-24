@@ -2,7 +2,23 @@
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang_unix.cmake)
 
 # see https://mustache.github.io/mustache.5.html
-find_package(mstch CONFIG   REQUIRED)
+find_package(mstch CONFIG)
+if(mstch_FOUND)
+    get_target_property(MSTCH_INCLUDE_DIRS mstch::mstch INTERFACE_INCLUDE_DIRECTORIES)
+    if(NOT MSTCH_INCLUDE_DIRS)
+        message("mstch::mstch INTERFACE_INCLUDE_DIRECTORIES not found")
+    endif()
+    find_path(MSTCH_INCLUDE_DIRS mstch/mstch.hpp REQUIRED)
+    set_target_properties(mstch::mstch PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${MSTCH_INCLUDE_DIRS}")
+elseif()
+    find_path(MSTCH_INCLUDE_DIRS mstch/mstch.hpp REQUIRED)
+    find_library(MSTCH_LIBRARIES mstch REQUIRED)
+
+    add_library(mstch INTERFACE)
+    target_include_directories(mstch INTERFACE ${MSTCH_INCLUDE_DIRS})
+    target_link_libraries(mstch INTERFACE ${MSTCH_LIBRARIES})
+    add_library(mstch::mstch ALIAS mstch)
+endif()
 
 set(DREF_SRCS 
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnit.cpp

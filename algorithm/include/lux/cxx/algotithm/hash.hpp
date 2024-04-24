@@ -32,8 +32,6 @@ namespace lux::cxx::algorithm
         return hash;
     }
 
-    constexpr auto& hash = fnv1a;
-
     template<size_t ArrSize>
     consteval size_t THash(const char(&char_array)[ArrSize])
     {

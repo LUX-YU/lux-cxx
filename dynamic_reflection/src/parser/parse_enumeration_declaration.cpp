@@ -10,7 +10,7 @@ namespace lux::cxx::dref
 	template<>
 	EnumerationDeclaration* CxxParserImpl::TParseDeclaration<EDeclarationKind::ENUMERATION>(const Cursor& cursor, EnumerationDeclaration* declaration)
 	{
-		declaration->is_scope = cursor.isEnumDeclScoped();
+		declaration->is_scope		 = cursor.isEnumDeclScoped();
 		declaration->underlying_type = parseUncertainTypeMeta(cursor.enumDeclIntegerType());
 
 		std::vector<Enumerator*> context;

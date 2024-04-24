@@ -1,6 +1,7 @@
 #pragma once
 #include <clang-c/Index.h>
 #include <string>
+#include <cstdint>
 #include <cstring>
 #include <type_traits>
 #include <functional>

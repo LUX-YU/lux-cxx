@@ -2,6 +2,7 @@
 #include "enumerator.hpp"
 #include "type.hpp"
 #include <cstdint>
+#include <cstddef>
 
 namespace lux::cxx::lan_model
 {
