@@ -52,7 +52,7 @@ namespace lux::cxx
             return __func_map.count(name);
         }
 
-        static std::vector<std::string> listSubProgram()
+        static std::vector<std::string> listSubPrograms()
         {
             std::vector<std::string> list;
             for(auto& [key, func] : __func_map)
@@ -62,7 +62,7 @@ namespace lux::cxx
             return list;
         }
 
-        static std::vector<std::string> listSortedSubProgram()
+        static std::vector<std::string> listSortedSubPrograms()
         {
             std::vector<std::string> list;
             for(auto& [key, func] : __func_map)
