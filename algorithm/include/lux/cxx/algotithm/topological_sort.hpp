@@ -5,13 +5,8 @@
 namespace lux::cxx::algorithm
 {
 	template<typename T>
-	class TopologicalSort
+	void topological_sort()
 	{
-	public:
-		TopologicalSort(std::vector<T>& elements, );
 
-
-	private:
-
-	};
+	}
 }

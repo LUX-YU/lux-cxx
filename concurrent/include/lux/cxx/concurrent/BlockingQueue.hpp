@@ -53,7 +53,8 @@ namespace lux::cxx
 			return false;
 		}
 
-		[[nodiscard]] bool try_pop(T& item) {
+		[[nodiscard]] bool try_pop(T& item) 
+		{
 			std::scoped_lock lock(_mutex);
 
 			if (!_queue.empty()) {
