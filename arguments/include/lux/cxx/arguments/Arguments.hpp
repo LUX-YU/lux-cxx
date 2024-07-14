@@ -161,7 +161,8 @@ namespace lux::cxx
 	class ArgumentParser
 	{
 	public:
-		ArgumentParser() = default;
+		ArgumentParser(bool allow_unrecognized = false)
+			: _allow_unrecognized(allow_unrecognized) { }
 
 		template<typename T>
 		TArgument<T> addArgument(std::string short_name, std::string long_name)
@@ -214,14 +215,17 @@ namespace lux::cxx
 						key.remove_prefix(1);
 						// get long name from short name
 						auto iter = _short_name_map.find(key);
-						if (iter == _short_name_map.end())
+						if (iter == _short_name_map.end() && !_allow_unrecognized)
 						{
 							return ::lux::cxx::unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);	
 						}
-						key = iter->second;
+						else
+						{
+							key = iter->second;
+						}
 					}
 
-					if(auto iter = _arguments.find(key); iter == _arguments.end())
+					if(auto iter = _arguments.find(key); iter == _arguments.end() && !_allow_unrecognized)
 					{
 						return ::lux::cxx::unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);
 					}
@@ -290,6 +294,7 @@ namespace lux::cxx
 			}
 		}
 
+		bool	                       _allow_unrecognized{ false };
 		heterogenouts_map<Argument>    _arguments;
 		heterogenouts_map<std::string> _short_name_map;
 	};
