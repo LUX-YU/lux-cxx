@@ -18,7 +18,7 @@ namespace lux::cxx{
 #else
 #include "expected_impl.hpp"
 namespace lux::cxx{
-#pragma message ("Warning : std::expected is currently a alias to tl::expected, this will change in the future")
+// #pragma message ("Warning : std::expected is currently a alias to tl::expected, this will change in the future")
 	template <typename T, typename E> 
 	using expected = tl::expected<T, E>;
 	

@@ -2,5 +2,5 @@
 
 namespace lux::cxx
 {
-	template<>
+
 }
