@@ -14,6 +14,7 @@
 namespace lux::cxx
 {
 	using VSupportedArgTypes = std::variant <
+		bool,
 		int8_t,
 		int16_t,
 		int32_t,
@@ -26,6 +27,7 @@ namespace lux::cxx
 		double,
 		std::string_view,
 
+		std::vector<bool>,
 		std::vector<int8_t>,
 		std::vector<int16_t>,
 		std::vector<int32_t>,
@@ -64,10 +66,34 @@ namespace lux::cxx
 		Argument(std::string short_name, std::string long_name)
 			: _short_name(std::move(short_name)), _long_name(std::move(long_name)) { }
 
+		template<typename U>
+		operator U&()
+		{
+			return std::get<U>(_value);
+		}
+
+		template<typename U>
+		operator const U& () const
+		{
+			return std::get<U>(_value);
+		}
+
+		template<typename U>
+		U& to()
+		{
+			return std::get<U>(_value);
+		}
+
+		template<typename U>
+		const U& to() const
+		{
+			return std::get<U>(_value);
+		}
+
 	private:
 
 		template<typename T>
-		static void convertVector(std::vector<std::string_view> inputs, VSupportedArgTypes& value) {
+		static void convertVector(const std::vector<std::string_view>& inputs, VSupportedArgTypes& value) {
 			std::vector<T> vec;
 			for (const auto& input : inputs) {
 				T elem;
@@ -83,7 +109,7 @@ namespace lux::cxx
 		}
 
 		template<typename T>
-		static void convertArithmetic(std::vector<std::string_view> inputs, VSupportedArgTypes& value)
+		static void convertArithmetic(const std::vector<std::string_view>& inputs, VSupportedArgTypes& value)
 		{
 			T num;
 			auto result = std::from_chars(inputs.front().data(), inputs.front().data() + inputs.front().size(), num);
@@ -98,11 +124,17 @@ namespace lux::cxx
 		template<typename T>
 		Argument& setConverter() {
 			if constexpr (IsVector<T>) {
-				_convert_and_assign = Argument::convertVector<typename T::value_type>;
+				_convert_and_assign = &Argument::convertVector<typename T::value_type>;
 				_multiple_values    = true;
 			}
+			else if constexpr(std::is_same_v<T, bool>) {
+				_convert_and_assign = [](const std::vector<std::string_view>& s, VSupportedArgTypes& v) {
+					v = true;
+				};
+				_value = false;
+			}
 			else if constexpr (IsArithmetic<T>) {
-				_convert_and_assign = Argument::convertArithmetic<T>;
+				_convert_and_assign = &Argument::convertArithmetic<T>;
 			}
 			else if constexpr (IsStringView<T>) {
 				_convert_and_assign = [](const std::vector<std::string_view>& s, VSupportedArgTypes& v) {
@@ -112,7 +144,7 @@ namespace lux::cxx
 			return *this;
 		}
 
-		using AssignFunc = std::function<void(const std::vector<std::string_view>&, VSupportedArgTypes&)>;
+		using AssignFunc = void(*)(const std::vector<std::string_view>&, VSupportedArgTypes&);
 
 		VSupportedArgTypes		_value;
 		AssignFunc				_convert_and_assign;
@@ -180,17 +212,37 @@ namespace lux::cxx
 			return addArgument<T>("", std::move(long_name));
 		}
 
-		template<typename T>
-		::lux::cxx::expected<T, EArgumentParseError> getArgument(const std::string& name)
+		::lux::cxx::expected<std::reference_wrapper<Argument>, EArgumentParseError> getArgument(std::string_view name)
 		{
-			if (_arguments.find(name) != _arguments.end())
+			if (auto iter = _arguments.find(name); iter != _arguments.end())
 			{
-				return handle_argument<T>(_arguments[name]);
+				return std::ref(iter->second);
 			}
-			else if (_short_name_map.find(name) != _short_name_map.end())
-				return handle_argument<T>(_arguments[_short_name_map[name]]);
+			else if (auto iter = _short_name_map.find(name); iter != _short_name_map.end())
+			{
+				auto iter_long = _arguments.find(iter->second);
+				return std::ref(iter_long->second);
+			}
 			else
 				return ::lux::cxx::unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);
+		}
+
+		Argument& operator[](std::string_view key)
+		{
+			if (auto iter = _arguments.find(key); iter != _arguments.end())
+			{
+				return iter->second;
+			}
+			else
+			{
+				throw std::runtime_error("Argument not found");
+			}
+		}
+
+		template<typename U>
+		const U operator[](std::string_view key) const
+		{
+			return this->operator[](key);
 		}
 
 		::lux::cxx::expected<void, EArgumentParseError> parse(int argc, char* argv[])
@@ -273,26 +325,6 @@ namespace lux::cxx
 		}
 
 	private:
-		template<typename T>
-		::lux::cxx::expected<T, EArgumentParseError> handle_argument(Argument& arg)
-		{
-			if constexpr (std::is_same_v<T, std::string>) {
-				if (auto pval = std::get_if<std::string_view>(&arg._value)) {
-					return std::string(*pval);
-				}
-				else {
-					return ::lux::cxx::unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_TYPE_MISMATCH);
-				}
-			}
-			else {
-				if (auto pval = std::get_if<T>(&arg._value)) {
-					return *pval;
-				}
-				else {
-					return ::lux::cxx::unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_TYPE_MISMATCH);
-				}
-			}
-		}
 
 		bool	                       _allow_unrecognized{ false };
 		heterogenouts_map<Argument>    _arguments;
