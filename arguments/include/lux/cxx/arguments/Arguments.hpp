@@ -239,12 +239,6 @@ namespace lux::cxx
 			}
 		}
 
-		template<typename U>
-		const U operator[](std::string_view key) const
-		{
-			return this->operator[](key);
-		}
-
 		::lux::cxx::expected<void, EArgumentParseError> parse(int argc, char* argv[])
 		{
 			std::unordered_map<std::string_view, std::vector<std::string_view>> parsed_args;
