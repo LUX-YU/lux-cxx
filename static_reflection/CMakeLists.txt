@@ -16,3 +16,8 @@ component_add_internal_dependencies(
         lux::cxx::lan_model
         lux::cxx::compile_time
 )
+
+set(ENABLE_STATIC_REFLECTION_TEST OFF CACHE BOOL "Enable static reflection test")
+if(ENABLE_STATIC_REFLECTION_TEST)
+    add_subdirectory(test)
+endif()

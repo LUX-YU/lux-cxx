@@ -23,3 +23,8 @@ component_add_transitive_commands(
     compile_time
     "find_package(nameof CONFIG REQUIRED)"
 )
+
+set(ENABLE_COMPILE_TIME_TEST OFF CACHE BOOL "Enable compile time test")
+if(ENABLE_COMPILE_TIME_TEST)
+    add_subdirectory(test)
+endif()

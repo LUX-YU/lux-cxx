@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <cstddef>
 #include "extended_type_traits.hpp"
 
 namespace lux::cxx
@@ -27,7 +28,7 @@ namespace lux::cxx
         template<typename Char, typename hash_str_t = hash_string<Char>>
         [[nodiscard]] constexpr auto fnv1a(const Char* str) noexcept
         {
-            hashed_str_t base{ str, 0u, fnv1a_init_value::offset };
+            hash_str_t base{ str, 0u, fnv1a_init_value::offset };
 
             for (; str[base.length]; ++base.length) {
                 base.hash = (base.hash ^ static_cast<fnv1a_init_value::type>(str[base.length])) * fnv1a_init_value::prime;
@@ -39,9 +40,9 @@ namespace lux::cxx
         template<typename Char, typename hash_str_t = hash_string<Char>>
         [[nodiscard]] constexpr auto fnv1a(const Char* str, const std::size_t len) noexcept
         {
-            hashed_str_t base{ str, len, fnv1a_init_value::offset };
+            hash_str_t base{ str, len, fnv1a_init_value::offset };
 
-            for (hashed_str_t::size_type pos{}; pos < len; ++pos) {
+            for (typename hash_str_t::size_type pos{}; pos < len; ++pos) {
                 base.hash = (base.hash ^ static_cast<fnv1a_init_value::type>(str[pos])) * fnv1a_init_value::prime;
             }
 
@@ -63,17 +64,17 @@ namespace lux::cxx
         return detail::fnv1a<char>(stripped.data(), stripped.size()).hash;
     }
 
-	struct type_info
+	struct basic_type_info
 	{
         using hash_str_t = detail::hash_string<char>;
 		using id_t       = hash_str_t::hash_type;
 
 		template<typename T>
-        constexpr type_info(std::in_place_type_t<T>) noexcept
+        constexpr basic_type_info(std::in_place_type_t<T>) noexcept
 			: _id(type_hash<T>()),
               _name(type_name<T>()){}
 
-        constexpr type_info(id_t id, std::string_view name) noexcept
+        constexpr basic_type_info(id_t id, std::string_view name) noexcept
             : _id(id), _name(name) {}
 
         [[nodiscard]] constexpr id_t hash() const noexcept {
@@ -88,4 +89,16 @@ namespace lux::cxx
         id_t             _id;
         std::string_view _name;
 	};
+
+    [[nodiscard]] inline constexpr bool operator==(const basic_type_info &lhs, const basic_type_info &rhs) noexcept {
+        return lhs.hash() == rhs.hash();
+    }
+
+    [[nodiscard]] inline constexpr bool operator!=(const basic_type_info &lhs, const basic_type_info &rhs) noexcept {
+        return !(lhs == rhs);
+    }
+
+    template<typename T> constexpr static inline basic_type_info make_basic_type_info() noexcept {
+        return basic_type_info(std::in_place_type<T>);
+    }
 }
