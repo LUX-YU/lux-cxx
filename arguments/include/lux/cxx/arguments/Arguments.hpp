@@ -4,13 +4,13 @@
 #include <variant>
 #include <string>
 #include <cstdint>
-#include <cstddef>
 #include <string_view>
 #include <charconv>
 #include <stdexcept>
-#include "lux/cxx/container/HeterogenousLookup.hpp"
+#include "lux/cxx/container/HeterogeneousLookup.hpp"
 #include "lux/cxx/compile_time/expected.hpp"
 
+// TODO Code here is so bad
 namespace lux::cxx
 {
 	using VSupportedArgTypes = std::variant <
@@ -67,25 +67,13 @@ namespace lux::cxx
 			: _short_name(std::move(short_name)), _long_name(std::move(long_name)) { }
 
 		template<typename U>
-		operator U&()
+		U& as()
 		{
 			return std::get<U>(_value);
 		}
 
 		template<typename U>
-		operator const U& () const
-		{
-			return std::get<U>(_value);
-		}
-
-		template<typename U>
-		U& to()
-		{
-			return std::get<U>(_value);
-		}
-
-		template<typename U>
-		const U& to() const
+		const U& as() const
 		{
 			return std::get<U>(_value);
 		}
@@ -97,11 +85,12 @@ namespace lux::cxx
 			std::vector<T> vec;
 			for (const auto& input : inputs) {
 				T elem;
-				auto result = std::from_chars(input.data(), input.data() + input.size(), elem);
-				if (result.ec == std::errc()) {
+				if (auto result = std::from_chars(input.data(), input.data() + input.size(), elem); result.ec == std::errc())
+				{
 					vec.push_back(elem);
 				}
-				else {
+				else
+				{
 					throw std::runtime_error("Conversion failed for vector element");
 				}
 			}
@@ -123,21 +112,29 @@ namespace lux::cxx
 
 		template<typename T>
 		Argument& setConverter() {
-			if constexpr (IsVector<T>) {
+			if constexpr (IsVector<T>)
+			{
 				_convert_and_assign = &Argument::convertVector<typename T::value_type>;
 				_multiple_values    = true;
 			}
-			else if constexpr(std::is_same_v<T, bool>) {
-				_convert_and_assign = [](const std::vector<std::string_view>& s, VSupportedArgTypes& v) {
+			else if constexpr(std::is_same_v<T, bool>)
+			{
+				_convert_and_assign =
+				[](const std::vector<std::string_view>&, VSupportedArgTypes& v)
+				{
 					v = true;
 				};
 				_value = false;
 			}
-			else if constexpr (IsArithmetic<T>) {
+			else if constexpr (IsArithmetic<T>)
+			{
 				_convert_and_assign = &Argument::convertArithmetic<T>;
 			}
-			else if constexpr (IsStringView<T>) {
-				_convert_and_assign = [](const std::vector<std::string_view>& s, VSupportedArgTypes& v) {
+			else if constexpr (IsStringView<T>)
+			{
+				_convert_and_assign =
+				[](const std::vector<std::string_view>& s, VSupportedArgTypes& v)
+				{
 					v = s.front();
 				};
 			}
@@ -147,8 +144,8 @@ namespace lux::cxx
 		using AssignFunc = void(*)(const std::vector<std::string_view>&, VSupportedArgTypes&);
 
 		VSupportedArgTypes		_value;
-		AssignFunc				_convert_and_assign;
-		std::string				_description{ "" };
+		AssignFunc				_convert_and_assign{};
+		std::string				_description;
 		std::string				_short_name;
 		std::string				_long_name;
 		bool					_multiple_values{ false };
@@ -159,9 +156,9 @@ namespace lux::cxx
 	class TArgument
 	{
 	public:
-		TArgument(Argument& arg) : _arg(arg) {}
+		explicit TArgument(Argument& arg) : _arg(arg) {}
 
-		TArgument& setRequired(bool required)
+		TArgument& setRequired(const bool required)
 		{
 			_arg._required = required;
 			return *this;
@@ -169,7 +166,7 @@ namespace lux::cxx
 
 		TArgument& setDescription(std::string description)
 		{
-			_arg._description = description;
+			_arg._description = std::move(description);
 			return *this;
 		}
 
@@ -193,7 +190,7 @@ namespace lux::cxx
 	class ArgumentParser
 	{
 	public:
-		ArgumentParser(bool allow_unrecognized = false)
+		explicit ArgumentParser(const bool allow_unrecognized = false)
 			: _allow_unrecognized(allow_unrecognized) { }
 
 		template<typename T>
@@ -212,34 +209,33 @@ namespace lux::cxx
 			return addArgument<T>("", std::move(long_name));
 		}
 
-		::lux::cxx::expected<std::reference_wrapper<Argument>, EArgumentParseError> getArgument(std::string_view name)
+		template<typename U>
+		bool getArgument(const std::string_view name, U& result)
 		{
-			if (auto iter = _arguments.find(name); iter != _arguments.end())
+			if (const auto iter = _arguments.find(name); iter != _arguments.end())
 			{
-				return std::ref(iter->second);
+				result = iter->second.as<U>();
+				return true;
 			}
-			else if (auto iter = _short_name_map.find(name); iter != _short_name_map.end())
+			if (const auto iter = _short_name_map.find(name); iter != _short_name_map.end())
 			{
-				auto iter_long = _arguments.find(iter->second);
-				return std::ref(iter_long->second);
+				const auto iter_long = _arguments.find(iter->second);
+				result = iter_long->second.as<U>();
+				return true;
 			}
-			else
-				return ::lux::cxx::unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);
+			return false;
 		}
 
-		Argument& operator[](std::string_view key)
+		Argument& operator[](const std::string_view key)
 		{
-			if (auto iter = _arguments.find(key); iter != _arguments.end())
+			if (const auto iter = _arguments.find(key); iter != _arguments.end())
 			{
 				return iter->second;
 			}
-			else
-			{
-				throw std::runtime_error("Argument not found");
-			}
+			throw std::runtime_error("Argument not found");
 		}
 
-		::lux::cxx::expected<void, EArgumentParseError> parse(int argc, char* argv[])
+		expected<void, EArgumentParseError> parse(int argc, char* argv[])
 		{
 			std::unordered_map<std::string_view, std::vector<std::string_view>> parsed_args;
 
@@ -263,17 +259,14 @@ namespace lux::cxx
 						auto iter = _short_name_map.find(key);
 						if (iter == _short_name_map.end() && !_allow_unrecognized)
 						{
-							return ::lux::cxx::unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);	
+							return unexpected(EArgumentParseError::ARGUMENT_NOT_FOUND);
 						}
-						else
-						{
-							key = iter->second;
-						}
+						key = iter->second;
 					}
 
 					if(auto iter = _arguments.find(key); iter == _arguments.end() && !_allow_unrecognized)
 					{
-						return ::lux::cxx::unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);
+						return unexpected(EArgumentParseError::ARGUMENT_NOT_FOUND);
 					}
 
 					// Support for flags without values or with multiple values
@@ -282,7 +275,7 @@ namespace lux::cxx
 						++i;
 						while (i < argc && argv[i][0] != '-') // support for multiple values
 						{
-							parsed_args[key].push_back(argv[i]);
+							parsed_args[key].emplace_back(argv[i]);
 							if (auto iter = _arguments.find(key); iter != _arguments.end())
 							{
 								if (!iter->second._multiple_values) break;
@@ -302,16 +295,16 @@ namespace lux::cxx
 
 			// Assign values to arguments or report errors
 			for (auto& [key, arg] : _arguments) {
-				if (parsed_args.find(key) != parsed_args.end()) {
+				if (parsed_args.contains(key)) {
 					try {
 						arg._convert_and_assign(parsed_args[key], arg._value);
 					}
 					catch (const std::exception& e) {
-						return ::lux::cxx::unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_TYPE_MISMATCH);
+						return unexpected(EArgumentParseError::ARGUMENT_TYPE_MISMATCH);
 					}
 				}
 				else if (arg._required) {
-					return ::lux::cxx::unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);
+					return unexpected(EArgumentParseError::ARGUMENT_NOT_FOUND);
 				}
 			}
 
@@ -321,7 +314,7 @@ namespace lux::cxx
 	private:
 
 		bool	                       _allow_unrecognized{ false };
-		heterogenouts_map<Argument>    _arguments;
-		heterogenouts_map<std::string> _short_name_map;
+		heterogeneous_map<Argument>    _arguments;
+		heterogeneous_map<std::string> _short_name_map;
 	};
 }

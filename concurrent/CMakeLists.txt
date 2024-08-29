@@ -10,3 +10,8 @@ component_include_directories(
     INSTALL_TIME
         include
 )
+
+set(ENABLE_CONCURRENT_TEST OFF CACHE BOOL "Enable concurrent test")
+if(ENABLE_CONCURRENT_TEST)
+    add_subdirectory(test)
+endif()

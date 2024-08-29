@@ -8,7 +8,7 @@ namespace lux::cxx::algorithm
         // 32 bit params
         // uint32_t constexpr fnv_prime = 16777619U;
         // uint32_t constexpr fnv_offset_basis = 2166136261U;
-        constexpr uint64_t fnv_prime = 1099511628211ULL;
+        constexpr uint64_t fnv_prime        = 1099511628211ULL;
         constexpr uint64_t fnv_offset_basis = 14695981039346656037ULL;
 
         uint64_t hash = fnv_offset_basis;

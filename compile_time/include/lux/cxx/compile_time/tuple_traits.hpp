@@ -13,7 +13,7 @@ namespace lux::cxx
 	{
 	private:
 		template<size_t... I, typename T, typename FUNC>
-		static inline constexpr void __handle(T&& tuple, FUNC&& func, std::index_sequence<I...>)
+		static constexpr void handle_(T&& tuple, FUNC&& func, std::index_sequence<I...>)
 		{
 			(func(std::get<I>(tuple)), ...);
 		}
@@ -21,13 +21,13 @@ namespace lux::cxx
 	public:
 		// same as std::apply
 		template<typename T, typename FUNC>
-		static inline constexpr void for_each(T&& tuple, FUNC&& func)
+		static constexpr void for_each(T&& tuple, FUNC&& func)
 		{
 			using TupleType = std::remove_reference_t<std::remove_cv_t<T>>;
-			__handle(
+			handle_(
 				std::forward<T>(tuple),
 				std::forward<FUNC>(func),
-				std::make_index_sequence<std::tuple_size<TupleType>::value>{}
+				std::make_index_sequence<std::tuple_size_v<TupleType>>{}
 			);
 		}
 
@@ -42,16 +42,16 @@ namespace lux::cxx
 		 * );
 		*/
 		template<typename T, typename FUNC>
-		static inline constexpr void for_each_type(FUNC&& func, T&& tuple)
+		static constexpr void for_each_type(FUNC&& func, T&& tuple)
 		{
 			using TupleType = std::remove_reference_t<std::remove_cv_t<T>>;
-			auto __hander = []<typename U, typename _FUNC, size_t... I>(_FUNC&& func, U&& tuple, std::index_sequence<I...>) {
-				(func.template operator() < std::tuple_element_t<I, TupleType>, I >(std::get<I>(tuple)), ...);
+			auto handler_ = []<typename U, typename FUNC_, size_t... I>(FUNC_&& func_, U&& tuple_, std::index_sequence<I...>) {
+				(func_.template operator() < std::tuple_element_t<I, TupleType>, I >(std::get<I>(tuple_)), ...);
 			};
-			__hander.template operator() < T, FUNC > (
+			handler_.template operator() < T, FUNC > (
 				std::forward<FUNC>(func),
 				std::forward<T>(tuple),
-				std::make_index_sequence<std::tuple_size<TupleType>::value>{}
+				std::make_index_sequence<std::tuple_size_v<TupleType>>{}
 			);
 		}
 
@@ -65,15 +65,15 @@ namespace lux::cxx
 		 * );
 		*/
 		template<typename T, typename FUNC>
-		static inline constexpr void for_each_type(FUNC&& func)
+		static constexpr void for_each_type(FUNC&& func)
 		{
 			using TupleType = std::remove_reference_t<std::remove_cv_t<T>>;
-			auto __hander = []<typename U, typename _FUNC, size_t... I>(_FUNC&& func, std::index_sequence<I...>) {
-				(func.template operator() < std::tuple_element_t<I, TupleType>, I >(), ...);
+			auto handler_ = []<typename U, typename FUNC_, size_t... I>(FUNC_&& func_, std::index_sequence<I...>) {
+				(func_.template operator() < std::tuple_element_t<I, TupleType>, I >(), ...);
 			};
-			__hander.template operator() < T, FUNC > (
+			handler_.template operator() < T, FUNC > (
 				std::forward<FUNC>(func),
-				std::make_index_sequence<std::tuple_size<TupleType>::value>{}
+				std::make_index_sequence<std::tuple_size_v<TupleType>>{}
 			);
 		}
 	};
@@ -83,20 +83,20 @@ namespace lux::cxx
 	{
 	private:
 		template<size_t... I>
-		static constexpr bool __func(std::index_sequence<I...>)
+		static constexpr bool func_(std::index_sequence<I...>)
 		{
 			return (std::is_same_v<std::tuple_element_t<I, TupleType>, U> || ...);
 		}
 
-		static constexpr bool __func()
+		static constexpr bool func_()
 		{
-			return __func(
+			return func_(
 				std::make_index_sequence<std::tuple_size_v<TupleType>>()
 			);
 		}
 
 	public:
-		static constexpr bool value = __func();
+		static constexpr bool value = func_();
 	};
 
 	template<typename TupleType, typename U> 

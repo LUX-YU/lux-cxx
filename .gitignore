@@ -1,9 +1,9 @@
 /.vs
 /.vscode
 /.idea
-/cmake-build-debug
-/cmake-build-release
 /cpp.hint
+/cmake-build-debug*
+/cmake-build-release*
 /build
 /out
 /CMakeSettings.json

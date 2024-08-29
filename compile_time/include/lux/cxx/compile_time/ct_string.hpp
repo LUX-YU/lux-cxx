@@ -43,7 +43,7 @@ namespace lux::cxx
     {
         using char_type = typename decltype(_str)::char_type;
         // using __ct_string_type = __ct_string;
-        static constexpr    char_type* data() { return _str.data; }
+        static constexpr    const char_type* data() { return _str.data; }
         static constexpr    std::size_t size() { return _str.size; }
         static constexpr    std::basic_string_view<char_type> view() { return _str.data; }
         constexpr operator  std::basic_string_view<char_type>() { return view(); }

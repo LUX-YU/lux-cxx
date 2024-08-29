@@ -8,9 +8,9 @@ struct test_type
     int     a;
     double  b;
 
-    double func(double a, std::string b)
+    double func(double c, std::string d)
     {
-        return a + b.size();
+        return a + b + c + d.size();
     }
 };
 
@@ -53,7 +53,7 @@ START_STATIC_TYPE_INFO_DECLARATION(test_type2)
 END_STATIC_TYPE_INFO_DECLARATION();
 
 template<typename T, size_t I, size_t Depth = 0>
-void print_field() requires lux::cxx::field_info_type<T>
+static inline void print_field() requires lux::cxx::field_info_type<T>
 {
     using field_type_info = typename T::type_info;
     for(size_t i = 0; i < Depth; ++i)

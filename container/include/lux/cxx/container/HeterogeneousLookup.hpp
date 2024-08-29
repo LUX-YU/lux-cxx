@@ -4,7 +4,7 @@
 namespace lux::cxx
 {
     template<typename ... Bases>
-    struct HeterogenousLookupBase : Bases ...
+    struct HeterogeneousLookupBase : Bases ...
     {
         using is_transparent = void;
         using Bases::operator() ...;
@@ -18,13 +18,13 @@ namespace lux::cxx
         }
     };
 
-    using transparent_string_hash = HeterogenousLookupBase<
+    using transparent_string_hash = HeterogeneousLookupBase<
         std::hash<std::string>,
         std::hash<std::string_view>,
         char_pointer_hash
     >;
 
-    template<typename T> using heterogenouts_map = 
+    template<typename T> using heterogeneous_map =
     std::unordered_map <
         std::string,
         T,

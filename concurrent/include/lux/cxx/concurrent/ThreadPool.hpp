@@ -17,7 +17,7 @@ namespace lux::cxx
 	public:
 		using Worker = std::thread;
 
-		ThreadPool(size_t threads = 10) : stop(false)
+		explicit ThreadPool(const size_t threads = 10) : stop(false)
 		{
 			for (size_t i = 0; i < threads; ++i) {
 				workers.emplace_back(
@@ -47,15 +47,12 @@ namespace lux::cxx
 			}
 		}
 
-		template<typename Func, typename... Args,
-			typename RetType = typename std::invoke_result<Func, Args...>::type>
+		template<typename Func, typename... Args, typename RetType = std::invoke_result_t<Func, Args...>>
 		auto pushTask(Func&& func, Args&&... args) -> std::future<RetType>
 		{
 			auto task = new std::packaged_task<RetType()>(
-				[...args = std::forward<Args>(args), _func = std::forward<Func>(func)]
-				() -> RetType
-				{
-					return _func(args...);
+				[args = std::make_tuple(std::forward<Args>(args)...), _func = std::forward<Func>(func)]() mutable -> RetType {
+					return std::apply(std::move(_func), std::move(args));
 				}
 			);
 
@@ -82,7 +79,7 @@ namespace lux::cxx
 		{
 			while (!stop)
 			{
-				std::unique_lock<std::mutex> lock(this->tasks_mutex);
+				std::unique_lock lock(this->tasks_mutex);
 
 				this->condition.wait(
 					lock,

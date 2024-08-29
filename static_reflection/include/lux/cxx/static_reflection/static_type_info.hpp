@@ -16,24 +16,25 @@ namespace lux::cxx
         template<typename U, typename T>
         static constexpr auto extract_owner(T U::*member) noexcept -> U;
 
-        using owner      = decltype(extract_owner(Field));
-        using type_info  = TypeInfo;
-        using name       = Str;
+        using owner       = decltype(extract_owner(Field));
+        using type_info   = TypeInfo;
+        using name        = Str;
+        static constexpr bool is_function = std::is_member_function_pointer_v<decltype(Field)>;
 
-        static inline constexpr type_info::type& get(owner& _owner) noexcept
+        static constexpr typename type_info::type& get(owner& _owner) noexcept
         requires std::is_member_object_pointer_v<decltype(Field)>
         {
             return _owner.*Field;
         }
 
-        static inline constexpr const type_info::type& get(const owner& _owner) noexcept
+        static constexpr const typename type_info::type& get(const owner& _owner) noexcept
         requires std::is_member_object_pointer_v<decltype(Field)>
         {
             return _owner.*Field;
         }
 
         template<typename... Args>
-        static inline constexpr auto invoke(owner& _owner, Args&&... args)
+        static constexpr auto invoke(owner& _owner, Args&&... args)
         requires std::is_member_function_pointer_v<decltype(Field)>
         {
             return (_owner.*Field)(std::forward<Args>(args)...);
@@ -43,7 +44,6 @@ namespace lux::cxx
     template<template<auto,typename,typename> class T, class U>
     class is_field_info_of
     {
-    private:
         template<auto Ptr, typename... _TPack>
         static constexpr auto _d(T<Ptr, _TPack...>*) -> std::true_type;
         static constexpr auto _d(...) -> std::false_type;
@@ -59,6 +59,7 @@ namespace lux::cxx
     {
         using type   = T;
         using fields = std::tuple<Args...>;
+        static constexpr size_t field_size = sizeof...(Args);
         static_assert(
             ((field_info_type<Args> || is_type_template_of_v<static_type_info, Args>) && ...), 
             "Args must be field_info type or static type info type"
@@ -106,12 +107,12 @@ namespace lux::cxx
 		 * );
 		*/
         template<typename FUNC, typename Obj>
-        static constexpr void for_each_field(FUNC&& _func, Obj&& _obj) noexcept
+        static constexpr void for_each_field(FUNC&& func, Obj&& obj) noexcept
         {
             tuple_traits::for_each_type<fields>(
-                [func = std::forward<FUNC>(_func), obj = std::forward<Obj>(_obj)]<typename U, size_t I>() mutable
+                [func = std::forward<FUNC>(func), obj = std::tuple<Obj>(std::forward<Obj>(obj))]<typename U, size_t I>() mutable
                 {
-                    func.template operator()<U, I>(std::forward<Obj>(obj));
+                    func.template operator()<U, I>(std::get<0>(obj));
                 }
             );
         }
@@ -127,7 +128,7 @@ namespace lux::cxx
     ::lux::cxx::field_info<&owner::field_name, info, MAKE_CT_STRING_TYPE(#field_name)>
 
 #define FIELD_TYPE(name)\
-    MAKE_FIELD_TYPE(_type, ::lux::cxx::static_type_info<decltype(_type::name)>, name)
+    MAKE_FIELD_TYPE(_type, decltype(_type::name), name)
 
 #define FIELD_TYPE_EX(info, name)\
     MAKE_FIELD_TYPE_EX(_type, info, name)
