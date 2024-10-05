@@ -2,8 +2,7 @@
 /.vscode
 /.idea
 /cpp.hint
-/cmake-build-debug*
-/cmake-build-release*
+/cmake-build-*
 /build
 /out
 /CMakeSettings.json

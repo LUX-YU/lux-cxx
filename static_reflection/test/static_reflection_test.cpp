@@ -44,8 +44,7 @@ lux::cxx::static_type_info<
     MAKE_FIELD_TYPE_EX(test_type2, test_type_info, test)
 >;
 
-using test_type_info3 = 
-START_STATIC_TYPE_INFO_DECLARATION(test_type2)
+START_STATIC_TYPE_INFO_DECLARATION(test_type_info3, test_type2)
     FIELD_TYPE(a),
     FIELD_TYPE(b),
     FIELD_TYPE(str),

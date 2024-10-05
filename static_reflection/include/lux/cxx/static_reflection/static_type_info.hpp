@@ -44,11 +44,11 @@ namespace lux::cxx
     template<template<auto,typename,typename> class T, class U>
     class is_field_info_of
     {
-        template<auto Ptr, typename... _TPack>
-        static constexpr auto _d(T<Ptr, _TPack...>*) -> std::true_type;
-        static constexpr auto _d(...) -> std::false_type;
+        template<auto Ptr, typename... TPack>
+        static constexpr auto func(T<Ptr, TPack...>*) -> std::true_type;
+        static constexpr auto func(...) -> std::false_type;
     public:
-        static constexpr bool value = decltype(_d((U*)nullptr))::value;
+        static constexpr bool value = decltype(func(static_cast<U *>(nullptr)))::value;
     };
 
     template<typename T> static inline constexpr bool is_field_info_of_v = is_field_info_of<field_info, T>::value;
@@ -60,10 +60,7 @@ namespace lux::cxx
         using type   = T;
         using fields = std::tuple<Args...>;
         static constexpr size_t field_size = sizeof...(Args);
-        static_assert(
-            ((field_info_type<Args> || is_type_template_of_v<static_type_info, Args>) && ...), 
-            "Args must be field_info type or static type info type"
-        );
+        static_assert((field_info_type<Args> && ...), "Args must be field_info type or static type info type");
 
         static constexpr std::string_view name() noexcept
         {
@@ -133,8 +130,8 @@ namespace lux::cxx
 #define FIELD_TYPE_EX(info, name)\
     MAKE_FIELD_TYPE_EX(_type, info, name)
 
-#define START_STATIC_TYPE_INFO_DECLARATION(type)\
-    decltype(\
+#define START_STATIC_TYPE_INFO_DECLARATION(info_name, type)\
+    using info_name = decltype(\
         ([](){using _type = type; return ::lux::cxx::static_type_info<type, \
 
 #define END_STATIC_TYPE_INFO_DECLARATION() >{};}()))

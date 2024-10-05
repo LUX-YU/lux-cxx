@@ -9,24 +9,24 @@
 namespace lux::cxx
 {
     template<typename T, std::size_t N>
-    struct __ct_string
+    struct literal_ct_string
     {
         using char_type = T;
         constexpr static std::size_t size = N;
         char_type data[size + 1] = {};
         
-        constexpr __ct_string() requires (N == 0) : data{ 0 } {}
+        constexpr literal_ct_string() requires (N == 0) : data{ 0 } {}
 
-        constexpr __ct_string(char_type c) requires (N == 1) : data{ c, 0 } {}
+        constexpr explicit literal_ct_string(char_type c) requires (N == 1) : data{ c, 0 } {}
 
-        constexpr __ct_string(std::basic_string_view<char_type> view)
+        constexpr explicit literal_ct_string(std::basic_string_view<char_type> view)
         {
             for (std::size_t i = 0; i < size; i++)
                 data[i] = view[i];
             data[N] = 0;
         }
 
-        constexpr __ct_string(const char_type(&ptr)[N + 1])
+        constexpr explicit literal_ct_string(const char_type(&ptr)[N + 1])
         {
             for (std::size_t i = 0; i < size; i++)
                 data[i] = ptr[i];
@@ -34,15 +34,15 @@ namespace lux::cxx
         }
 
         template<typename... C>
-        constexpr __ct_string(std::in_place_t, C... c)
+        constexpr explicit literal_ct_string(std::in_place_t, C... c)
             : data{ static_cast<char_type>(c)..., 0 } {}
     };
 
-    template<__ct_string _str>
+    template<literal_ct_string _str>
     struct ct_string
     {
         using char_type = typename decltype(_str)::char_type;
-        // using __ct_string_type = __ct_string;
+        // using literal_ct_string_type = literal_ct_string;
         static constexpr    const char_type* data() { return _str.data; }
         static constexpr    std::size_t size() { return _str.size; }
         static constexpr    std::basic_string_view<char_type> view() { return _str.data; }
@@ -50,14 +50,14 @@ namespace lux::cxx
     };
 
     template<char... C> using ct_string_s =
-        ct_string < __ct_string<char, sizeof...(C)>{std::in_place, C...} > ;
+        ct_string < literal_ct_string<char, sizeof...(C)>{std::in_place, C...} > ;
     template<auto c> using ct_string_c =
-        ct_string <__ct_string<decltype(c), 1>(c)>;
+        ct_string <literal_ct_string<decltype(c), 1>(c)>;
 
     // lux::cxx::is_type_template_of can not be used here
-    // because __ct_string is a LiteralType
+    // because literal_ct_string is a LiteralType
     template<typename T>
-    struct is_ct_string : public is_none_type_template_of<ct_string, T> {};
+    struct is_ct_string : is_none_type_template_of<ct_string, T> {};
 
     template<typename T> constexpr bool is_ct_string_v = is_ct_string<T>::value;
     
@@ -67,7 +67,7 @@ namespace lux::cxx
 ([]{\
         constexpr std::basic_string_view s{str};\
         return ::lux::cxx::ct_string<\
-            ::lux::cxx::__ct_string<typename decltype(s)::value_type, s.size()>{str} \
+            ::lux::cxx::literal_ct_string<typename decltype(s)::value_type, s.size()>{str} \
         > {};\
    }()\
 )
