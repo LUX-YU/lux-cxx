@@ -53,6 +53,27 @@ namespace lux::cxx
 			return false;
 		}
 
+		template<class OutputIterator>
+		[[nodiscard]] size_t pop_bulk(OutputIterator dest, size_t maxCount)
+		{
+			std::unique_lock<std::mutex> lock(_mutex);
+			size_t count = 0;
+			while (count < maxCount && !_queue.empty() && !_exit)
+			{
+				*dest = std::move(_queue.front());
+				_queue.pop();
+				++dest;
+				++count;
+			}
+
+			if (count > 0)
+			{
+				_cv.notify_one();
+			}
+
+			return count;
+		}
+
 		[[nodiscard]] bool try_pop(T& item) 
 		{
 			std::scoped_lock lock(_mutex);
@@ -64,6 +85,27 @@ namespace lux::cxx
 				return true;
 			}
 			return false;
+		}
+
+		template<class OutputIterator>
+		size_t try_pop_bulk(OutputIterator dest, size_t maxCount)
+		{
+			std::scoped_lock lock(_mutex);
+			size_t count = 0;
+			while (count < maxCount && !_queue.empty() && !_exit)
+			{
+				*dest = std::move(_queue.front());
+				_queue.pop();
+				++dest;
+				++count;
+			}
+
+			if (count > 0)
+			{
+				_cv.notify_one();
+			}
+
+			return count;
 		}
 
 		template<class U>
@@ -100,6 +142,47 @@ namespace lux::cxx
 			}
 			_cv.notify_one();
 
+			return true;
+		}
+
+		template<typename InputIterator>
+		bool push_bulk(InputIterator itemFirst, size_t count)
+		{
+			std::unique_lock<std::mutex> lock(_mutex);
+			while (_queue.size() + count > _capacity && !_exit) {
+				_cv.wait(lock);
+			}
+
+			if (_exit) {
+				return false;
+			}
+
+			for (size_t i = 0; i < count; ++i)
+			{
+				_queue.push(*itemFirst);
+				++itemFirst;
+			}
+
+			_cv.notify_all();
+			return true;
+		}
+
+		template<typename InputIterator>
+		bool try_push_bulk(InputIterator itemFirst, size_t count)
+		{
+			std::scoped_lock lock(_mutex);
+
+			if (_queue.size() + count > _capacity || _exit) {
+				return false;
+			}
+
+			for (size_t i = 0; i < count; ++i)
+			{
+				_queue.push(*itemFirst);
+				++itemFirst;
+			}
+
+			_cv.notify_all();
 			return true;
 		}
 
