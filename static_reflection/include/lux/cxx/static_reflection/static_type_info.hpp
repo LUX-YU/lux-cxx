@@ -9,7 +9,7 @@ namespace lux::cxx
 {
     template<typename T, typename... Args> struct static_type_info;
 
-    template<auto Field, typename TypeInfo, typename Str>
+    template<auto Field, size_t Offset, typename TypeInfo, typename Str>
     requires is_ct_string_v<Str>
     struct field_info
     {
@@ -19,6 +19,7 @@ namespace lux::cxx
         using owner       = decltype(extract_owner(Field));
         using type_info   = TypeInfo;
         using name        = Str;
+		static constexpr size_t offset = Offset;
         static constexpr bool is_function = std::is_member_function_pointer_v<decltype(Field)>;
 
         static constexpr typename type_info::type& get(owner& _owner) noexcept
@@ -41,11 +42,11 @@ namespace lux::cxx
         }
     };
 
-    template<template<auto,typename,typename> class T, class U>
+    template<template<auto, size_t,typename,typename> class T, class U>
     class is_field_info_of
     {
-        template<auto Ptr, typename... TPack>
-        static constexpr auto func(T<Ptr, TPack...>*) -> std::true_type;
+        template<auto Ptr, size_t Offset,typename... TPack>
+        static constexpr auto func(T<Ptr, Offset, TPack...>*) -> std::true_type;
         static constexpr auto func(...) -> std::false_type;
     public:
         static constexpr bool value = decltype(func(static_cast<U *>(nullptr)))::value;
@@ -119,10 +120,10 @@ namespace lux::cxx
 }
 
 #define MAKE_FIELD_TYPE(owner, type, field_name)\
-    ::lux::cxx::field_info<&owner::field_name, ::lux::cxx::static_type_info<type>, MAKE_CT_STRING_TYPE(#field_name)>
+    ::lux::cxx::field_info<&owner::field_name, offsetof(owner, field_name), ::lux::cxx::static_type_info<type>, MAKE_CT_STRING_TYPE(#field_name)>
 
 #define MAKE_FIELD_TYPE_EX(owner, info, field_name)\
-    ::lux::cxx::field_info<&owner::field_name, info, MAKE_CT_STRING_TYPE(#field_name)>
+    ::lux::cxx::field_info<&owner::field_name, offsetof(owner, field_name), info, MAKE_CT_STRING_TYPE(#field_name)>
 
 #define FIELD_TYPE(name)\
     MAKE_FIELD_TYPE(_type, decltype(_type::name), name)

@@ -78,6 +78,7 @@ namespace lux::cxx
 		}
 	};
 
+	// tuple has type
 	template<typename TupleType, typename U>
 	struct tuple_has_type
 	{
@@ -102,6 +103,22 @@ namespace lux::cxx
 	template<typename TupleType, typename U> 
 	static inline constexpr bool tuple_has_type_v = tuple_has_type<TupleType, U>::value;
 
+	// tuple type index
+	template<typename Tuple, typename T> struct tuple_type_index;
+	template<typename T, typename... Types>
+	struct tuple_type_index<std::tuple<T, Types...>, T> {
+		static constexpr size_t value = 0;
+	};
+
+	template<typename U, typename T, typename... Types>
+	struct tuple_type_index<std::tuple<U, Types...>, T> {
+		static constexpr size_t value = 1 + tuple_type_index<std::tuple<Types...>, T>::value;
+	};
+
+	template<typename Tuple, typename T>
+	static inline constexpr size_t tuple_type_index_v = tuple_type_index<Tuple, T>::value;
+
+	// remove repeated types
 	template<typename... T>
 	struct remove_repeated_types
 	{

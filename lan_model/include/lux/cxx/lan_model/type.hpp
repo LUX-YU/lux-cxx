@@ -17,7 +17,7 @@ namespace lux::cxx::lan_model
 
 	struct IncompleteType : public Type { static constexpr ETypeKind kind = ETypeKind::IMCOMPLETE; };
 	struct Fundamental : public Type{ static constexpr ETypeKind kind = ETypeKind::FUNDAMENTAL; };
-		struct Void : public Fundamental{ static constexpr ETypeKind kind = ETypeKind::VOID; };
+		struct Void : public Fundamental{ static constexpr ETypeKind kind = ETypeKind::VOID_TYPE; };
 		struct Nullptr_t : public Fundamental{ static constexpr ETypeKind kind = ETypeKind::NULLPTR_T; };
 
 	struct Compound : public Type { static constexpr ETypeKind kind = ETypeKind::COMPOUND; };
@@ -25,7 +25,7 @@ namespace lux::cxx::lan_model
 
 	template<> struct type_kind_map<ETypeKind::IMCOMPLETE>	{ using type = IncompleteType; };
 	template<> struct type_kind_map<ETypeKind::FUNDAMENTAL> { using type = Fundamental; };
-		template<> struct type_kind_map<ETypeKind::VOID>		{ using type = Void; };
+		template<> struct type_kind_map<ETypeKind::VOID_TYPE>	{ using type = Void; };
 		template<> struct type_kind_map<ETypeKind::NULLPTR_T>	{ using type = Nullptr_t; };
 
 	template<> struct type_kind_map<ETypeKind::COMPOUND>	{ using type = Compound; };

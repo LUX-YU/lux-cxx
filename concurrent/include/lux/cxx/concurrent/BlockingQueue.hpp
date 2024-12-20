@@ -42,6 +42,10 @@ namespace lux::cxx
 				_cv.wait(lock);
 			}
 
+			if (_exit) {
+				return false;
+			}
+
 			if (!_queue.empty())
 			{
 				item = std::move(_queue.front());

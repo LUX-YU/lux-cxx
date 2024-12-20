@@ -9,7 +9,7 @@ namespace lux::cxx::lan_model
 
 		// from struct Fundamental
 		FUNDAMENTAL,
-			VOID, // from struct Void
+			VOID_TYPE, // from struct Void
 			NULLPTR_T, // from struct Nullptr
 			ARITHMETIC, // from struct Arithmetic
 			// from struct Integral
@@ -109,7 +109,7 @@ namespace lux::cxx::lan_model
 	static constexpr inline bool is_imcomplete(ETypeKind kind)
 	{
 		return kind == ETypeKind::IMCOMPLETE 
-			|| kind == ETypeKind::VOID;
+			|| kind == ETypeKind::VOID_TYPE;
 	}
 
 	/*
@@ -194,8 +194,8 @@ namespace lux::cxx::lan_model
 	// type::fundamental
 	// 1* void
 	// 2* nullptr
-	__DEFINE_CXX_TYPE_START__(Void, Fundamental, CxxTypeEnumKind::VOID)
-	__DEFINE_CXX_TYPE_END__(Void, CxxTypeEnumKind::VOID)
+	__DEFINE_CXX_TYPE_START__(Void, Fundamental, CxxTypeEnumKind::VOID_TYPE)
+	__DEFINE_CXX_TYPE_END__(Void, CxxTypeEnumKind::VOID_TYPE)
 	__DEFINE_CXX_TYPE_START__(Nullptr, Fundamental, CxxTypeEnumKind::NULLPTR)
 	__DEFINE_CXX_TYPE_END__(Nullptr, CxxTypeEnumKind::NULLPTR)
 

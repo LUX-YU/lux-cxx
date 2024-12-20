@@ -88,7 +88,7 @@ int main(int argc, char* argv[])
     test_type_info2::for_each_field(
         []<typename T, size_t I>(test_type2& info)
         {
-            std::cout << T::get(info) << std::endl;      
+            std::cout << "Field " << I << ", Name " << T::name::view() << ", offset " << T::offset << ", value: " << T::get(info) << std::endl;
         },
         obj
     );

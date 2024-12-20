@@ -118,7 +118,7 @@ namespace lux::cxx::dref
 			type_meta = createSimpleTypeMeta<ETypeMetaKind::IMCOMPLETE>(type);
 			break;
 		case CXType_Void:
-			type_meta = createSimpleTypeMeta<ETypeMetaKind::VOID>(type);
+			type_meta = createSimpleTypeMeta<ETypeMetaKind::VOID_TYPE>(type);
 			break;
 		case CXType_Bool:
 			type_meta = createSimpleTypeMeta<ETypeMetaKind::BOOL>(type);

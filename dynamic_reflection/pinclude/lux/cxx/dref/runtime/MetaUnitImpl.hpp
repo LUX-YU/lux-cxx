@@ -45,9 +45,9 @@ namespace lux::cxx::dref
 				delete type_meta;
 				break;
 			}
-			case ETypeKind::VOID:
+			case ETypeKind::VOID_TYPE:
 			{
-				auto type_meta = static_cast<typename type_kind_map<ETypeKind::VOID>::type*>(meta);
+				auto type_meta = static_cast<typename type_kind_map<ETypeKind::VOID_TYPE>::type*>(meta);
 				delete type_meta;
 				break;
 			}
