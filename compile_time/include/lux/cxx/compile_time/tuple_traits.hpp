@@ -5,7 +5,7 @@
 namespace lux::cxx
 {
 	template<class T>
-	struct is_tuple : public is_type_template_of<std::tuple, T>{};
+	struct is_tuple : public is_type_template_of<std::tuple, T> {};
 
 	template<class T> constexpr bool is_tuple_v = is_tuple<T>::value;
 
@@ -45,14 +45,14 @@ namespace lux::cxx
 		static constexpr void for_each_type(FUNC&& func, T&& tuple)
 		{
 			using TupleType = std::remove_reference_t<std::remove_cv_t<T>>;
-			auto handler_ = []<typename U, typename FUNC_, size_t... I>(FUNC_&& func_, U&& tuple_, std::index_sequence<I...>) {
-				(func_.template operator() < std::tuple_element_t<I, TupleType>, I >(std::get<I>(tuple_)), ...);
+			auto handler_ = []<typename U, typename FUNC_, size_t... I>(FUNC_ && func_, U && tuple_, std::index_sequence<I...>) {
+				(func_.template operator() < std::tuple_element_t<I, TupleType>, I > (std::get<I>(tuple_)), ...);
 			};
 			handler_.template operator() < T, FUNC > (
 				std::forward<FUNC>(func),
 				std::forward<T>(tuple),
 				std::make_index_sequence<std::tuple_size_v<TupleType>>{}
-			);
+				);
 		}
 
 		/* FUNC: only accept template lambda and template function now ?
@@ -68,13 +68,13 @@ namespace lux::cxx
 		static constexpr void for_each_type(FUNC&& func)
 		{
 			using TupleType = std::remove_reference_t<std::remove_cv_t<T>>;
-			auto handler_ = []<typename U, typename FUNC_, size_t... I>(FUNC_&& func_, std::index_sequence<I...>) {
-				(func_.template operator() < std::tuple_element_t<I, TupleType>, I >(), ...);
+			auto handler_ = []<typename U, typename FUNC_, size_t... I>(FUNC_ && func_, std::index_sequence<I...>) {
+				(func_.template operator() < std::tuple_element_t<I, TupleType>, I > (), ...);
 			};
 			handler_.template operator() < T, FUNC > (
 				std::forward<FUNC>(func),
 				std::make_index_sequence<std::tuple_size_v<TupleType>>{}
-			);
+				);
 		}
 	};
 
@@ -100,7 +100,7 @@ namespace lux::cxx
 		static constexpr bool value = func_();
 	};
 
-	template<typename TupleType, typename U> 
+	template<typename TupleType, typename U>
 	static inline constexpr bool tuple_has_type_v = tuple_has_type<TupleType, U>::value;
 
 	// tuple type index
@@ -156,5 +156,24 @@ namespace lux::cxx
 
 		using tuple_type = decltype(strategy<std::tuple<>, T...>(T{}...));
 	};
+
+	// merge_and_remove_duplicates
+	template <typename... Tuples>
+	struct merge_and_remove_duplicates;
+
+	template <typename... Ts>
+	struct merge_and_remove_duplicates<std::tuple<Ts...>>
+	{
+		using type = typename remove_repeated_types<Ts...>::tuple_type;
+	};
+
+	template <typename Tuple1, typename Tuple2, typename... Rest>
+	struct merge_and_remove_duplicates<Tuple1, Tuple2, Rest...>
+	{
+		using merged_tuple = decltype(std::tuple_cat(std::declval<Tuple1>(), std::declval<Tuple2>()));
+		using type = typename merge_and_remove_duplicates<merged_tuple, Rest...>::type;
+	};
+
+	template <typename... Tuples>
+	using merge_and_remove_duplicates_t = typename merge_and_remove_duplicates<Tuples...>::type;
 }
-	
