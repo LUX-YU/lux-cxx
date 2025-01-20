@@ -145,7 +145,7 @@ namespace lux::cxx
         const void *_get_storage() const noexcept
         {
             return (_manager && _is_heap_alloc())
-                ? _storage.ptr
+                ? static_cast<const void *>(&_storage.ptr)
                 : static_cast<const void *>(&_storage.sbo);
         }
 
@@ -158,7 +158,7 @@ namespace lux::cxx
         // Check if the current object is dynamically allocated
         bool _is_heap_alloc() const noexcept
         {
-            return _manager && _manager->destroy == &_destroy_heap;
+            return _manager && _manager->move == &_move_heap;
         }
 
         // Destroy the current object (if any)
@@ -181,14 +181,7 @@ namespace lux::cxx
             else
             {
                 _manager = other._manager;
-                if(other._is_heap_alloc())
-                {
-                    _storage.ptr = other._storage.ptr;
-                }
-                else
-                {
-                    std::memcpy(_storage.sbo, other._storage.sbo, SBO_SIZE);
-                }
+                _manager->move(_get_storage(), other._get_storage());
                 other._manager = nullptr;
             }
         }
@@ -196,9 +189,11 @@ namespace lux::cxx
         // ---------------------------------------------------------
         // Management functions for dynamically allocated objects
         // ---------------------------------------------------------
+        template<class T>
         static void _destroy_heap(void *p) noexcept
         {
-            delete static_cast<char *>(p); // Pointer `p` is to a dynamically allocated object
+            void** real_ptr = static_cast<void**>(p);
+            delete static_cast<T*>(*real_ptr); // Pointer `p` is to a dynamically allocated object
         }
 
         static void _move_heap(void *dst, void *src) noexcept
@@ -245,7 +240,8 @@ namespace lux::cxx
         template <class T>
         static R _invoke_heap(void* p, Args&&... args) 
         {
-            auto real_obj = reinterpret_cast<T*>(p);
+            void** real_ptr = static_cast<void**>(p);
+            auto real_obj = reinterpret_cast<T*>(*real_ptr);
             if constexpr (std::is_void_v<R>) 
             {
                 std::invoke(*real_obj, static_cast<Args&&>(args)...);
@@ -287,7 +283,7 @@ namespace lux::cxx
 
                 _storage.ptr = mem;
                 static const manager s_manager = {
-                    &_destroy_heap,
+                    &_destroy_heap<decayF>,
                     &_move_heap,
                     &_invoke_heap<decayF>
                 };
