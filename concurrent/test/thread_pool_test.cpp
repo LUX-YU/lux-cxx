@@ -20,7 +20,8 @@ int main()
         });
         futures.push_back(std::move(f));
     }
-
+    std::cout << "sizeof move_only_function:" << sizeof(move_only_function<void (void)>) << std::endl;
+    sizeof(std::function<void (void)>);
     // allocate to heap
     char buffer[64];
     // 3) 提交一个无返回值的任务

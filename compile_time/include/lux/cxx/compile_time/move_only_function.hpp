@@ -112,8 +112,10 @@ namespace lux::cxx
 
     private:
         // Threshold for small object optimization
-        static constexpr std::size_t SBO_SIZE  = 32; // Can be adjusted
-        static constexpr std::size_t SBO_ALIGN = alignof(std::max_align_t);
+        // static constexpr std::size_t SBO_SIZE  = 32; // Can be adjusted
+        // static constexpr std::size_t SBO_ALIGN = alignof(std::max_align_t);
+        static constexpr std::size_t SBO_SIZE  = 24; // Can be adjusted
+        static constexpr std::size_t SBO_ALIGN = 8;
 
         // ---------------------------------------------------------
         // Manager Table: Stores operation functions for the target object (destroy/move/invoke)
@@ -138,7 +140,7 @@ namespace lux::cxx
         } _storage{};
 
         // Pointer to the current object's manager. If null, no object is present.
-        const manager *_manager;
+        const manager* _manager;
 
     private:
         // Get the raw storage address (read-only)
