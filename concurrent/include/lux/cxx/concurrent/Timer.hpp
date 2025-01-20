@@ -71,7 +71,7 @@ namespace lux::cxx
 
             	if (task)
                 {
-                	thread_pool_.pushTask(std::move(task));
+                	thread_pool_.submit(std::move(task));
             	}
         	}
     	}

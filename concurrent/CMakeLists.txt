@@ -11,6 +11,11 @@ component_include_directories(
         include
 )
 
+component_add_internal_dependencies(
+    concurrent
+        lux::cxx::compile_time
+)
+
 set(ENABLE_CONCURRENT_TEST OFF CACHE BOOL "Enable concurrent test")
 if(ENABLE_CONCURRENT_TEST)
     add_subdirectory(test)

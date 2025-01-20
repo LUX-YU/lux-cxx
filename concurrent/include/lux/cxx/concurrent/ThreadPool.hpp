@@ -1,109 +1,98 @@
 #pragma once
+
 #include <vector>
-#include <queue>
 #include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <atomic>
-#include <memory>
 #include <future>
-#include <optional>
+#include <functional>
+#include <memory>
 #include <type_traits>
+#include "BlockingQueue.hpp"
+#include <lux/cxx/compile_time/move_only_function.hpp>
 
 namespace lux::cxx
 {
-	class ThreadPool
-	{
-	public:
-		using Worker = std::thread;
+    class ThreadPool
+    {
+    public:
+        // 使用 move_only_function<void()> 作为任务类型
+        using Task = move_only_function<void()>;
 
-		explicit ThreadPool(const size_t threads = 10) : stop(false)
-		{
-			for (size_t i = 0; i < threads; ++i) {
-				workers.emplace_back(
-					[this]()
-					{
-						this->worker_inner_thread();
+        explicit ThreadPool(size_t threadCount = 10, size_t queueCapacity = 64)
+            : _tasks(queueCapacity)
+        {
+            // 启动工作线程
+            for (size_t i = 0; i < threadCount; ++i)
+            {
+                _workers.emplace_back([this] {
+                    workerThreadFunc();
+                });
+            }
+        }
+
+        // 不允许拷贝或移动
+        ThreadPool(const ThreadPool&) = delete;
+        ThreadPool& operator=(const ThreadPool&) = delete;
+        ThreadPool(ThreadPool&&) = delete;
+        ThreadPool& operator=(ThreadPool&&) = delete;
+
+        ~ThreadPool()
+        {
+            // 关闭队列，通知所有工作线程
+            _tasks.close();
+
+            // 等待工作线程退出
+            for (auto& th : _workers)
+            {
+                if (th.joinable()) {
+                    th.join();
+                }
+            }
+        }
+
+        /**
+         * @brief 提交一个可调用对象到线程池，返回 std::future 用于获取结果
+         * @tparam Func  函数或可调用对象
+         * @tparam Args  参数类型
+         * @return std::future<RetType> 用于获取任务执行结果
+         */
+        template <typename Func, typename... Args,
+                  typename RetType = std::invoke_result_t<Func, Args...>>
+        std::future<RetType> submit(Func&& func, Args&&... args)
+        {
+			std::promise<RetType> promise;
+			std::future<RetType> future = promise.get_future();
+			Task wrapper_task = [promise = std::move(promise), func = std::forward<Func>(func), args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+				try {
+					if constexpr (std::is_void_v<RetType>) {
+						std::apply(func, args);
+						promise.set_value();
+					} else {
+						promise.set_value(std::apply(func, args));
 					}
-				);
-			}
-		}
-
-		ThreadPool(const ThreadPool&) = delete;
-		ThreadPool& operator=(const ThreadPool&) = delete;
-
-		ThreadPool(ThreadPool&& other) noexcept = delete;
-		ThreadPool& operator=(ThreadPool&& other) noexcept = delete;
-
-		~ThreadPool()
-		{
-			stop = true;
-			condition.notify_all();
-			for (std::thread& worker : workers) {
-				if (worker.joinable())
-				{
-					worker.join();
+				} catch (...) {
+					promise.set_exception(std::current_exception());
 				}
-			}
-		}
+			};
 
-		template<typename Func, typename... Args, typename RetType = std::invoke_result_t<Func, Args...>>
-		auto pushTask(Func&& func, Args&&... args) -> std::future<RetType>
-		{
-			auto task = new std::packaged_task<RetType()>(
-				[args = std::make_tuple(std::forward<Args>(args)...), _func = std::forward<Func>(func)]() mutable -> RetType {
-					return std::apply(std::move(_func), std::move(args));
-				}
-			);
+    		if(! _tasks.push(std::move(wrapper_task)))
+        		throw std::runtime_error("ThreadPool queue may closed.");
 
-			auto future = task->get_future();
+            return future;
+        }
 
-			{
-				std::scoped_lock lock(tasks_mutex);
-				tasks.emplace(
-					[task]()
-					{
-						(*task)();
-						delete task;
-					}
-				);
-			}
+    private:
+        void workerThreadFunc()
+        {
+            Task task; // move_only_function<void()>
+            while (_tasks.pop(task))
+            {
+                // 调用任务
+                task();
+            }
+        }
 
-			condition.notify_all();
-			return future;
-		}
-
-	private:
-
-		void worker_inner_thread()
-		{
-			while (!stop)
-			{
-				std::unique_lock lock(this->tasks_mutex);
-
-				this->condition.wait(
-					lock,
-					[this]() {
-						return this->stop || !this->tasks.empty();
-					}
-				);
-
-				if (this->stop && this->tasks.empty()) {
-					return;
-				}
-
-				auto task = std::move(this->tasks.front());
-				this->tasks.pop();
-
-				lock.unlock();
-				task();
-			}
-		}
-
-		std::vector<Worker>					workers;
-		std::queue<std::function<void()>>	tasks;
-		std::mutex							tasks_mutex;
-		std::condition_variable				condition;
-		std::atomic_bool					stop;
-	};
-}
+    private:
+        std::vector<std::thread> _workers;
+        BlockingQueue<Task>      _tasks; // 队列里存放 move_only_function<void()>
+    };
+} // namespace lux::cxx
