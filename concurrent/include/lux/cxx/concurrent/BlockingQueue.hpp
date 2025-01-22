@@ -6,25 +6,26 @@
 #include <chrono>
 #include <cassert>
 #include <utility>
+#include <queue>
 
 namespace lux::cxx
 {
     /**
-     * @class BlockingQueue
+     * @class BlockingRingQueue
      * @desc A thread-safe blocking queue implementation that supports
      *       various operations such as push, pop, and bulk operations,
      *       with optional timeout support.
      * @tparam T Type of elements stored in the queue.
      */
     template <typename T>
-    class BlockingQueue
+    class BlockingRingQueue
     {
     public:
         /**
-         * @desc Constructs a BlockingQueue with a specified capacity.
+         * @desc Constructs a BlockingRingQueue with a specified capacity.
          * @param capacity Maximum number of elements the queue can hold. Default is 64.
          */
-        explicit BlockingQueue(std::size_t capacity = 64)
+        explicit BlockingRingQueue(std::size_t capacity = 64)
             : _capacity(capacity), _buffer(capacity), _head(0), _tail(0), _size(0), _exit(false)
         {
             assert(capacity > 0);
@@ -33,15 +34,15 @@ namespace lux::cxx
         /**
          * @desc Destructor to close the queue and release resources.
          */
-        ~BlockingQueue()
+        ~BlockingRingQueue()
         {
             close();
         }
 
-        BlockingQueue(const BlockingQueue&) = delete;
-        BlockingQueue& operator=(const BlockingQueue&) = delete;
-        BlockingQueue(BlockingQueue&&) = default;
-        BlockingQueue& operator=(BlockingQueue&&) = default;
+        BlockingRingQueue(const BlockingRingQueue &) = delete;
+        BlockingRingQueue &operator=(const BlockingRingQueue &) = delete;
+        BlockingRingQueue(BlockingRingQueue &&) = default;
+        BlockingRingQueue &operator=(BlockingRingQueue &&) = default;
 
         /**
          * @desc Closes the queue. Further push operations are disallowed,
@@ -74,12 +75,11 @@ namespace lux::cxx
          * @return True if the element is successfully pushed; false if the queue is closed.
          */
         template <class U>
-        bool push(U&& value)
+        bool push(U &&value)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            _not_full.wait(lock, [this] {
-                return _exit || (_size < _capacity);
-            });
+            _not_full.wait(lock, [this]
+                           { return _exit || (_size < _capacity); });
 
             if (_exit)
                 return false;
@@ -101,12 +101,11 @@ namespace lux::cxx
          * @return True if the element is successfully pushed; false on timeout or if the queue is closed.
          */
         template <class U, class Rep, class Period>
-        bool push(U&& value, const std::chrono::duration<Rep, Period>& timeout)
+        bool push(U &&value, const std::chrono::duration<Rep, Period> &timeout)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            if (!_not_full.wait_for(lock, timeout, [this] {
-                    return _exit || (_size < _capacity);
-                }))
+            if (!_not_full.wait_for(lock, timeout, [this]
+                                    { return _exit || (_size < _capacity); }))
             {
                 return false;
             }
@@ -129,12 +128,11 @@ namespace lux::cxx
          * @return True if the element is successfully constructed; false if the queue is closed.
          */
         template <class... Args>
-        bool emplace(Args&&... args)
+        bool emplace(Args &&...args)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            _not_full.wait(lock, [this] {
-                return _exit || (_size < _capacity);
-            });
+            _not_full.wait(lock, [this]
+                           { return _exit || (_size < _capacity); });
 
             if (_exit)
                 return false;
@@ -156,12 +154,11 @@ namespace lux::cxx
          * @return True if the element is successfully constructed; false on timeout or if the queue is closed.
          */
         template <class Rep, class Period, class... Args>
-        bool emplace(const std::chrono::duration<Rep, Period>& timeout, Args&&... args)
+        bool emplace(const std::chrono::duration<Rep, Period> &timeout, Args &&...args)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            if (!_not_full.wait_for(lock, timeout, [this] {
-                    return _exit || (_size < _capacity);
-                }))
+            if (!_not_full.wait_for(lock, timeout, [this]
+                                    { return _exit || (_size < _capacity); }))
             {
                 return false;
             }
@@ -182,12 +179,11 @@ namespace lux::cxx
          * @param out Reference to the variable where the popped element will be stored.
          * @return True if an element is successfully popped; false if the queue is closed and empty.
          */
-        bool pop(T& out)
+        bool pop(T &out)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            _not_empty.wait(lock, [this] {
-                return _exit || (_size > 0);
-            });
+            _not_empty.wait(lock, [this]
+                            { return _exit || (_size > 0); });
 
             if (_size == 0)
             {
@@ -210,12 +206,11 @@ namespace lux::cxx
          * @return True if an element is successfully popped; false on timeout or if the queue is closed and empty.
          */
         template <class Rep, class Period>
-        bool pop(T& out, const std::chrono::duration<Rep, Period>& timeout)
+        bool pop(T &out, const std::chrono::duration<Rep, Period> &timeout)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            if (!_not_empty.wait_for(lock, timeout, [this] {
-                    return _exit || (_size > 0);
-                }))
+            if (!_not_empty.wait_for(lock, timeout, [this]
+                                     { return _exit || (_size > 0); }))
             {
                 return false;
             }
@@ -244,9 +239,8 @@ namespace lux::cxx
         bool push_bulk(InputIterator first, size_t count)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            _not_full.wait(lock, [this, count] {
-                return _exit || (_size + count <= _capacity);
-            });
+            _not_full.wait(lock, [this, count]
+                           { return _exit || (_size + count <= _capacity); });
 
             if (_exit)
                 return false;
@@ -273,12 +267,11 @@ namespace lux::cxx
          */
         template <class InputIterator, class Rep, class Period>
         bool push_bulk(InputIterator first, size_t count,
-                       const std::chrono::duration<Rep, Period>& timeout)
+                       const std::chrono::duration<Rep, Period> &timeout)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            if (!_not_full.wait_for(lock, timeout, [this, count] {
-                    return _exit || (_size + count <= _capacity);
-                }))
+            if (!_not_full.wait_for(lock, timeout, [this, count]
+                                    { return _exit || (_size + count <= _capacity); }))
             {
                 return false;
             }
@@ -308,9 +301,8 @@ namespace lux::cxx
         size_t pop_bulk(OutputIterator dest, size_t maxCount)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            _not_empty.wait(lock, [this] {
-                return _exit || (_size > 0);
-            });
+            _not_empty.wait(lock, [this]
+                            { return _exit || (_size > 0); });
 
             if (_size == 0)
             {
@@ -340,12 +332,11 @@ namespace lux::cxx
          */
         template <class OutputIterator, class Rep, class Period>
         size_t pop_bulk(OutputIterator dest, size_t maxCount,
-                        const std::chrono::duration<Rep, Period>& timeout)
+                        const std::chrono::duration<Rep, Period> &timeout)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            if (!_not_empty.wait_for(lock, timeout, [this] {
-                    return _exit || (_size > 0);
-                }))
+            if (!_not_empty.wait_for(lock, timeout, [this]
+                                     { return _exit || (_size > 0); }))
             {
                 return 0;
             }
@@ -374,7 +365,7 @@ namespace lux::cxx
          * @return True if the element is successfully pushed; false if the queue is full or closed.
          */
         template <class U>
-        bool try_push(U&& value)
+        bool try_push(U &&value)
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (_exit || _size >= _capacity)
@@ -394,7 +385,7 @@ namespace lux::cxx
          * @param out Reference to the variable where the popped element will be stored.
          * @return True if an element is successfully popped; false if the queue is empty.
          */
-        bool try_pop(T& out)
+        bool try_pop(T &out)
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (_size == 0)
@@ -440,15 +431,455 @@ namespace lux::cxx
         }
 
     private:
-        std::size_t _capacity; ///< Maximum capacity of the queue.
+        std::size_t _capacity;  ///< Maximum capacity of the queue.
         std::vector<T> _buffer; ///< Internal buffer to store elements.
-        std::size_t _head; ///< Index of the head of the queue.
-        std::size_t _tail; ///< Index of the tail of the queue.
-        std::size_t _size; ///< Current size of the queue.
-        bool _exit; ///< Flag indicating whether the queue is closed.
+        std::size_t _head;      ///< Index of the head of the queue.
+        std::size_t _tail;      ///< Index of the tail of the queue.
+        std::size_t _size;      ///< Current size of the queue.
+        bool _exit;             ///< Flag indicating whether the queue is closed.
 
-        mutable std::mutex _mutex; ///< Mutex for thread-safety.
-        std::condition_variable _not_full; ///< Condition variable to wait when the queue is full.
+        mutable std::mutex _mutex;          ///< Mutex for thread-safety.
+        std::condition_variable _not_full;  ///< Condition variable to wait when the queue is full.
         std::condition_variable _not_empty; ///< Condition variable to wait when the queue is empty.
+    };
+
+    template <typename T>
+    class BlockingQueue
+    {
+    public:
+        /**
+         * @brief Constructs a BlockingQueue with a specified capacity.
+         *        If capacity == 0, the queue is unbounded (limited only by memory).
+         *
+         * @param capacity The maximum capacity of the queue.
+         *                 If 0, the queue has no upper limit.
+         */
+        explicit BlockingQueue(std::size_t capacity = 0)
+            : _capacity(capacity), _size(0), _exit(false)
+        {
+            // If _capacity == 0, we treat it as unbounded capacity.
+        }
+
+        /**
+         * @brief Destructor that closes the queue and notifies all waiting threads.
+         */
+        ~BlockingQueue()
+        {
+            close();
+        }
+
+        BlockingQueue(const BlockingQueue &) = delete;
+        BlockingQueue &operator=(const BlockingQueue &) = delete;
+        BlockingQueue(BlockingQueue &&) = default;
+        BlockingQueue &operator=(BlockingQueue &&) = default;
+
+        /**
+         * @brief Closes the queue.
+         *        After calling close(), pushing new elements will fail immediately,
+         *        but remaining elements can still be popped.
+         */
+        void close()
+        {
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                _exit = true;
+            }
+            _not_full.notify_all();
+            _not_empty.notify_all();
+        }
+
+        /**
+         * @brief Checks whether the queue has been closed.
+         * @return True if the queue is closed, false otherwise.
+         */
+        bool closed() const
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            return _exit;
+        }
+
+        /**
+         * @brief Pushes an element into the queue. Blocks if the queue is at capacity (when _capacity > 0).
+         *
+         * @tparam U The type of the element being pushed (can be T or convertible to T).
+         * @param value The element to push.
+         * @return True if the element was pushed, false if the queue is closed.
+         */
+        template <class U>
+        bool push(U &&value)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            _not_full.wait(lock, [this]
+                           {
+                // Wait until the queue is not full or the queue is closed
+                return _exit || (_capacity == 0 || _size < _capacity); });
+
+            if (_exit)
+                return false;
+
+            _queue.push(std::forward<U>(value));
+            ++_size;
+
+            // Notify one thread that might be waiting to pop
+            _not_empty.notify_one();
+            return true;
+        }
+
+        /**
+         * @brief Pushes an element into the queue with a timeout.
+         *        If the queue is full and remains full until the timeout, returns false.
+         *
+         * @tparam U The type of the element being pushed.
+         * @tparam Rep, Period Duration parameters for timeout.
+         * @param value The element to push.
+         * @param timeout The maximum time to wait for available capacity.
+         * @return True if the element was pushed successfully, false otherwise (timeout or closed).
+         */
+        template <class U, class Rep, class Period>
+        bool push(U &&value, const std::chrono::duration<Rep, Period> &timeout)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            if (!_not_full.wait_for(lock, timeout, [this]
+                                    { return _exit || (_capacity == 0 || _size < _capacity); }))
+            {
+                // Timed out
+                return false;
+            }
+
+            if (_exit)
+                return false;
+
+            _queue.push(std::forward<U>(value));
+            ++_size;
+
+            _not_empty.notify_one();
+            return true;
+        }
+
+        /**
+         * @brief Constructs an element in-place at the back of the queue.
+         *        Blocks if the queue is full (capacity > 0).
+         *
+         * @tparam Args Variadic template arguments for constructing T.
+         * @param args Constructor arguments for T.
+         * @return True if constructed and pushed, false if queue is closed.
+         */
+        template <class... Args>
+        bool emplace(Args &&...args)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            _not_full.wait(lock, [this]
+                           { return _exit || (_capacity == 0 || _size < _capacity); });
+
+            if (_exit)
+                return false;
+
+            _queue.emplace(std::forward<Args>(args)...);
+            ++_size;
+
+            _not_empty.notify_one();
+            return true;
+        }
+
+        /**
+         * @brief In-place construct with a timeout.
+         *
+         * @tparam Rep, Period Duration parameters.
+         * @tparam Args Constructor arguments for T.
+         * @param timeout The maximum time to wait for available capacity.
+         * @param args Arguments for constructing T.
+         * @return True if constructed and pushed, false otherwise (timeout or closed).
+         */
+        template <class Rep, class Period, class... Args>
+        bool emplace(const std::chrono::duration<Rep, Period> &timeout, Args &&...args)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            if (!_not_full.wait_for(lock, timeout, [this]
+                                    { return _exit || (_capacity == 0 || _size < _capacity); }))
+            {
+                return false;
+            }
+
+            if (_exit)
+                return false;
+
+            _queue.emplace(std::forward<Args>(args)...);
+            ++_size;
+
+            _not_empty.notify_one();
+            return true;
+        }
+
+        /**
+         * @brief Pops an element from the queue. Blocks if the queue is empty.
+         *
+         * @param out Reference to store the popped element.
+         * @return True if popped successfully, false if the queue is empty and closed.
+         */
+        bool pop(T &out)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            _not_empty.wait(lock, [this]
+                            {
+                // Wait until the queue is not empty or closed
+                return _exit || (_size > 0); });
+
+            if (_size == 0)
+                return false; // closed and empty
+
+            out = std::move(_queue.front());
+            _queue.pop();
+            --_size;
+
+            _not_full.notify_one();
+            return true;
+        }
+
+        /**
+         * @brief Pops an element with a timeout.
+         *
+         * @tparam Rep, Period Duration parameters.
+         * @param out Reference to store the popped element.
+         * @param timeout The maximum time to wait for an element.
+         * @return True if popped successfully, false if timeout or closed-and-empty.
+         */
+        template <class Rep, class Period>
+        bool pop(T &out, const std::chrono::duration<Rep, Period> &timeout)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            if (!_not_empty.wait_for(lock, timeout, [this]
+                                     { return _exit || (_size > 0); }))
+            {
+                // Timed out
+                return false;
+            }
+
+            if (_size == 0)
+                return false;
+
+            out = std::move(_queue.front());
+            _queue.pop();
+            --_size;
+
+            _not_full.notify_one();
+            return true;
+        }
+
+        /**
+         * @brief Pushes multiple elements in bulk.
+         *        Blocks if there is not enough capacity (when capacity > 0).
+         *
+         * @tparam InputIterator Iterator type for the input range.
+         * @param first The iterator to the first element to insert.
+         * @param count Number of elements to push.
+         * @return True if bulk push succeeded, false if the queue is closed.
+         */
+        template <class InputIterator>
+        bool push_bulk(InputIterator first, size_t count)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            _not_full.wait(lock, [this, count]
+                           { return _exit || (_capacity == 0 || _size + count <= _capacity); });
+
+            if (_exit)
+                return false;
+
+            for (size_t i = 0; i < count; ++i)
+            {
+                _queue.push(*first++);
+                ++_size;
+            }
+
+            _not_empty.notify_all();
+            return true;
+        }
+
+        /**
+         * @brief Bulk push with a timeout.
+         *
+         * @tparam InputIterator Iterator type for the input range.
+         * @tparam Rep, Period Duration parameters.
+         * @param first The iterator to the first element.
+         * @param count Number of elements to push.
+         * @param timeout The maximum time to wait for enough capacity.
+         * @return True on success, false if timeout or queue is closed.
+         */
+        template <class InputIterator, class Rep, class Period>
+        bool push_bulk(InputIterator first, size_t count,
+                       const std::chrono::duration<Rep, Period> &timeout)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            if (!_not_full.wait_for(lock, timeout, [this, count]
+                                    { return _exit || (_capacity == 0 || _size + count <= _capacity); }))
+            {
+                return false; // Timed out
+            }
+
+            if (_exit)
+                return false;
+
+            for (size_t i = 0; i < count; ++i)
+            {
+                _queue.push(*first++);
+                ++_size;
+            }
+
+            _not_empty.notify_all();
+            return true;
+        }
+
+        /**
+         * @brief Pops multiple elements in bulk. Blocks if the queue is empty.
+         *
+         * @tparam OutputIterator Iterator type for output.
+         * @param dest The output iterator where the popped elements will be placed.
+         * @param maxCount The maximum number of elements to pop.
+         * @return The actual number of elements popped.
+         */
+        template <class OutputIterator>
+        size_t pop_bulk(OutputIterator dest, size_t maxCount)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            _not_empty.wait(lock, [this]
+                            { return _exit || (_size > 0); });
+
+            if (_size == 0)
+                return 0;
+
+            size_t toPop = (maxCount < _size) ? maxCount : _size;
+            for (size_t i = 0; i < toPop; ++i)
+            {
+                *dest++ = std::move(_queue.front());
+                _queue.pop();
+                --_size;
+            }
+
+            _not_full.notify_all();
+            return toPop;
+        }
+
+        /**
+         * @brief Bulk pop with a timeout.
+         *
+         * @tparam OutputIterator Output iterator type.
+         * @tparam Rep, Period Duration parameters.
+         * @param dest The output iterator to store the popped elements.
+         * @param maxCount The maximum number of elements to pop.
+         * @param timeout The maximum time to wait for elements.
+         * @return The actual number of elements popped. May be 0 on timeout or closed-and-empty.
+         */
+        template <class OutputIterator, class Rep, class Period>
+        size_t pop_bulk(OutputIterator dest, size_t maxCount,
+                        const std::chrono::duration<Rep, Period> &timeout)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            if (!_not_empty.wait_for(lock, timeout, [this]
+                                     { return _exit || (_size > 0); }))
+            {
+                return 0;
+            }
+
+            if (_size == 0)
+                return 0;
+
+            size_t toPop = (maxCount < _size) ? maxCount : _size;
+            for (size_t i = 0; i < toPop; ++i)
+            {
+                *dest++ = std::move(_queue.front());
+                _queue.pop();
+                --_size;
+            }
+
+            _not_full.notify_all();
+            return toPop;
+        }
+
+        /**
+         * @brief Non-blocking push.
+         *        Immediately returns false if the queue is full or closed.
+         *
+         * @tparam U The type of the element being pushed.
+         * @param value The element to push.
+         * @return True if pushed successfully, false if full or closed.
+         */
+        template <class U>
+        bool try_push(U &&value)
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            if (_exit || (_capacity > 0 && _size >= _capacity))
+                return false;
+
+            _queue.push(std::forward<U>(value));
+            ++_size;
+
+            _not_empty.notify_one();
+            return true;
+        }
+
+        /**
+         * @brief Non-blocking pop.
+         *        Immediately returns false if the queue is empty.
+         *
+         * @param out Reference to store the popped element.
+         * @return True if popped successfully, false if empty.
+         */
+        bool try_pop(T &out)
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            if (_size == 0)
+                return false;
+
+            out = std::move(_queue.front());
+            _queue.pop();
+            --_size;
+
+            _not_full.notify_one();
+            return true;
+        }
+
+        /**
+         * @brief Gets the current number of elements in the queue.
+         *
+         * @return The current size of the queue.
+         */
+        size_t size() const
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            return _size;
+        }
+
+        /**
+         * @brief Checks if the queue is empty.
+         *
+         * @return True if empty, false otherwise.
+         */
+        bool empty() const
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            return (_size == 0);
+        }
+
+        /**
+         * @brief Returns the queue capacity setting.
+         *        0 means unbounded.
+         *
+         * @return The configured capacity of the queue.
+         */
+        size_t capacity() const
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            return _capacity;
+        }
+
+    private:
+        std::size_t _capacity; ///< The maximum capacity (0 = unbounded).
+        std::size_t _size;     ///< Current number of elements in the queue.
+        bool _exit;            ///< Indicates whether the queue is closed.
+
+        std::queue<T> _queue; ///< Underlying std::queue for storing elements.
+
+        mutable std::mutex _mutex;          ///< Mutex for thread-safe access.
+        std::condition_variable _not_full;  ///< Condition variable to wait if the queue is full.
+        std::condition_variable _not_empty; ///< Condition variable to wait if the queue is empty.
     };
 }

@@ -37,16 +37,23 @@ namespace lux::cxx
 
         ~ThreadPool()
         {
-            // 关闭队列，通知所有工作线程
-            _tasks.close();
+            close();
+        }
 
-            // 等待工作线程退出
+        void join()
+        {
             for (auto& th : _workers)
             {
                 if (th.joinable()) {
                     th.join();
                 }
             }
+        }
+
+        void close()
+        {
+            _tasks.close();
+            join();
         }
 
         /**

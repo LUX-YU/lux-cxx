@@ -19,3 +19,25 @@ target_link_libraries(
     PRIVATE
     concurrent
 )
+
+add_executable(
+    blocking_queue_test
+    blocking_queue_test.cpp
+)
+
+target_link_libraries(
+    blocking_queue_test
+    PRIVATE
+    concurrent
+)
+
+add_executable(
+    spsc_lckfree_ring_queue_test
+    spsc_lckfree_ring_queue_test.cpp
+)
+
+target_link_libraries(
+    spsc_lckfree_ring_queue_test
+    PRIVATE
+    concurrent
+)
