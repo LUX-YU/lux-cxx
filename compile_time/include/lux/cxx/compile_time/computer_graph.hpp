@@ -1,42 +1,81 @@
-#include <tuple>
-#include <optional>
-#include <memory>
+#pragma once
 #include <iostream>
-#include <cassert>
+#include <string>
+#include <tuple>
+#include <vector>
+#include <memory>
 #include <type_traits>
+#include <utility>
+#include <optional>
+#include <concepts>  // C++20 concepts
+#include <array>
+#include <chrono>
+#include <algorithm> // std::max
 
-//--------------------------------------------------------------
-// 1) Definitions from your snippet (simplified) 
-//--------------------------------------------------------------
+#include "tuple_traits.hpp"
+
+
 namespace lux::cxx
 {
-    // forward declarations
-    template<typename T> struct is_tuple : std::false_type {};
-    template<typename... Ts> struct is_tuple<std::tuple<Ts...>> : std::true_type {};
-    template<typename T> inline constexpr bool is_tuple_v = is_tuple<T>::value;
+    // -- Binding
+    template <std::size_t Loc, typename T>
+    struct in_binding
+    {
+        static constexpr std::size_t location = Loc;
+        using value_t = T;
+    };
 
-    template <std::size_t L, typename T> struct in_binding { static constexpr size_t location=L; using value_t=T; };
-    template <std::size_t L, typename T> struct out_binding{ static constexpr size_t location=L; using value_t=T; };
+    template <std::size_t Loc, typename T>
+    struct out_binding
+    {
+        static constexpr std::size_t location = Loc;
+        using value_t = T;
+    };
 
-    template <typename... B> struct node_descriptor { using bindings_tuple_t = std::tuple<B...>; };
+    // -- descriptor
+    template <typename... Bindings>
+    struct node_descriptor
+    {
+        using bindings_tuple_t = std::tuple<Bindings...>;
+    };
 
-    // node_dependency_map
-    template <std::size_t InLoc, typename DepNode, std::size_t OutLoc>
+    // -- concepts
+    namespace __concept
+    {
+        template <typename T>
+        concept descriptor = requires {
+            typename T::bindings_tuple_t;
+            requires (std::tuple_size_v<typename T::bindings_tuple_t> >= 0);
+        };
+
+        // 这里原本写了 concept node = requires { typename T::input_descriptor; ...}
+        // 但是某些编译器对 CRTP + concept 的支持可能有 Bug，或者在当前上下文类型不完整。
+        // 建议改用 static_assert(__concept::node<T>)。
+        template<typename T>
+        concept node = requires {
+            typename T::input_descriptor;
+            typename T::output_descriptor;
+            typename T::mapping_tuple;
+        };
+    }
+
+    // -- dependency map
+    template <std::size_t InLoc, __concept::node DepNode, std::size_t OutLoc>
     struct node_dependency_map
     {
-        static constexpr std::size_t input_location  = InLoc;
+        static constexpr std::size_t input_location = InLoc;
         using dependency_node_t = DepNode;
         static constexpr std::size_t dep_output_location = OutLoc;
     };
 
-    // NodeBase with CRTP 
-    // (The version that has pipeline pointer is below, so let's keep minimal here.)
-    template<typename Derived, typename InDesc, typename OutDesc, typename... Mapping>
+    // -- CRTP NodeBase
+    template<typename Derived, __concept::descriptor InDesc,
+        __concept::descriptor OutDesc, typename... Mapping>
     struct NodeBase
     {
-        using input_descriptor  = InDesc;
+        using input_descriptor = InDesc;
         using output_descriptor = OutDesc;
-        using mapping_tuple     = std::tuple<Mapping...>;
+        using mapping_tuple = std::tuple<Mapping...>;
 
         void execute()
         {
@@ -44,459 +83,562 @@ namespace lux::cxx
         }
     };
 
-    //-----------------------------------------------------------------------
-    // A small topological or layered sort is omitted here for brevity
-    // We just assume we have a final "NodeList" or "LayerList."
-    //-----------------------------------------------------------------------
-}
-
-//--------------------------------------------------------------
-// 2) Make a NodeBase that can actually do getInput<loc> / getOutput<loc>
-//--------------------------------------------------------------
-namespace lux::cxx
-{
-    // We'll forward-declare a PipelineBase 
-    struct PipelineBase
+    // -- 提取节点依赖
+    template <typename Node>
+    struct node_dependencies
     {
-        virtual ~PipelineBase() = default;
-    };
-
-    // A new NodeBase that references a PipelineBase
-    // so each node can do pipeline->getDataSlot<Node,OutLoc>()
-    template<typename Derived, typename InDesc, typename OutDesc, typename... Mapping>
-    struct NodeBaseWithAccess
-      : public NodeBase<Derived, InDesc, OutDesc, Mapping...>
-    {
-        // pointer to pipeline
-        PipelineBase* pipeline_ = nullptr;
-
-        // The node calls these in its execute()
-        template <std::size_t Loc>
-        auto& getInput()
-        {
-            using T = typename find_in_binding<Loc, InDesc>::value_t;
-            // We also must discover which node produces this input 
-            // => from the mapping_tuple
-            // But let's do a simpler approach: 
-            // Our pipeline will do the correct "wired" approach:
-            // we'll add a method pipeline_->template getInputRef<Derived, Loc, T>() 
-            // that does the compile-time logic.
-            auto* self = static_cast<Derived*>(this);
-            return self->template doGetInputRef<T, Derived, Loc>(pipeline_);
-        }
-
-        template <std::size_t Loc>
-        auto& getOutput()
-        {
-            using T = typename find_out_binding<Loc, OutDesc>::value_t;
-            auto* self = static_cast<Derived*>(this);
-            return self->template doGetOutputRef<T, Derived, Loc>(pipeline_);
-        }
+        static_assert(__concept::node<Node>, "node_dependencies: Node must satisfy node concept");
 
     private:
-        // Helpers that find an in_binding / out_binding in a node_descriptor
-        template <std::size_t L, typename Desc>
-        struct find_in_binding_impl { using type = void; };
-        template <std::size_t L, typename... Bs>
-        struct find_in_binding_impl<L, node_descriptor<Bs...>>
+        using mappings = typename Node::mapping_tuple;
+
+        template<typename U> struct dep_node_of_map;
+
+        template <std::size_t I, typename DN, std::size_t O>
+        struct dep_node_of_map<node_dependency_map<I, DN, O>>
+        {
+            using type = DN;
+        };
+
+        template <typename... Ms>
+        static auto find_deps(std::tuple<Ms...>)
+        {
+            return std::tuple<typename dep_node_of_map<Ms>::type...>{};
+        }
+
+    public:
+        using type = decltype(find_deps(std::declval<mappings>()));
+    };
+
+    // -- 检查某节点 NodeT 的依赖是否都在 SortedTuple 中
+    template <typename NodeT, typename SortedTuple>
+    struct dependencies_in_sorted
+    {
+        static_assert(__concept::node<NodeT>,
+            "dependencies_in_sorted: NodeT must satisfy node concept");
+
+    private:
+        using dependencies_tuple_t = typename node_dependencies<NodeT>::type;
+
+        template <typename Dep, typename Tup>
+        struct in_tuple;
+
+        template <typename Dep>
+        struct in_tuple<Dep, std::tuple<>> : std::false_type {};
+
+        template <typename Dep, typename Head, typename... Tail>
+        struct in_tuple<Dep, std::tuple<Head, Tail...>>
+            : std::conditional_t<
+            std::is_same_v<Dep, Head>,
+            std::true_type,
+            in_tuple<Dep, std::tuple<Tail...>>
+            >
+        {
+        };
+
+        template <typename... Ds>
+        static constexpr bool checkAll(std::tuple<Ds...>)
+        {
+            return (... && in_tuple<Ds, SortedTuple>::value);
+        }
+
+    public:
+        static constexpr bool value = checkAll(dependencies_tuple_t{});
+    };
+
+    //====================================================
+    // 线性（单节点）拓扑排序
+    //====================================================
+    template <typename Unsorted, typename Sorted>
+    struct topo_sort_impl
+    {
+    private:
+        static constexpr bool unsorted_empty = (std::tuple_size_v<Unsorted> == 0);
+        using finish_case = Sorted;
+
+        // 找第一个依赖都满足的节点
+        template <typename TTuple>
+        struct find_satisfied;
+
+        template <typename... Ns>
+        struct find_satisfied<std::tuple<Ns...>>
         {
         private:
-            // scan each B
-            template <typename B> struct match : std::false_type {};
-            template <std::size_t LL, typename TT>
-            struct match< in_binding<LL,TT> > : std::bool_constant<(LL==L)> {};
+            template <typename N>
+            static constexpr bool is_ok = dependencies_in_sorted<N, Sorted>::value;
 
-            // we want the B that matches
-            template <typename Found, typename...Rest>
-            struct pick;
-            template <typename Found>
-            struct pick<Found> { using type = Found; };
-            template <typename Found, typename Head, typename...Tail>
-            struct pick<Found, Head, Tail...>
+            template <bool C, typename T>
+            struct pick_if { using type = void; };
+
+            template <typename T>
+            struct pick_if<true, T> { using type = T; };
+
+            template <typename Found, typename... Ts>
+            struct scan_list
             {
-                using type = std::conditional_t<
-                    match<Head>::value,
-                    Head,
-                    typename pick<Found, Tail...>::type
-                >;
+                using type = Found; // 终止
+            };
+
+            // 逐个扫描
+            template <typename Found, typename Head, typename... Tail>
+            struct scan_list<Found, Head, Tail...>
+            {
+                static constexpr bool ok = is_ok<Head>;
+                using maybe = typename pick_if<ok, Head>::type;
+                using type = typename scan_list<
+                    std::conditional_t<std::is_void_v<Found>, maybe, Found>,
+                    Tail...
+                >::type;
             };
 
         public:
-            using type = typename pick<void, Bs...>::type;
+            using type = typename scan_list<void, Ns...>::type;
         };
-        template <std::size_t L, typename Desc>
-        using find_in_binding = typename find_in_binding_impl<L,Desc>::type;
 
-        // same for out_binding
-        template <std::size_t L, typename Desc>
-        struct find_out_binding_impl { using type = void; };
-        template <std::size_t L, typename... Bs>
-        struct find_out_binding_impl<L, node_descriptor<Bs...>>
-        {
-            private:
-            template <typename B> struct match : std::false_type {};
-            template <std::size_t LL, typename TT>
-            struct match< out_binding<LL,TT> > : std::bool_constant<(LL==L)> {};
+        using found = typename find_satisfied<Unsorted>::type;
+        static constexpr bool found_any = !std::is_void_v<found>;
 
-            template <typename Found, typename...Rest>
-            struct pick;
-            template <typename Found>
-            struct pick<Found> { using type = Found; };
-            template <typename Found, typename Head, typename...Tail>
-            struct pick<Found, Head, Tail...>
-            {
-                using type = std::conditional_t<
-                    match<Head>::value,
-                    Head,
-                    typename pick<Found, Tail...>::type
-                >;
-            };
-            public:
-            using type = typename pick<void, Bs...>::type;
-        };
-        template <std::size_t L, typename Desc>
-        using find_out_binding = typename find_out_binding_impl<L,Desc>::type;
+        using next_unsorted = tuple_remove_t<Unsorted, found>;
+        using next_sorted = tuple_append_t<Sorted, found>;
+
+        // 递归
+        using step_case = typename topo_sort_impl<next_unsorted, next_sorted>::type;
+    public:
+        using type = std::conditional_t<
+            unsorted_empty,
+            finish_case,
+            std::conditional_t<found_any, step_case, std::false_type>
+        >;
+
+        static_assert(
+            !std::is_same_v<type, std::false_type>,
+            "Topological sort: cycle or unresolvable dependency!"
+            );
     };
-}
 
-//--------------------------------------------------------------
-// 3) Implementation: Pipeline that stores data for each node's output 
-//    and lets other nodes read it
-//--------------------------------------------------------------
+    template <typename Sorted>
+    struct topo_sort_impl<std::tuple<>, Sorted>
+    {
+        using type = Sorted;
+    };
+
+    template <typename NodeTuple>
+    struct topological_sort;
+
+    template <typename... Ns>
+    struct topological_sort<std::tuple<Ns...>>
+    {
+        using type = typename topo_sort_impl<std::tuple<Ns...>, std::tuple<>>::type;
+    };
+} // end namespace lux::cxx
+
 namespace lux::cxx
 {
-    // A "tag" to store (NodeType, out_binding<Loc,T>)
-    template <typename Node, typename OB>
-    struct NodeOutPair
+    //------------------------------------------------------------------
+    // 1) We declare a master template flatten_tuple_of_tuples<T>.
+    //    We also give a fallback for "non-tuple" T to avoid errors
+    //    when T is not a tuple at all.
+    //------------------------------------------------------------------
+    template <typename T>
+    struct flatten_tuple_of_tuples
     {
-        using node_type = Node;
-        using out_binding_type = OB;
+        // If T is NOT a tuple, just wrap T in a 1-element tuple
+        // so that flattening "does nothing" interesting:
+        using type = std::tuple<T>;
     };
 
-    // Collect all out_bindings from one Node
-    template <typename Node>
-    struct node_outputs_list
+    // 2) Specialization for the case T is exactly std::tuple<...>
+    template <typename... Ts>
+    struct flatten_tuple_of_tuples<std::tuple<Ts...>>
     {
     private:
-        using out_desc_tuple = typename Node::output_descriptor::bindings_tuple_t;
-        template <typename OB>
-        using pair_ = NodeOutPair<Node, OB>;
-
-        template <typename... Obs>
-        static auto doCollect(std::tuple<Obs...>)
+        // We flatten each element Ts one by one and "concatenate"
+        template <typename... Args>
+        static auto flatten_all(std::tuple<Args...>)
         {
-            return std::tuple< pair_<Obs>... >{};
+            // For each Arg in Args..., flatten it:
+            // flatten_tuple_of_tuples<Arg>::type
+            // then std::tuple_cat them together
+            return (std::tuple_cat(typename flatten_tuple_of_tuples<Args>::type{}...));
         }
     public:
-        using type = decltype(doCollect(std::declval<out_desc_tuple>()));
-    };
-
-    // Flatten out_bindings of multiple nodes => big tuple of NodeOutPair<...>
-    template <typename... Nodes>
-    struct all_nodes_outputs
-    {
-        template <typename N>
-        using single = typename node_outputs_list<N>::type;
-
-        static auto cat()
-        {
-            return std::tuple_cat(std::declval<single<Nodes>>()...);
-        }
-        using type = decltype(cat());
-    };
-
-    // Transform NodeOutPair<Node, out_binding<Loc,T>> => std::optional<T>
-    template <typename Pair>
-    struct output_pair_to_storage
-    {
-        using outB = typename Pair::out_binding_type;
-        using type = std::optional<typename outB::value_t>;
-    };
-
-    // Convert a tuple< NodeOutPair<...>, ...> into tuple< optional<...>, ...>
-    template <typename PairsTuple> struct to_storage_tuple;
-    template <typename... Pairs>
-    struct to_storage_tuple<std::tuple<Pairs...>>
-    {
-        using type = std::tuple< typename output_pair_to_storage<Pairs>::type ...>;
+        using type = decltype(flatten_all(std::declval<std::tuple<Ts...>>()));
     };
 
     template <typename T>
-    using to_storage_tuple_t = typename to_storage_tuple<T>::type;
+    using flatten_tuple_of_tuples_t = typename flatten_tuple_of_tuples<T>::type;
 
-    // Now for indexing:
-    // We want find_data_index<(NodeWanted, LocWanted)> => index in the big data tuple
-    template <typename Pair, typename NodeWanted, std::size_t LocWanted>
-    struct matches_pair : std::false_type {};
+    //-------------------------------------------------------
+    // 2) Filter a tuple by a boolean predicate
+    //-------------------------------------------------------
+    // Filter by a boolean predicate
+    template <typename Tuple, template <typename> class Pred>
+    struct filter_tuple;
 
-    template <typename Node, typename OB, typename NodeWanted, std::size_t LocWanted>
-    struct matches_pair< NodeOutPair<Node,OB>, NodeWanted, LocWanted >
+    template <template <typename> class Pred>
+    struct filter_tuple<std::tuple<>, Pred>
+    {
+        using type = std::tuple<>;
+    };
+
+    template <typename Head, typename... Tail, template <typename> class Pred>
+    struct filter_tuple<std::tuple<Head, Tail...>, Pred>
     {
     private:
-        static constexpr bool same_node = std::is_same_v<Node, NodeWanted>;
-        static constexpr bool same_loc  = (OB::location == LocWanted);
+        using tail_filtered = typename filter_tuple<std::tuple<Tail...>, Pred>::type;
+
+        static constexpr bool keep = Pred<Head>::value;  // <--- ‘value’ must exist
     public:
-        static constexpr bool value = (same_node && same_loc);
+        using type = std::conditional_t<
+            keep,
+            decltype(std::tuple_cat(std::declval<std::tuple<Head>>(),
+                std::declval<tail_filtered>())),
+            tail_filtered
+        >;
     };
 
-    // Search in a pack
-    template <typename PairsTuple, typename NodeWanted, std::size_t LocWanted>
-    struct find_data_index;
+    template <typename Tuple, template <typename> class Pred>
+    using filter_tuple_t = typename filter_tuple<Tuple, Pred>::type;
 
-    template <typename NodeWanted, std::size_t LocWanted>
-    struct find_data_index<std::tuple<>, NodeWanted, LocWanted>
+    // remove_if by a boolean predicate
+    template <typename Tuple, template <typename> class Pred>
+    struct remove_if_tuple;
+
+    template <template <typename> class Pred>
+    struct remove_if_tuple<std::tuple<>, Pred>
     {
-        static constexpr std::size_t value = size_t(-1);
+        using type = std::tuple<>;
     };
 
-    template <typename Head, typename... Tail, typename NodeWanted, std::size_t LocWanted>
-    struct find_data_index<std::tuple<Head, Tail...>, NodeWanted, LocWanted>
+    template <typename Head, typename... Tail, template <typename> class Pred>
+    struct remove_if_tuple<std::tuple<Head, Tail...>, Pred>
     {
-        static constexpr bool match = matches_pair<Head, NodeWanted, LocWanted>::value;
-        static constexpr std::size_t next = find_data_index<std::tuple<Tail...>, NodeWanted, LocWanted>::value;
-        static constexpr std::size_t value = match ? 0 : (next == size_t(-1) ? size_t(-1) : next+1);
-    };
+    private:
+        using tail_removed = typename remove_if_tuple<std::tuple<Tail...>, Pred>::type;
 
-    template <typename PairsTuple, typename NodeWanted, std::size_t LocWanted>
-    inline constexpr std::size_t find_data_index_v = find_data_index<PairsTuple, NodeWanted, LocWanted>::value;
-
-    //--------------------------------------------------------------
-    // A pipeline base class so that Node can store pipeline_ pointer
-    //--------------------------------------------------------------
-    struct PipelineBase
-    {
-        virtual ~PipelineBase() = default;
-    };
-
-    //--------------------------------------------------------------
-    // The actual Pipeline, templated by NodeList (layered or linear)
-    // + Resource
-    //--------------------------------------------------------------
-    template <typename NodeList, typename ResourceT>
-    class Pipeline : public PipelineBase
-    {
+        static constexpr bool remove = Pred<Head>::value;  // <--- ‘value’ must exist
     public:
-        // Step1: Flatten NodeList into a single list of node types. 
-        //        E.g. if layered => flatten.
-        //        We'll just assume user has that done. 
-        //        For demonstration, let's define a "extract_nodes" for layered or linear.
-        using all_nodes = typename extract_all_nodes<NodeList>::type;
+        using type = std::conditional_t<
+            remove,
+            // skip Head
+            tail_removed,
+            // keep Head
+            decltype(std::tuple_cat(std::declval<std::tuple<Head>>(), std::declval<tail_removed>()))
+        >;
+    };
 
-        // Step2: all_nodes_outputs => tuple of NodeOutPair<...>
-        using all_outputs_tuple = typename all_nodes_outputs< all_nodes_as_types<all_nodes>... >::type;
-            // ^ we'll define a helper all_nodes_as_types<all_nodes>
-        // Step3: transform => data_ is a tuple< optional<T>... >
-        using data_storage_t = to_storage_tuple_t<all_outputs_tuple>;
+    template <typename Tuple, template <typename> class Pred>
+    using remove_if_tuple_t = typename remove_if_tuple<Tuple, Pred>::type;
 
-        // We'll hold an instance of ResourceT, plus a node container, plus data_.
-        Pipeline()
+    //-------------------------------------------------------
+    // 4) The layered topological sort:
+    //    layered_topo_sort_impl<Unsorted, SoFarGroups> => next SoFarGroups
+    //-------------------------------------------------------
+    // The recursive layer-building
+    template <typename Unsorted, typename SoFarGroups>
+    struct layered_topo_sort_impl
+    {
+    private:
+        static constexpr bool is_empty = (std::tuple_size_v<Unsorted> == 0);
+        using finished_case = SoFarGroups;
+
+        // Flatten all previous layers to find what is "already satisfied"
+        using FlattenedSoFar = flatten_tuple_of_tuples_t<SoFarGroups>;
+
+        // We want to pick ALL nodes in Unsorted whose dependencies are satisfied by FlattenedSoFar
+        // We'll do that by a "predicate" that returns true if a node can run now.
+        template <typename N>
+        struct can_run_now
         {
+            static constexpr bool value =
+                dependencies_in_sorted<N, FlattenedSoFar>::value;
+        };
+
+        using next_group = filter_tuple_t<Unsorted, can_run_now>; // All that can run now
+        static constexpr bool next_group_empty = (std::tuple_size_v<next_group> == 0);
+
+        // We'll remove them from Unsorted
+        template <typename N>
+        struct remove_if_can_run
+        {
+            static constexpr bool value =
+                dependencies_in_sorted<N, FlattenedSoFar>::value;
+        };
+        using next_unsorted = remove_if_tuple_t<Unsorted, remove_if_can_run>;
+
+        // If next_group is empty but we still have unsorted => cycle
+        static constexpr bool have_unsorted = (std::tuple_size_v<Unsorted> != 0);
+
+        // Append next_group as the next layer
+        using appended_groups =
+            decltype(std::tuple_cat(std::declval<SoFarGroups>(),
+                std::declval<std::tuple<next_group>>()));
+
+        // Recurse
+        using step_case = typename layered_topo_sort_impl<next_unsorted, appended_groups>::type;
+
+    public:
+        using type = std::conditional_t<
+            is_empty,
+            // no more nodes => finished
+            finished_case,
+            // otherwise either produce next layer or error
+            std::conditional_t<
+            (next_group_empty&& have_unsorted),
+            // cycle => error
+            std::false_type,
+            // otherwise continue
+            step_case
+            >
+        >;
+
+        static_assert(
+            !std::is_same_v<type, std::false_type>,
+            "Layered topological sort: cycle or unresolvable dependency!"
+            );
+    };
+
+    // Base case: if Unsorted is empty, we’re done
+    template <typename SoFarGroups>
+    struct layered_topo_sort_impl<std::tuple<>, SoFarGroups>
+    {
+        using type = SoFarGroups;
+    };
+
+    // Convenience front-end
+    template <typename NodeTuple>
+    struct layered_topological_sort
+    {
+        using type = typename layered_topo_sort_impl<NodeTuple, std::tuple<>>::type;
+    };
+} // end namespace lux::cxx
+
+//===============================================================
+//  A "Pipeline" that can run either a linear or layered sort
+//
+//  Key differences from the previous snippet:
+//  - We store only unique_ptr<NodeA>, unique_ptr<NodeB>, ...
+//  - For layered sorts, we do a *two-level* compile-time iteration:
+//    outer loop => each sub-tuple of nodes in the layer
+//    inner loop => each node type in that sub-tuple
+//  - Removed the "apply_one" references and the runtime-lambda
+//    capturing "layerTag". Instead we do pure type-based iteration.
+//
+//===============================================================
+namespace lux::cxx
+{
+    template <typename T>
+    struct is_tuple_of_tuples : std::false_type {};
+
+    template <typename... Layers>
+    struct is_tuple_of_tuples<std::tuple<Layers...>>
+    {
+    private:
+        static constexpr bool all_are_tuples = (... && is_tuple_v<Layers>);
+    public:
+        static constexpr bool value = (sizeof...(Layers) > 0) && all_are_tuples;
+    };
+
+    template <typename T>
+    inline constexpr bool is_tuple_of_tuples_v = is_tuple_of_tuples<T>::value;
+
+    //---------------------------------------------
+    // "Flatten" T so that we have one unique_ptr
+    // per Node type. E.g. if T = std::tuple<NodeA, NodeB>,
+    // or T = std::tuple<std::tuple<NodeA>, std::tuple<NodeB,NodeC>> => flatten => NodeA,B,C
+    //---------------------------------------------
+    template <typename T>
+    struct flatten_tuple_types; // produce std::tuple<NodeA, NodeB, NodeC> from layered
+
+    // If T is just a node, treat it like a single-element tuple
+    template <typename Node>
+    struct flatten_tuple_types<std::tuple<Node>>
+    {
+        using type = std::tuple<Node>;
+    };
+
+    // If T is already a tuple-of-nodes, we can just use T directly
+    //   but be careful if T might itself be a layered structure
+    template <typename... Ts>
+    struct flatten_tuple_types<std::tuple<Ts...>>
+    {
+    private:
+        // For each Ts, flatten if needed
+        template <typename X>
+        struct flatten_one : flatten_tuple_types<std::tuple<X>> {};
+
+        // If X is itself a tuple, flatten that
+        template <typename... Sub>
+        struct flatten_one<std::tuple<Sub...>> : flatten_tuple_types<std::tuple<Sub...>> {};
+
+        // cat them
+        template <typename... Xs>
+        static auto cat_all(std::tuple<Xs...>)
+        {
+            return (std::tuple_cat(typename flatten_one<Xs>::type{}...));
+        }
+
+    public:
+        using type = decltype(cat_all(std::declval<std::tuple<Ts...>>()));
+    };
+
+    template <typename T>
+    using flatten_tuple_types_t = typename flatten_tuple_types<T>::type;
+
+
+    // Now produce a single storage tuple: e.g. std::tuple<std::unique_ptr<NodeA>, ...>
+    template <typename T>
+    struct unique_ptr_storage
+    {
+    private:
+        using flattened_nodes = flatten_tuple_types_t<T>;
+        // e.g. if T = layered, we end up with NodeA, NodeB, NodeC in a single std::tuple<...>
+    public:
+        using type = std::conditional_t<
+            std::tuple_size_v<flattened_nodes> == 0,
+            std::tuple<>, // no nodes
+            std::tuple<std::unique_ptr<std::tuple_element_t<0, flattened_nodes>>,
+            std::unique_ptr<std::tuple_element_t<1, flattened_nodes>>,
+            // ...
+            std::unique_ptr<std::tuple_element_t<std::tuple_size_v<flattened_nodes>-1, flattened_nodes>>
+            >
+        >;
+        // In practice, you want a pack expansion. Let's do that more properly with a helper:
+    };
+
+    // Actually let's define a short helper using a pack expansion:
+    template <typename... Ns>
+    struct make_unique_ptr_tuple
+    {
+        using type = std::tuple<std::unique_ptr<Ns>...>;
+    };
+
+    // We can combine them:
+    template <typename T>
+    struct unique_ptr_storage2
+    {
+    private:
+        using flat = flatten_tuple_types_t<T>; // NodeA, NodeB, NodeC...
+        template <typename> struct to_uptrs;
+        template <typename... Ns>
+        struct to_uptrs<std::tuple<Ns...>>
+        {
+            using type = std::tuple<std::unique_ptr<Ns>...>;
+        };
+    public:
+        using type = typename to_uptrs<flat>::type;
+    };
+
+    template <typename T>
+    using unique_ptr_storage_t = typename unique_ptr_storage2<T>::type;
+
+    //=========================================================
+    // A compile-time "for_each_type" that calls a templated functor
+    //   - We do not pass any runtime object, we pass the type in a template call
+    //=========================================================
+    namespace detail
+    {
+        template <typename Tuple, typename Func, std::size_t... I>
+        void for_each_type_impl(Func&& f, std::index_sequence<I...>)
+        {
+            // We'll call f.template operator()<std::tuple_element_t<I, Tuple>>()... 
+            // or a lambda that has a template operator()<Type>()...
+            ((void)(f.template operator() < std::tuple_element_t<I, Tuple> > ()), ...);
+        }
+    }
+
+    template <typename Tuple, typename Func>
+    void for_each_type(Func&& f)
+    {
+        detail::for_each_type_impl<Tuple>(
+            std::forward<Func>(f),
+            std::make_index_sequence<std::tuple_size_v<Tuple>>{}
+        );
+    }
+
+    //=========================================================
+    // The Pipeline
+    //=========================================================
+    template <typename TopoResult, typename ResourceT>
+    class Pipeline
+    {
+    public:
+        using topo_type = TopoResult;            // might be linear or layered
+        using storage_type = unique_ptr_storage_t<topo_type>;
+
+        Pipeline() {
             resource_ = std::make_unique<ResourceT>();
         }
 
         ResourceT& getResource() { return *resource_; }
+        const ResourceT& getResource() const { return *resource_; }
 
-        // We'll hold each node in a std::unique_ptr, same as your existing approach:
-        using node_storage_t = create_node_storage<all_nodes>; // define below
-
-        // setNode / emplaceNode => same idea
-        template <typename NodeT, typename... Args>
-        NodeT* emplaceNode(Args&&... args)
+        // setNode / emplaceNode
+        template <typename NodeType>
+        void setNode(std::unique_ptr<NodeType> ptr)
         {
-            auto p = std::make_unique<NodeT>(std::forward<Args>(args)...);
-            // Store pipeline_ pointer
-            p->pipeline_ = this;
-            auto raw = p.get();
-            std::get<std::unique_ptr<NodeT>>(nodes_) = std::move(p);
-            return raw;
+            // For NodeType, find that unique_ptr<NodeType> in storage_type
+            std::get<std::unique_ptr<NodeType>>(nodes_) = std::move(ptr);
         }
 
-        // We'll define run() etc. just do linear for brevity
+        template <typename NodeType, typename... Args>
+        void emplaceNode(Args&&... args)
+        {
+            auto p = std::make_unique<NodeType>(std::forward<Args>(args)...);
+            setNode(std::move(p));
+        }
+
+        // The main "run"
         void run()
         {
-            // For each node in topological order, call node->execute()
-            // skipping layered specifics for brevity
-            // (You can adapt from your existing "layered run" or "linear run".)
-
-            doRun<all_nodes>();
-        }
-
-        //----------------------------------------------------------
-        // The function that Node's getInputRef / getOutputRef call
-        //   doGetOutputRef<T, NodeType, OutLoc>(this)
-        //   => returns a reference to data_[the correct index]
-        //----------------------------------------------------------
-        template <typename T, typename NodeType, std::size_t OutLoc>
-        T& doGetOutputRef(void* pipelineSelf)
-        {
-            auto* self = static_cast<Pipeline*>(pipelineSelf);
-            static constexpr std::size_t idx = find_data_index_v<all_outputs_tuple, NodeType, OutLoc>;
-            static_assert(idx != size_t(-1), "Cannot find (NodeType, OutLoc) in data storage!");
-            // data_ is e.g. std::tuple<optional<T1>, optional<T2>, ...>
-            // We want get<idx>(data_).value()
-            auto& opt = std::get<idx>(self->data_);
-            if(!opt.has_value()) {
-                opt.emplace(); // default-construct
+            // Distinguish layered or linear at compile time
+            if constexpr (is_tuple_of_tuples_v<topo_type>) {
+                // layered => each element is a sub-tuple of node types
+                runLayered<topo_type>();
             }
-            return opt.value();
-        }
-
-        template <typename T, typename NodeType, std::size_t InLoc>
-        T& doGetInputRef(void* pipelineSelf)
-        {
-            auto* self = static_cast<Pipeline*>(pipelineSelf);
-            // We must see which node+outloc produces NodeType's input InLoc
-            // => from NodeType::mapping_tuple
-            // e.g. node_dependency_map<InLoc, DepNode, DepOutLoc>
-            // We find the map with InLoc that matches. 
-            // For simplicity, we assume there's exactly one such map. 
-            using dep_map = find_dependency_map<InLoc, typename NodeType::mapping_tuple>;
-            using DepNode = typename dep_map::dependency_node_t;
-            static constexpr size_t DepLoc = dep_map::dep_output_location;
-            // So we want doGetOutputRef< T, DepNode, DepLoc >
-            static constexpr std::size_t idx = find_data_index_v<all_outputs_tuple, DepNode, DepLoc>;
-            auto& opt = std::get<idx>(self->data_);
-            assert(opt.has_value() && "Input depends on a node that hasn't produced data yet!");
-            // Return reference
-            return opt.value();
+            else {
+                // linear => direct tuple of node types
+                runLinear<topo_type>();
+            }
         }
 
     private:
         std::unique_ptr<ResourceT> resource_;
-        node_storage_t             nodes_;
-        data_storage_t             data_;
-
-        // "doRun" can do a simple linear expansion
-        template <typename TList> void doRun();
+        storage_type               nodes_; // e.g. std::tuple<std::unique_ptr<NodeA>, NodeB, ...>
 
     private:
-        //----------------------------------------------------------
-        //  A) We need "extract_all_nodes" from NodeList
-        //----------------------------------------------------------
-        // If NodeList is a single tuple of NodeA, NodeB => done
-        // If NodeList is layered => a tuple< std::tuple<NodeA>, std::tuple<NodeB,NodeC>, ... >
-        // we flatten it
-        template <typename T> struct extract_all_nodes;
-        
-        // If T is just a std::tuple<Node...> => done
-        template <typename... Ns>
-        struct extract_all_nodes<std::tuple<Ns...>>
+        //------------------------------------------------
+        // runLinear<SomeTupleOfNodes> => expands each Node
+        //------------------------------------------------
+        template <typename NodeTuple>
+        void runLinear()
         {
-            using type = std::tuple<Ns...>;
-        };
-
-        // If T is a tuple of tuples => flatten 
-        template <typename... Layers>
-        struct extract_all_nodes<std::tuple<std::tuple<Layers...>>>
-        {
-            // Actually we might have multiple layers
-            // We'll do a recursive approach, or just do a partial approach for brevity
-            // Let's keep it simple for demonstration
-            using type = std::tuple<Layers...>; // single layer
-        };
-
-        // If truly layered, you'd do more recursion
-
-        //----------------------------------------------------------
-        //  B) We define create_node_storage => std::tuple<std::unique_ptr<NodeA>, ...>
-        //----------------------------------------------------------
-        template <typename T> struct create_node_storage_impl;
-        template <typename... Ns>
-        struct create_node_storage_impl<std::tuple<Ns...>>
-        {
-            using type = std::tuple< std::unique_ptr<Ns>... >;
-        };
-
-        template <typename T>
-        using create_node_storage = typename create_node_storage_impl<T>::type;
-
-        //----------------------------------------------------------
-        //  C) We define find_dependency_map<InLoc, MappingTuple> 
-        //     => e.g. node_dependency_map<InLoc, DepNode, OutLoc>
-        //----------------------------------------------------------
-        template <std::size_t L, typename MapsTuple> struct find_dependency_map_impl
-        {
-            using type = void;
-        };
-        template <std::size_t L, typename... Ms>
-        struct find_dependency_map_impl<L, std::tuple<Ms...>>
-        {
-        private:
-            template <typename M> struct is_match : std::false_type {};
-            template <std::size_t IL, typename DN, std::size_t OL>
-            struct is_match< node_dependency_map<IL, DN, OL> >
-              : std::bool_constant<(IL==L)> {}; 
-
-            template <typename Found, typename...Ts>
-            struct pick { using type = Found; };
-            template <typename Found, typename Head, typename...Tail>
-            struct pick<Found, Head, Tail...>
+            // NodeTuple might be e.g. std::tuple<NodeA, NodeB, NodeC>.
+            // We'll do a compile-time for-each of those node types.
+            for_each_type<NodeTuple>([this]
+                <typename NodeT>() // NodeT is e.g. NodeA
             {
-                static constexpr bool match = is_match<Head>::value;
-                using maybe = std::conditional_t<match, Head, Found>;
-                using type = typename pick<maybe, Tail...>::type;
-            };
-        public:
-            using type = typename pick<void, Ms...>::type;
-        };
-        template <std::size_t L, typename Maps>
-        using find_dependency_map = typename find_dependency_map_impl<L, Maps>::type;
-    };
-
-    // The doRun for "all_nodes" linear
-    template <typename NodeList, typename ResourceT>
-    template <typename TList>
-    void Pipeline<NodeList,ResourceT>::doRun()
-    {
-        // TList is e.g. std::tuple<NodeA, NodeB, NodeC>
-        doRunImpl<TList>(std::make_index_sequence<std::tuple_size_v<TList>>{});
-    }
-
-    template <typename NodeList, typename ResourceT>
-    template <typename TList>
-    void Pipeline<NodeList,ResourceT>::doRunImpl(std::index_sequence<>) 
-    {
-        // end
-    }
-
-    template <typename NodeList, typename ResourceT>
-    template <typename TList>
-    void Pipeline<NodeList,ResourceT>::doRunImpl(std::index_sequence<0>)
-    {
-        // 1-element
-        using N0 = std::tuple_element_t<0,TList>;
-        auto& nptr = std::get<std::unique_ptr<N0>>(nodes_);
-        if (nptr) {
-            nptr->execute();
+                auto& uptr = std::get<std::unique_ptr<NodeT>>(nodes_);
+                if (uptr) {
+                    uptr->execute();
+                }
+            });
         }
-    }
 
-    template <typename NodeList, typename ResourceT>
-    template <typename TList>
-    void Pipeline<NodeList,ResourceT>::doRunImpl(std::index_sequence<0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15> /*some big pack*/)
-    {
-        // You can generalize for N elements. For brevity, let's do a fold expression or recursion.
-        // Real code can do a simple recursion or "for_each_type" approach.
-        // We'll do a naive approach:
-        static constexpr size_t Count = std::tuple_size_v<TList>;
-        runOne<0,Count-1, TList>();
-    }
-
-    // Because this snippet is already huge, let's just do a small approach:
-    // In real code, you'd do a normal "for index in [0..Count-1]" approach.
-
-    template <typename NodeList, typename ResourceT>
-    template <typename TList, size_t I, size_t N>
-    void Pipeline<NodeList,ResourceT>::runOne()
-    {
-        if constexpr (I < N+1)
+        //------------------------------------------------
+        // runLayered<LayeredTuple> => each element is itself a tuple of Node types
+        // e.g. std::tuple<std::tuple<NodeA>, std::tuple<NodeB, NodeC>, std::tuple<NodeD>>
+        // We'll do a compile-time for-each to run runLinear on each sub-tuple
+        //------------------------------------------------
+        template <typename LayeredTuple>
+        void runLayered()
         {
-            using NodeT = std::tuple_element_t<I,TList>;
-            auto& nptr = std::get<std::unique_ptr<NodeT>>(nodes_);
-            if (nptr) {
-                nptr->execute();
-            }
-            runOne<I+1,N,TList>();
+            // for each layer type => runLinear on that layer
+            for_each_type<LayeredTuple>([this]
+                <typename Layer>() // Layer is e.g. std::tuple<NodeB, NodeC>
+            {
+                runLinear<Layer>();
+            });
         }
-    }
+    };
 } // end namespace lux::cxx

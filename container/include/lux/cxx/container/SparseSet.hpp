@@ -85,7 +85,7 @@ namespace lux::cxx
         /**
          * @brief Removes all elements from the set.
          *
-         * After clearing, the set will be empty, and the sparse array will also be cleared.
+         * After clearing, the set will be empty, and the sparse array will also be cleared.git 
          */
         void clear()
         {
