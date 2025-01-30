@@ -4,10 +4,14 @@
 
 namespace lux::cxx
 {
-	template<class T>
-	struct is_tuple : public is_type_template_of<std::tuple, T> {};
+	template <class T>
+    struct is_tuple : std::false_type {};
 
-	template<class T> constexpr bool is_tuple_v = is_tuple<T>::value;
+    template <class... Args>
+    struct is_tuple<std::tuple<Args...>> : std::true_type {};
+
+    template <class T>
+    inline constexpr bool is_tuple_v = is_tuple<T>::value;
 
 	struct tuple_traits
 	{
@@ -176,4 +180,42 @@ namespace lux::cxx
 
 	template <typename... Tuples>
 	using merge_and_remove_duplicates_t = typename merge_and_remove_duplicates<Tuples...>::type;
+
+	template<typename Tuple, typename T>
+	struct tuple_remove;
+
+	template <typename T>
+    struct tuple_remove<std::tuple<>, T>
+    {
+        using type = std::tuple<>;
+    };
+
+    template <typename Head, typename... Tail, typename T>
+    struct tuple_remove<std::tuple<Head, Tail...>, T>
+    {
+    private:
+        using tail_removed = typename tuple_remove<std::tuple<Tail...>, T>::type;
+    public:
+        using type = std::conditional_t<
+            std::is_same_v<Head, T>,
+            tail_removed,
+            decltype(std::tuple_cat(std::declval<std::tuple<Head>>(),
+                                    std::declval<tail_removed>()))
+        >;
+    };
+
+    template <typename Tup, typename T>
+    using tuple_remove_t = typename tuple_remove<Tup,T>::type;
+
+	template<typename Tuple, typename T>
+	struct tuple_append;
+
+	template <typename... Ts, typename T>
+    struct tuple_append<std::tuple<Ts...>, T>
+    {
+        using type = std::tuple<Ts..., T>;
+    };
+
+    template <typename Tup, typename T>
+    using tuple_append_t = typename tuple_append<Tup, T>::type;
 }

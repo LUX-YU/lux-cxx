@@ -8,3 +8,14 @@ target_link_libraries(
     PRIVATE
     compile_time
 )
+
+add_executable(
+    computer_graph_test
+    computer_graph_test.cpp
+)
+
+target_link_libraries(
+    computer_graph_test
+    PRIVATE
+    compile_time
+)
