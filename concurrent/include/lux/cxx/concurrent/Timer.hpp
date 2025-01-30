@@ -20,7 +20,8 @@ namespace lux::cxx
             	stop_flag_ = true;
         	}
         	cv_.notify_all();
-        	timer_thread_.join();
+			if (timer_thread_.joinable())
+        	    timer_thread_.join();
         }
 
 		void addTimer(const int delay_ms, std::function<void()> task)

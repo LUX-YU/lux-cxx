@@ -8,6 +8,12 @@
 #include "BlockingQueue.hpp"
 #include <lux/cxx/compile_time/move_only_function.hpp>
 
+#define ENABLE_EXCEPTIONS 1
+
+#ifdef ENABLE_EXCEPTIONS
+#include <exception>
+#endif
+
 namespace lux::cxx
 {
     class ThreadPool
@@ -68,7 +74,8 @@ namespace lux::cxx
 			std::promise<RetType> promise;
 			std::future<RetType> future = promise.get_future();
 			Task wrapper_task = [promise = std::move(promise), func = std::forward<Func>(func), args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
-				try {
+#ifdef ENABLE_EXCEPTIONS
+                try {
 					if constexpr (std::is_void_v<RetType>) {
 						std::apply(func, args);
 						promise.set_value();
@@ -78,6 +85,15 @@ namespace lux::cxx
 				} catch (...) {
 					promise.set_exception(std::current_exception());
 				}
+#else
+                if constexpr (std::is_void_v<RetType>) {
+                    std::apply(func, args);
+                    promise.set_value();
+                }
+                else {
+                    promise.set_value(std::apply(func, args));
+                }
+#endif
 			};
 
     		if(! _tasks.push(std::move(wrapper_task)))

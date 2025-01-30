@@ -176,16 +176,14 @@ namespace lux::cxx
             tuple_traits::for_each_type<NodeTuple>(
                 [this, &futures] <typename NodeT, size_t I>()
                 {
-                    auto& uptr = std::get<std::unique_ptr<NodeT>>(nodes_);
-                    if (uptr) {
-                        // Submit the node->execute() job to the thread pool
-                        auto fut = pool_.submit(
-                            [this, nodePtr = uptr.get()] {
-                                nodePtr->execute(*this);
-                            }
-                        );
-                        futures.push_back(std::move(fut));
-                    }
+                    // Submit the node->execute() job to the thread pool
+                    auto fut = pool_.submit(
+                        [this] {
+                            auto& uptr = std::get<std::unique_ptr<NodeT>>(nodes_);
+                            uptr->execute(*this);
+                        }
+                    );
+                    futures.push_back(std::move(fut));
                 }
             );
 

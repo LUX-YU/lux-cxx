@@ -58,7 +58,10 @@ namespace lux::cxx
         using mapping_tuple = std::tuple<Mapping...>;
 
         // Default execute method (can be overridden by derived classes)
-        void execute() {}
+        template<typename Pipeline>
+        void execute(Pipeline& pipeline) {
+			static_cast<Derived*>(this)->execute(pipeline);
+        }
     };
 }
 

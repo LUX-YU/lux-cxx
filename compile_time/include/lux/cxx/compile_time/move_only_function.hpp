@@ -70,7 +70,7 @@ namespace lux::cxx
          */
         template <class F, class = std::enable_if_t<
                 std::is_invocable_r_v<R, F&, Args...>>>
-        move_only_function(F &&f)
+        move_only_function(F&& f)
             : _manager(nullptr)
         {
             _emplace(std::forward<F>(f));
@@ -280,8 +280,7 @@ namespace lux::cxx
             else
             {
                 // Dynamic allocation
-                char *mem = new char[sizeof(decayF)];
-                new (mem) decayF(std::forward<F>(f)); // Placement-new on the allocated memory
+                decayF* mem = new decayF(std::forward<F>(f));
 
                 _storage.ptr = mem;
                 static const manager s_manager = {
