@@ -41,3 +41,14 @@ target_link_libraries(
     PRIVATE
     concurrent
 )
+
+add_executable(
+    parallel_pipeline_test
+    parallel_pipeline_test.cpp
+)
+
+target_link_libraries(
+    parallel_pipeline_test
+    PRIVATE
+    concurrent
+)
