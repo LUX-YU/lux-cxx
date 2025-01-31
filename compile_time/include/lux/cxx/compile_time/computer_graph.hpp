@@ -423,7 +423,7 @@ namespace lux::cxx
 }
 
 // ==============================================================
- // Node Output Storage: (Node, out_binding<Loc,T>) => std::optional<T>
+ // Node Output Storage: (Node, out_binding<Loc,T>) => value
  // ==============================================================
 namespace lux::cxx
 {
@@ -476,7 +476,7 @@ namespace lux::cxx
     template <typename Pair>
     struct pair_to_val
     {
-        using OB = typename Pair::out_binding_type;
+        using OB   = typename Pair::out_binding_type;
         using type = typename OB::value_t;
     };
 
@@ -573,11 +573,11 @@ namespace lux::cxx
         using Flattened = flatten_tuple_of_tuples_t<TopoResult>;
 
         // 3) Gather all output bindings from the flattened nodes into DataStorage
-        //    DataStorage is a tuple of std::optional<T> for each (Node, out_binding)
+        //    DataStorage is a tuple of value for each (Node, out_binding)
         template <typename... Ns>
         struct gather_impl
         {
-            using big = typename gather_all_outputs<Ns...>::type;
+            using big    = typename gather_all_outputs<Ns...>::type;
             using data_t = typename pairs_to_data<big>::type;
         };
 
@@ -672,7 +672,7 @@ namespace lux::cxx
 
     private:
         std::unique_ptr<Resource> resource_; // Resource managed by the pipeline
-        DataStorage               data_;      // Stores all (Node, outLoc) => std::optional<T>
+        DataStorage               data_;      // Stores all (Node, outLoc) => value
         NodePtrStorage            nodes_;     // Stores pointers to the nodes
 
     private:
