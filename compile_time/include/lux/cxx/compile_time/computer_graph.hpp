@@ -5,6 +5,7 @@
 #include <iostream>
 #include <cassert>
 #include <string>
+#include <array>
 
 #include "tuple_traits.hpp"
 
@@ -45,6 +46,35 @@ namespace lux::cxx
         static constexpr std::size_t dep_output_location = OutLoc;
     };
 
+    template<typename Descriptor>
+    class descriptor_to_params
+    {
+    private:
+        static constexpr std::size_t N = std::tuple_size_v<typename Descriptor::bindings_tuple_t>;
+        template<size_t... I>
+        // to a tuple with references to the value types of the bindings
+        static constexpr auto to_tuple(std::index_sequence<I...>)
+            -> std::tuple<typename std::tuple_element_t<I, typename Descriptor::bindings_tuple_t>::value_t&...>;
+
+    public:
+        using type = decltype(to_tuple(std::make_index_sequence<N>{}));
+    };
+
+    template<typename Descriptor>
+    class descriptor_to_locations
+    {
+    private:
+        static constexpr std::size_t N = std::tuple_size_v<typename Descriptor::bindings_tuple_t>;
+
+        template<size_t... I>
+        static constexpr auto to_array(std::index_sequence<I...>) {
+            return std::array<size_t, N>{std::tuple_element_t<I, typename Descriptor::bindings_tuple_t>::location...};
+        }
+
+    public:
+        static constexpr std::array<size_t, N> loc_seq = to_array(std::make_index_sequence<N>{});
+    };
+
     // CRTP (Curiously Recurring Template Pattern) base class for nodes
     // Derived classes should implement Derived::execute(Pipeline&) with the actual logic
     template<typename Derived,
@@ -53,21 +83,23 @@ namespace lux::cxx
         typename... Mapping>
     struct NodeBase
     {
-        using input_descriptor = InDesc;
+        using input_descriptor  = InDesc;
         using output_descriptor = OutDesc;
-        using mapping_tuple = std::tuple<Mapping...>;
+        using mapping_tuple     = std::tuple<Mapping...>;
+
+        using in_param_t                    = typename descriptor_to_params<InDesc>::type;
+        static constexpr auto in_loc_seq    = descriptor_to_locations<InDesc>::loc_seq;
+
+        using out_param_t                   = typename descriptor_to_params<OutDesc>::type;
+        static constexpr auto out_loc_seq   = descriptor_to_locations<OutDesc>::loc_seq;
 
         // Default execute method (can be overridden by derived classes)
-        template<typename Pipeline>
-        void execute(Pipeline& pipeline) {
-			static_cast<Derived*>(this)->execute(pipeline);
+        void execute(const in_param_t& in, out_param_t& out) {
+			static_cast<Derived*>(this)->execute(in, out);
         }
     };
 }
 
-// ==============================================================
- // 3) Linear Topological Sorting
- // ==============================================================
 namespace lux::cxx
 {
     // Extracts dependencies of a node
@@ -440,20 +472,20 @@ namespace lux::cxx
         using type = decltype(catAll<Nodes...>());
     };
 
-    // Transforms a NodeOutPair into an std::optional of its value type
+    // Transforms a NodeOutPair into a value of its value type
     template <typename Pair>
-    struct pair_to_optional
+    struct pair_to_val
     {
         using OB = typename Pair::out_binding_type;
-        using type = std::optional<typename OB::value_t>;
+        using type = typename OB::value_t;
     };
 
-    // Transforms a tuple of NodeOutPairs into a tuple of std::optional types
+    // Transforms a tuple of NodeOutPairs into a tuple of value types
     template <typename T> struct pairs_to_data;
     template <typename... Ps>
     struct pairs_to_data<std::tuple<Ps...>>
     {
-        using type = std::tuple<typename pair_to_optional<Ps>::type ...>;
+        using type = std::tuple<typename pair_to_val<Ps>::type ...>;
     };
 
     // Matches a specific Node and output location within a NodeOutPair
@@ -619,10 +651,10 @@ namespace lux::cxx
             static constexpr size_t depLoc = map::dep_output_location;
 
             // Find the index of the dependency node's output in DataStorage
-            constexpr size_t i = findIndex<DepNode, depLoc>();
-            auto& opt = std::get<i>(data_);
-            assert(opt.has_value()); // Ensure the dependency has been computed
-            return opt.value();
+            constexpr size_t I = findIndex<DepNode, depLoc>();
+            // auto& opt = std::get<I>(data_);
+            // assert(opt.has_value()); // Ensure the dependency has been computed
+            return std::get<I>(data_);
         }
 
         // Nodes can write output using this method
@@ -630,12 +662,12 @@ namespace lux::cxx
         template <typename NodeT, std::size_t OutLoc, typename T>
         T& getOutputRef()
         {
-            constexpr size_t i = findIndex<NodeT, OutLoc>();
-            auto& opt = std::get<i>(data_);
-            if (!opt.has_value()) {
-                opt.emplace();
-            }
-            return opt.value();
+            constexpr size_t I = findIndex<NodeT, OutLoc>();
+            // auto& opt = std::get<i>(data_);
+            // if (!opt.has_value()) {
+            //     opt.emplace();
+            // }
+            return std::get<I>(data_);
         }
 
     private:
@@ -694,6 +726,44 @@ namespace lux::cxx
         };
 
     private:
+        template <typename N>
+        auto build_in_param()
+        {
+            constexpr size_t numInputs = std::tuple_size_v<typename N::in_param_t>;
+            return build_in_param_impl<N>(std::make_index_sequence<numInputs>{});
+        }
+
+        template <typename N, size_t... I>
+        auto build_in_param_impl(std::index_sequence<I...>)
+        {
+            using in_tuple_t = typename N::in_param_t;
+            return in_tuple_t {
+                getInputRef<N,
+                            N::in_loc_seq[I],
+                            std::remove_reference_t<std::tuple_element_t<I, in_tuple_t>> >()
+                ...
+            };
+        }
+
+        template <typename N>
+        auto build_out_param()
+        {
+            constexpr size_t numOutputs = std::tuple_size_v<typename N::out_param_t>;
+            return build_out_param_impl<N>(std::make_index_sequence<numOutputs>{});
+        }
+
+        template <typename N, size_t... I>
+        auto build_out_param_impl(std::index_sequence<I...>)
+        {
+            using out_tuple_t = typename N::out_param_t;
+            return out_tuple_t{
+                getOutputRef<N,
+                             N::out_loc_seq[I],
+                             std::remove_reference_t<std::tuple_element_t<I, out_tuple_t>> >()
+                ...
+            };
+        }
+
         // Executes nodes in a linear order
         template <typename NodeTuple>
         void runLinear()
@@ -715,9 +785,11 @@ namespace lux::cxx
         {
             constexpr size_t idx = findNodeIndex<N>();
             auto& uptr = std::get<idx>(nodes_);
-            if (uptr) {
-                uptr->execute(*this); // Calls Derived::execute(Pipeline&)
-            }
+
+            auto in  = build_in_param<N>();
+            auto out = build_out_param<N>();
+
+            uptr->execute(in, out); // Calls Derived::execute(Pipeline&)
         }
 
         // Executes nodes in layered order
@@ -733,7 +805,7 @@ namespace lux::cxx
         void runLayersImpl(std::index_sequence<I...>)
         {
             // Execute each layer sequentially
-            (runLinear< std::tuple_element_t<I, LayeredTup> >(), ...);
+            (runLinear<std::tuple_element_t<I, LayeredTup> >(), ...);
         }
     };
 }
