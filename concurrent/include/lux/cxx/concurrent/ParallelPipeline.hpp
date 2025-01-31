@@ -19,7 +19,7 @@ namespace lux::cxx
         using Flattened = flatten_tuple_of_tuples_t<TopoResult>;
 
         // 3) Gather all output bindings from the flattened nodes into DataStorage
-        //    DataStorage is a tuple of std::optional<T> for each (Node, out_binding)
+        //    DataStorage is a tuple of value for each (Node, out_binding)
         template <typename... Ns>
         struct gather_impl
         {
@@ -37,7 +37,7 @@ namespace lux::cxx
             using data_t = typename gather_impl<Ns...>::data_t;
         };
 
-        // 这里就是存储全部输出的 optional<T> 的 tuple
+        // 这里就是存储全部输出的  的 tuple
         using DataStorage = typename gather_nodes_outs<Flattened>::data_t;
 
         // 存储节点指针: std::tuple< std::unique_ptr<NodeA>, std::unique_ptr<NodeB>, ...>
@@ -95,9 +95,8 @@ namespace lux::cxx
 
         //==============================================================
         // getInputRef / getOutputRef
-        //  - 同串行 Pipeline 中一样，对 std::optional<T> 做访问
+        //  - 同串行 Pipeline 中一样，对  做访问
         //==============================================================
-
         template <typename NodeT, std::size_t InLoc, typename T>
         T& getInputRef()
         {
@@ -107,11 +106,6 @@ namespace lux::cxx
 
             // Find the index of the dependency node's output in DataStorage
             constexpr size_t I = findIndex<DepNode, depLoc>();
-            // auto& opt = std::get<i>(data_);
-            // 这里可选加 assert 检查
-            // if (!opt.has_value()) {
-            //     throw std::runtime_error("Dependency not fulfilled yet?");
-            // }
             return std::get<I>(data_); // T&
         }
 
@@ -119,11 +113,6 @@ namespace lux::cxx
         T& getOutputRef()
         {
             constexpr size_t I = findIndex<NodeT, OutLoc>();
-            // auto& opt = std::get<i>(data_);
-            // if (!opt.has_value())
-            // {
-            //     opt.emplace();  // 构造默认值
-            // }
             return std::get<I>(data_); // T&
         }
 

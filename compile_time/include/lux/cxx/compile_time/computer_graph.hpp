@@ -10,7 +10,7 @@
 #include "tuple_traits.hpp"
 
 // ==============================================================
- // 2) Node Basics: in_binding / out_binding / node_dependency_map / NodeBase
+ // Node Basics: in_binding / out_binding / node_dependency_map / NodeBase
  // ==============================================================
 namespace lux::cxx
 {
@@ -245,7 +245,7 @@ namespace lux::cxx
 }
 
 // ==============================================================
- // 4) Layered Topological Sorting
+ // Layered Topological Sorting
  // ==============================================================
 namespace lux::cxx
 {
@@ -400,7 +400,7 @@ namespace lux::cxx
 }
 
 // ==============================================================
- // 5) Helpers: Detecting Whether It's a Tuple of Tuples
+ // Helpers: Detecting Whether It's a Tuple of Tuples
  // ==============================================================
 namespace lux::cxx
 {
@@ -423,7 +423,7 @@ namespace lux::cxx
 }
 
 // ==============================================================
- // 6) Node Output Storage: (Node, out_binding<Loc,T>) => std::optional<T>
+ // Node Output Storage: (Node, out_binding<Loc,T>) => std::optional<T>
  // ==============================================================
 namespace lux::cxx
 {
@@ -552,7 +552,7 @@ namespace lux::cxx
 }
 
 // ==============================================================
- // 7) Pipeline: Handles Linear or Layered Topological Results; Provides Node Data Storage
+ // Pipeline: Handles Linear or Layered Topological Results; Provides Node Data Storage
  // ==============================================================
 namespace lux::cxx
 {
