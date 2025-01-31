@@ -231,55 +231,60 @@ namespace lux::cxx
         {
             // LayeredTuple 形如 std::tuple< std::tuple<NodeA,NodeB>, std::tuple<NodeC>, ... >
             // 对每一层并行执行
-            tuple_traits::for_each_type<LayeredTuple>(
-                [this]<typename Layer, size_t I>()
-                {
-                    // Layer 是一个 tuple<NodeX, NodeY...> 
-                    runParallelLayer<Layer>();
-                }
-            );
+            runLayeredImpl(std::make_index_sequence<std::tuple_size_v<LayeredTuple>>{});
+        }
+
+        template<size_t... I>
+        void runLayeredImpl(std::index_sequence<I...>)
+        {
+            bool ok = true;
+            bool dummy[] = { (ok = ok && runParallelLayer<std::tuple_element_t<I, TopoResult>>())... };
+            (void)dummy;
         }
 
         //==============================================================
         // 2) runParallelLayer<Layer>：对 Layer 内的节点 并行 调度
         //==============================================================
         template <typename NodeTuple>
-        void runParallelLayer()
+        bool runParallelLayer()
         {
-            std::vector<std::future<void>> futures;
+            static constexpr size_t numNodes = std::tuple_size_v<NodeTuple>;
+            std::array<std::future<bool>, numNodes> futures;
 
             // 这里对 NodeTuple = (NodeA, NodeB, ...) 做编译期遍历
             tuple_traits::for_each_type<NodeTuple>(
-                [this, &futures]<typename NodeT, size_t IX>()
+                [this, &futures]<typename NodeT, size_t I>()
                 {
                     // 并行提交
                     auto fut = pool_.submit([this]() {
-                        runOneNode<NodeT>();
+                        return runOneNode<NodeT>();
                     });
-                    futures.push_back(std::move(fut));
+                    futures[I] = std::move(fut);
                 }
             );
 
+            bool layer_ok = true;
             // 等所有节点完成
             for (auto &f : futures) {
-                f.get();
+                layer_ok &= f.get();
             }
+
+            return layer_ok;
         }
 
         //==============================================================
         // 3) runOneNode<NodeT>：对 单个节点 做 in/out 构造 + execute
         //==============================================================
         template <typename N>
-        void runOneNode()
+        bool runOneNode()
         {
             constexpr size_t idx = findNodeIndex<N>();
             auto& uptr = std::get<idx>(nodes_);
-            if (!uptr) return; // 或者 assert
 
             auto in  = build_in_param<N>();
             auto out = build_out_param<N>();
 
-            uptr->execute(in, out);
+            return uptr->execute(in, out);
         }
     };
 } // namespace lux::cxx

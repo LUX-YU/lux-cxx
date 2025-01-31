@@ -20,11 +20,13 @@ namespace demo
         // 新写法：execute(const in_param_t&, out_param_t&)
         // NodeA 的 input_descriptor 是空 => in_param_t = std::tuple<>
         // NodeA 的 output_descriptor 有 out_binding<0,int> => out_param_t = std::tuple<int&>
-        void execute(const in_param_t& /*in*/, out_param_t& out)
+        bool execute(const in_param_t& /*in*/, out_param_t& out)
         {
             std::cout << "[NodeA] Writing out<0> = 100\n";
             // out 是一个 tuple<int&>，只有一个元素
             std::get<0>(out) = 100;
+
+            return true;
         }
     };
 
@@ -43,7 +45,7 @@ namespace demo
     {
         // NodeB 的 input_descriptor = in<0,int> => in_param_t = std::tuple<int&>
         // NodeB 的 output_descriptor = out<0,std::string> => out_param_t = std::tuple<std::string&>
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& inputVal = std::get<0>(in);
             std::cout << "[NodeB] Read NodeA out<0> = " << inputVal << "\n";
@@ -51,6 +53,8 @@ namespace demo
             auto& outStr = std::get<0>(out);
             outStr = "Processed by NodeB: " + std::to_string(inputVal);
             std::cout << "[NodeB] Writing out<0> = " << outStr << "\n";
+
+            return true;
         }
     };
 
@@ -69,7 +73,7 @@ namespace demo
     {
         // NodeC input: (std::string&)
         //       output: (double&)
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& inputStr = std::get<0>(in);
             std::cout << "[NodeC] Read NodeB out<0> = " << inputStr << "\n";
@@ -77,6 +81,8 @@ namespace demo
             auto& outDouble = std::get<0>(out);
             outDouble = 3.14;
             std::cout << "[NodeC] Writing out<0> = " << outDouble << "\n";
+
+            return true;
         }
     };
 
@@ -97,7 +103,7 @@ namespace demo
     {
         // NodeD input: (int&, double&)
         //       output: (std::string&)
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& inputInt    = std::get<0>(in);
             auto& inputDouble = std::get<1>(in);
@@ -110,6 +116,8 @@ namespace demo
                      + " and "
                      + std::to_string(inputDouble);
             std::cout << "[NodeD] Writing out<0> = " << outStr << "\n";
+
+            return true;
         }
     };
 
@@ -126,10 +134,12 @@ namespace demo
     {
         // NodeE input: ()
         //       output: (std::string&)
-        void execute(const in_param_t& /*in*/, out_param_t& out)
+        bool execute(const in_param_t& /*in*/, out_param_t& out)
         {
             std::cout << "[NodeE] Writing out<0> = \"NodeE Data\"\n";
             std::get<0>(out) = "NodeE Data";
+
+            return true;
         }
     };
 
@@ -150,7 +160,7 @@ namespace demo
     {
         // NodeF input: (std::string&, std::string&)
         //       output: (bool&)
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& inputStr1 = std::get<0>(in);
             auto& inputStr2 = std::get<1>(in);
@@ -161,6 +171,8 @@ namespace demo
             outBool = (inputStr1.find("Aggregated") != std::string::npos)
                    && (inputStr2 == "NodeE Data");
             std::cout << "[NodeF] Writing out<0> = " << std::boolalpha << outBool << "\n";
+
+            return true;
         }
     };
 }

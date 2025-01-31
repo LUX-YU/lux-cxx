@@ -94,8 +94,8 @@ namespace lux::cxx
         static constexpr auto out_loc_seq   = descriptor_to_locations<OutDesc>::loc_seq;
 
         // Default execute method (can be overridden by derived classes)
-        void execute(const in_param_t& in, out_param_t& out) {
-			static_cast<Derived*>(this)->execute(in, out);
+        bool execute(const in_param_t& in, out_param_t& out) {
+			return static_cast<Derived*>(this)->execute(in, out);
         }
     };
 }
@@ -766,22 +766,26 @@ namespace lux::cxx
 
         // Executes nodes in a linear order
         template <typename NodeTuple>
-        void runLinear()
+        bool runLinear()
         {
-            runLinearImpl<NodeTuple>(std::make_index_sequence<std::tuple_size_v<NodeTuple>>{});
+            return runLinearImpl<NodeTuple>(std::make_index_sequence<std::tuple_size_v<NodeTuple>>{});
         }
 
         // Helper function to execute each node in the tuple by index
         template <typename NodeTuple, size_t... I>
-        void runLinearImpl(std::index_sequence<I...>)
+        bool runLinearImpl(std::index_sequence<I...>)
         {
-            // Execute each node in sequence
-            (runOne< std::tuple_element_t<I, NodeTuple> >(), ...);
+            bool ok = true;
+
+            bool dummy[] = { (ok = ok && runOne< std::tuple_element_t<I, NodeTuple> >())... };
+            (void)dummy;
+
+            return ok;
         }
 
         // Executes a single node
         template <typename N>
-        void runOne()
+        bool runOne()
         {
             constexpr size_t idx = findNodeIndex<N>();
             auto& uptr = std::get<idx>(nodes_);
@@ -789,23 +793,27 @@ namespace lux::cxx
             auto in  = build_in_param<N>();
             auto out = build_out_param<N>();
 
-            uptr->execute(in, out); // Calls Derived::execute(Pipeline&)
+            return uptr->execute(in, out);
         }
 
         // Executes nodes in layered order
         template <typename LayeredTup>
-        void runLayered()
+        bool runLayered()
         {
             // LayeredTup = std::tuple< std::tuple<NodeA>, std::tuple<NodeB,NodeC>, ...>
-            runLayersImpl<LayeredTup>(std::make_index_sequence<std::tuple_size_v<LayeredTup>>{});
+            return runLayersImpl<LayeredTup>(std::make_index_sequence<std::tuple_size_v<LayeredTup>>{});
         }
 
         // Helper function to execute each layer
         template <typename LayeredTup, size_t... I>
-        void runLayersImpl(std::index_sequence<I...>)
+        bool runLayersImpl(std::index_sequence<I...>)
         {
+            bool ok = true;
             // Execute each layer sequentially
-            (runLinear<std::tuple_element_t<I, LayeredTup> >(), ...);
+            bool dummy[] = { (ok = ok && runLinear<std::tuple_element_t<I, LayeredTup>>())... };
+            (void)dummy;
+
+            return ok;
         }
     };
 }

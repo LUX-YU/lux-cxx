@@ -17,11 +17,13 @@ namespace demo
     {
         // in_param_t = std::tuple<>  (无输入)
         // out_param_t = std::tuple<int&> (仅一个输出)
-        void execute(const in_param_t& /*in*/, out_param_t& out)
+        bool execute(const in_param_t& /*in*/, out_param_t& out)
         {
             std::cout << "[NodeA] Writing out<0> = 100\n";
             // 取出 out 中的第0个引用
             std::get<0>(out) = 100;
+
+            return true;
         }
     };
 
@@ -39,7 +41,7 @@ namespace demo
     {
         // in_param_t = std::tuple<int&>
         // out_param_t = std::tuple<std::string&>
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& inputVal = std::get<0>(in);
             std::cout << "[NodeB] Read NodeA out<0> = " << inputVal << "\n";
@@ -47,6 +49,8 @@ namespace demo
             auto& outStr = std::get<0>(out);
             outStr = "Processed by NodeB: " + std::to_string(inputVal);
             std::cout << "[NodeB] Writing out<0> = " << outStr << "\n";
+
+            return true;
         }
     };
 
@@ -64,7 +68,7 @@ namespace demo
     {
         // in_param_t = std::tuple<std::string&>
         // out_param_t = std::tuple<double&>
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& inputStr = std::get<0>(in);
             std::cout << "[NodeC] Read NodeB out<0> = " << inputStr << "\n";
@@ -72,6 +76,8 @@ namespace demo
             auto& outDouble = std::get<0>(out);
             outDouble = 3.14;
             std::cout << "[NodeC] Writing out<0> = " << outDouble << "\n";
+
+            return true;
         }
     };
 
@@ -90,7 +96,7 @@ namespace demo
     {
         // in_param_t = std::tuple<int&, double&>
         // out_param_t = std::tuple<std::string&>
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& inputInt    = std::get<0>(in);
             auto& inputDouble = std::get<1>(in);
@@ -101,6 +107,8 @@ namespace demo
             outStr = "Aggregated by NodeD: " + std::to_string(inputInt)
                    + " and " + std::to_string(inputDouble);
             std::cout << "[NodeD] Writing out<0> = " << outStr << "\n";
+
+            return true;
         }
     };
 
@@ -115,10 +123,12 @@ namespace demo
     {
         // in_param_t = std::tuple<>
         // out_param_t = std::tuple<std::string&>
-        void execute(const in_param_t& /*in*/, out_param_t& out)
+        bool execute(const in_param_t& /*in*/, out_param_t& out)
         {
             std::cout << "[NodeE] Writing out<0> = \"NodeE Data\"\n";
             std::get<0>(out) = "NodeE Data";
+
+            return true;
         }
     };
 
@@ -138,7 +148,7 @@ namespace demo
     {
         // in_param_t = std::tuple<std::string&, std::string&>
         // out_param_t = std::tuple<bool&>
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& inputStr1 = std::get<0>(in);
             auto& inputStr2 = std::get<1>(in);
@@ -149,6 +159,8 @@ namespace demo
             outBool = (inputStr1.find("Aggregated") != std::string::npos)
                    && (inputStr2 == "NodeE Data");
             std::cout << "[NodeF] Writing out<0> = " << std::boolalpha << outBool << "\n";
+
+            return true;
         }
     };
 
@@ -168,7 +180,7 @@ namespace demo
     {
         // in_param_t = std::tuple<std::string&, double&, int&>
         // out_param_t = std::tuple<float&, std::string&>
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& strVal = std::get<0>(in);
             auto& dblVal = std::get<1>(in);
@@ -186,6 +198,8 @@ namespace demo
 
             std::cout << "[NodeG] Writing out<0> = " << out0
                       << ", out<1> = " << out1 << "\n";
+
+            return true;
         }
     };
 
@@ -204,7 +218,7 @@ namespace demo
     {
         // in_param_t = std::tuple<std::string&, float&>
         // out_param_t = std::tuple<int&>
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& dStr   = std::get<0>(in);
             auto& gFloat = std::get<1>(in);
@@ -216,6 +230,8 @@ namespace demo
             out0 = static_cast<int>(gFloat) + static_cast<int>( dStr.size() );
 
             std::cout << "[NodeH] Writing out<0> = " << out0 << "\n";
+
+            return true;
         }
     };
 
@@ -234,7 +250,7 @@ namespace demo
     {
         // in_param_t = std::tuple<std::string&, int&>
         // out_param_t = std::tuple<bool&>
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& eStr = std::get<0>(in);
             auto& hInt = std::get<1>(in);
@@ -246,6 +262,8 @@ namespace demo
             out0 = (eStr == "NodeE Data") && (hInt > 20);
 
             std::cout << "[NodeI] Writing out<0> = " << std::boolalpha << out0 << "\n";
+
+            return true;
         }
     };
 
@@ -264,7 +282,7 @@ namespace demo
     {
         // in_param_t = std::tuple<int&, bool&>
         // out_param_t = std::tuple<std::string&>
-        void execute(const in_param_t& in, out_param_t& out)
+        bool execute(const in_param_t& in, out_param_t& out)
         {
             auto& hInt  = std::get<0>(in);
             auto& fBool = std::get<1>(in);
@@ -277,6 +295,8 @@ namespace demo
                  + (fBool ? ", F=TRUE" : ", F=FALSE");
 
             std::cout << "[NodeJ] Writing out<0> = " << out0 << "\n";
+
+            return true;
         }
     };
 }
