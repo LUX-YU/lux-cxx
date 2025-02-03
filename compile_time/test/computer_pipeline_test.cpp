@@ -1,4 +1,4 @@
-#include <lux/cxx/compile_time/computer_graph.hpp>
+#include <lux/cxx/compile_time/computer_pipeline.hpp>
 #include <iostream>
 #include <string>
 
@@ -10,14 +10,12 @@ namespace demo
     // NodeA: No dependencies => mapping_tuple is empty
     // Outputs: out<0, int>
     // ==============================================================
-
     struct NodeA
       : NodeBase<NodeA,
                  node_descriptor<>,                 // No inputs
                  node_descriptor< out_binding<0,int> >
                  >
     {
-        // 新写法：execute(const in_param_t&, out_param_t&)
         // NodeA 的 input_descriptor 是空 => in_param_t = std::tuple<>
         // NodeA 的 output_descriptor 有 out_binding<0,int> => out_param_t = std::tuple<int&>
         bool execute(const in_param_t& /*in*/, out_param_t& out)
@@ -64,7 +62,6 @@ namespace demo
     // Outputs: out<0, double>
     // Dependencies: node_dependency_map<0, NodeB, 0>
     // ==============================================================
-
     struct NodeC
       : NodeBase<NodeC,
                  node_descriptor< in_binding<0, std::string> >,
@@ -92,7 +89,6 @@ namespace demo
     // Outputs: out<0,std::string>
     // Dependencies: node_dependency_map<0, NodeA, 0>, node_dependency_map<1, NodeC, 0>
     // ==============================================================
-
     struct NodeD
       : NodeBase<NodeD,
                  node_descriptor< in_binding<0,int>,
@@ -149,7 +145,6 @@ namespace demo
     // Outputs: out<0,bool>
     // Dependencies: node_dependency_map<0,NodeD,0>, node_dependency_map<1,NodeE,0>
     // ==============================================================
-
     struct NodeF
       : NodeBase<NodeF,
                  node_descriptor< in_binding<0,std::string>,
@@ -180,7 +175,6 @@ namespace demo
 // ==============================================================
 // Main: Demonstrates Linear and Layered Topological Sorting
 // ==============================================================
-
 int main()
 {
     using namespace lux::cxx;
@@ -196,8 +190,7 @@ int main()
         using Sorted = topological_sort<Unsorted>::type;
         // Expected Order: (NodeA, NodeE, NodeB, NodeC, NodeD, NodeF)
 
-        struct MyResource { int resource_id = 42; };
-        Pipeline<Sorted, MyResource> pipeline;
+        ComputerPipeline<Sorted> pipeline;
         pipeline.emplaceNode<demo::NodeA>();
         pipeline.emplaceNode<demo::NodeE>();
         pipeline.emplaceNode<demo::NodeB>();
@@ -225,7 +218,7 @@ int main()
         using Layered = layered_topological_sort<Unsorted>::type;
 
         struct MyResource2 { std::string name = "Resource2"; };
-        Pipeline<Layered, MyResource2> pipeline2;
+        ComputerPipeline<Layered> pipeline2;
         pipeline2.emplaceNode<demo::NodeA>();
         pipeline2.emplaceNode<demo::NodeE>();
         pipeline2.emplaceNode<demo::NodeB>();

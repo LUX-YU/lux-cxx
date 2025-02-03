@@ -89,10 +89,11 @@ namespace demo
     //==============================================================================
     struct NodeD
       : NodeBase<NodeD,
-                 node_descriptor< in_binding<0,int>, in_binding<1,double> >,
-                 node_descriptor< out_binding<0,std::string> >,
-                 node_dependency_map<0, NodeA, 0>,
-                 node_dependency_map<1, NodeC, 0>>
+            node_descriptor<in_binding<0,int>, in_binding<1,double>>,
+            node_descriptor<out_binding<0,std::string>>,
+            node_dependency_map<0, NodeA, 0>,
+            node_dependency_map<1, NodeC, 0>
+        >
     {
         // in_param_t = std::tuple<int&, double&>
         // out_param_t = std::tuple<std::string&>
@@ -118,8 +119,9 @@ namespace demo
     //==============================================================================
     struct NodeE
       : NodeBase<NodeE,
-                 node_descriptor<>,
-                 node_descriptor< out_binding<0,std::string> >>
+            node_descriptor<>,
+            node_descriptor< out_binding<0,std::string>>
+        >
     {
         // in_param_t = std::tuple<>
         // out_param_t = std::tuple<std::string&>
@@ -317,14 +319,19 @@ int main()
     // 进行分层拓扑排序
     using Layered = layered_topological_sort<Unsorted>::type;
 
-    // 定义资源类型（可自定义）
-    struct MyResource
-    {
-        int resource_id = 999;
-    };
+    tuple_traits::for_each_type<Layered>(
+        []<typename Layer, size_t I>(){
+            std::cout << "Layer " << I << std::endl;
+            tuple_traits::for_each_type<Layer>(
+                []<typename Node, size_t J>(){
+                    std::cout << "\tNode " << J << ": " << typeid(Node).name() << std::endl;
+                }
+            );
+        }
+    );
 
     // 使用并行管线，指定线程池大小
-    ParallelPipeline<Layered, MyResource> pipeline(/*pool_size=*/4);
+    ParallelComputerPipeline<Layered> pipeline(/*pool_size=*/4);
 
     // emplace 所有节点
     pipeline.emplaceNode<NodeA>();

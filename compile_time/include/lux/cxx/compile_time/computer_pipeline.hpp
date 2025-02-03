@@ -1,11 +1,17 @@
 #pragma once
-#include "ThreadPool.hpp"
-#include <lux/cxx/compile_time/computer_node.hpp>
+#include "computer_node.hpp"
 
+// ==============================================================
+ // ComputerPipeline: Handles Linear or Layered Topological Results; Provides Node Data Storage
+ // ==============================================================
 namespace lux::cxx
 {
+    // Forward declaration of flatten_tuple_of_tuples
+    template <typename T> struct flatten_tuple_of_tuples;
+
+    // ComputerPipeline class template
     template <typename TopoResult>
-    class ParallelComputerPipeline
+    class ComputerPipeline
     {
     public:
         // 1) Determine if TopoResult is layered
@@ -26,42 +32,33 @@ namespace lux::cxx
         };
 
         // Extract nodes from Flattened and apply gather_impl
-        template <typename Tup> 
-        struct gather_nodes_outs;
-
+        template <typename Tup> struct gather_nodes_outs;
         template <typename... Ns>
         struct gather_nodes_outs<std::tuple<Ns...>>
         {
             using data_t = typename gather_impl<Ns...>::data_t;
         };
 
-        // 这里就是存储全部输出的  的 tuple
         using DataStorage = typename gather_nodes_outs<Flattened>::data_t;
 
-        // 存储节点指针: std::tuple< std::unique_ptr<NodeA>, std::unique_ptr<NodeB>, ...>
+        // 4) Store node pointers as a tuple of std::unique_ptr<Node>
         template <typename... Ns>
         struct node_ptrs
         {
-            using type = std::tuple<std::unique_ptr<Ns>...>;
+            using type = std::tuple< std::unique_ptr<Ns>... >;
         };
         template <typename Tup> struct node_ptrs_impl;
         template <typename... Ns>
         struct node_ptrs_impl<std::tuple<Ns...>>
         {
-            using type = std::tuple<std::unique_ptr<Ns>...>;
+            using type = std::tuple< std::unique_ptr<Ns>... >;
         };
         using NodePtrStorage = typename node_ptrs_impl<Flattened>::type;
 
-        //==============================================================
         // Constructors
-        //==============================================================
-        template<typename... Args>
-        ParallelComputerPipeline(size_t pool_size)
-            : pool_(pool_size){}
+        ComputerPipeline() = default;
 
-        //==============================================================
-        // Emplace a node into the pipeline
-        //==============================================================
+        // Emplace a node into the Computerpipeline
         template <typename NodeT, typename... Args>
         NodeT* emplaceNode(Args&&... args)
         {
@@ -71,60 +68,60 @@ namespace lux::cxx
             return static_cast<NodeT*>(std::get<idx>(nodes_).get());
         }
 
-        //==============================================================
-        // Run the pipeline (parallel, layered only)
-        //==============================================================
+        // Run the Computerpipeline
         void run()
         {
-            static_assert(isLayered, "ParallelComputerPipeline only supports layered topologies.");
-            runLayered<TopoResult>();
+            if constexpr (isLayered) {
+                runLayered<TopoResult>();
+            }
+            else {
+                runLinear<TopoResult>();
+            }
         }
 
-        //==============================================================
-        // getInputRef / getOutputRef
-        //  - 同串行 Pipeline 中一样，对  做访问
-        //==============================================================
+        // Nodes can read input using this method
+        // Example: getInputRef<NodeType, InputLocation, Type>()
         template <typename NodeT, std::size_t InLoc, typename T>
         T& getInputRef()
         {
+            // Find the dependency map for the given input location
             using map = find_dep_map_t<InLoc, typename NodeT::mapping_tuple>;
             using DepNode = typename map::dependency_node_t;
             static constexpr size_t depLoc = map::dep_output_location;
 
             // Find the index of the dependency node's output in DataStorage
             constexpr size_t I = findIndex<DepNode, depLoc>();
-            return std::get<I>(data_); // T&
+            // auto& opt = std::get<I>(data_);
+            // assert(opt.has_value()); // Ensure the dependency has been computed
+            return std::get<I>(data_);
         }
 
+        // Nodes can write output using this method
+        // Example: getOutputRef<NodeType, OutputLocation, Type>()
         template <typename NodeT, std::size_t OutLoc, typename T>
         T& getOutputRef()
         {
             constexpr size_t I = findIndex<NodeT, OutLoc>();
-            return std::get<I>(data_); // T&
+            // auto& opt = std::get<i>(data_);
+            // if (!opt.has_value()) {
+            //     opt.emplace();
+            // }
+            return std::get<I>(data_);
         }
 
     private:
-        //==============================================================
-        // Internal Storage
-        //==============================================================
-        DataStorage               data_;
-        NodePtrStorage            nodes_;
-        ThreadPool                pool_;  // for parallel execution
+        DataStorage               data_;      // Stores all (Node, outLoc) => value
+        NodePtrStorage            nodes_;     // Stores pointers to the nodes
 
     private:
-        //==============================================================
-        // 下面是与串行 Pipeline 类似的辅助元编程: 
-        //  findNodeIndex, findIndex<>, gather_all_outputs_from<>, etc.
-        //==============================================================
-
-        // 查找 NodeT 在 Flattened 里的下标
+        // Finds the index of NodeT in the Flattened tuple
         template <typename NodeT>
         static constexpr size_t findNodeIndex()
         {
-            return findIndexIn<NodeT, Flattened>();
+            return findIndexIn< NodeT, Flattened >();
         }
 
-        // index_in< T, tuple<...> >
+        // Helper struct to find the index of a type in a tuple
         template <typename T, typename Tup> struct index_in;
         template <typename T>
         struct index_in<T, std::tuple<>> { static constexpr size_t value = -1; };
@@ -139,6 +136,7 @@ namespace lux::cxx
             static constexpr size_t value = eq ? 0 : (nxt == size_t(-1) ? size_t(-1) : nxt + 1);
         };
 
+        // Helper function to retrieve the index at compile time with static assertion
         template <typename T, typename Tup>
         static constexpr size_t findIndexIn()
         {
@@ -147,7 +145,7 @@ namespace lux::cxx
             return r;
         }
 
-        // 查找 (NodeWanted, outLoc) 在 data_ 里的下标
+        // Finds the index of (NodeWanted, outLoc) in DataStorage
         template <typename NW, std::size_t outLoc>
         static constexpr size_t findIndex()
         {
@@ -157,7 +155,7 @@ namespace lux::cxx
             return r;
         }
 
-        // 收集 Flattened 里所有节点的 outputs 合并成一个 NodeOutPair tuple
+        // Gathers all outputs from Flattened into a single tuple of NodeOutPairs
         template <typename> struct gather_all_outputs_from;
         template <typename... Ns>
         struct gather_all_outputs_from<std::tuple<Ns...>>
@@ -165,9 +163,7 @@ namespace lux::cxx
             using type = typename gather_all_outputs<Ns...>::type;
         };
 
-        //==============================================================
-        // 构造 in/out param：与串行 Pipeline 同理
-        //==============================================================
+    private:
         template <typename N>
         auto build_in_param()
         {
@@ -180,11 +176,8 @@ namespace lux::cxx
         {
             using in_tuple_t = typename N::in_param_t;
             return in_tuple_t {
-                // N::in_loc_seq[I] 是第I个 input binding 的 location
-                this->template getInputRef<
-                    N,
-                    N::in_loc_seq[I],
-                    std::remove_reference_t<std::tuple_element_t<I, in_tuple_t>>
+                getInputRef<N, N::in_loc_seq[I],
+                    std::remove_reference_t<std::tuple_element_t<I, in_tuple_t>> 
                 >()...
             };
         }
@@ -200,69 +193,35 @@ namespace lux::cxx
         auto build_out_param_impl(std::index_sequence<I...>)
         {
             using out_tuple_t = typename N::out_param_t;
-            return out_tuple_t {
-                this->template getOutputRef<
-                    N,
-                    N::out_loc_seq[I],
+            return out_tuple_t{
+                getOutputRef<N, N::out_loc_seq[I],
                     std::remove_reference_t<std::tuple_element_t<I, out_tuple_t>>
                 >()...
             };
         }
 
-        //==============================================================
-        // 1) runLayered(): 按层次并行执行
-        //==============================================================
-        template <typename LayeredTuple>
-        void runLayered()
+        // Executes nodes in a linear order
+        template <typename NodeTuple>
+        bool runLinear()
         {
-            // LayeredTuple 形如 std::tuple< std::tuple<NodeA,NodeB>, std::tuple<NodeC>, ... >
-            // 对每一层并行执行
-            runLayeredImpl(std::make_index_sequence<std::tuple_size_v<LayeredTuple>>{});
+            return runLinearImpl<NodeTuple>(std::make_index_sequence<std::tuple_size_v<NodeTuple>>{});
         }
 
-        template<size_t... I>
-        void runLayeredImpl(std::index_sequence<I...>)
+        // Helper function to execute each node in the tuple by index
+        template <typename NodeTuple, size_t... I>
+        bool runLinearImpl(std::index_sequence<I...>)
         {
             bool ok = true;
-            bool dummy[] = { (ok = ok && runParallelLayer<std::tuple_element_t<I, TopoResult>>())... };
+
+            bool dummy[] = { (ok = ok && runOne< std::tuple_element_t<I, NodeTuple> >())... };
             (void)dummy;
+
+            return ok;
         }
 
-        //==============================================================
-        // 2) runParallelLayer<Layer>：对 Layer 内的节点 并行 调度
-        //==============================================================
-        template <typename NodeTuple>
-        bool runParallelLayer()
-        {
-            static constexpr size_t numNodes = std::tuple_size_v<NodeTuple>;
-            std::array<std::future<bool>, numNodes> futures;
-
-            // 这里对 NodeTuple = (NodeA, NodeB, ...) 做编译期遍历
-            tuple_traits::for_each_type<NodeTuple>(
-                [this, &futures]<typename NodeT, size_t I>()
-                {
-                    // 并行提交
-                    auto fut = pool_.submit([this]() {
-                        return runOneNode<NodeT>();
-                    });
-                    futures[I] = std::move(fut);
-                }
-            );
-
-            bool layer_ok = true;
-            // 等所有节点完成
-            for (auto &f : futures) {
-                layer_ok &= f.get();
-            }
-
-            return layer_ok;
-        }
-
-        //==============================================================
-        // 3) runOneNode<NodeT>：对 单个节点 做 in/out 构造 + execute
-        //==============================================================
+        // Executes a single node
         template <typename N>
-        bool runOneNode()
+        bool runOne()
         {
             constexpr size_t idx = findNodeIndex<N>();
             auto& uptr = std::get<idx>(nodes_);
@@ -272,5 +231,25 @@ namespace lux::cxx
 
             return uptr->execute(in, out);
         }
+
+        // Executes nodes in layered order
+        template <typename LayeredTup>
+        bool runLayered()
+        {
+            // LayeredTup = std::tuple< std::tuple<NodeA>, std::tuple<NodeB,NodeC>, ...>
+            return runLayersImpl<LayeredTup>(std::make_index_sequence<std::tuple_size_v<LayeredTup>>{});
+        }
+
+        // Helper function to execute each layer
+        template <typename LayeredTup, size_t... I>
+        bool runLayersImpl(std::index_sequence<I...>)
+        {
+            bool ok = true;
+            // Execute each layer sequentially
+            bool dummy[] = { (ok = ok && runLinear<std::tuple_element_t<I, LayeredTup>>())... };
+            (void)dummy;
+
+            return ok;
+        }
     };
-} // namespace lux::cxx
+}
