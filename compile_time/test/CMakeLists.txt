@@ -10,12 +10,12 @@ target_link_libraries(
 )
 
 add_executable(
-    computer_graph_test
-    computer_graph_test.cpp
+    computer_pipeline_test
+    computer_pipeline_test.cpp
 )
 
 target_link_libraries(
-    computer_graph_test
+    computer_pipeline_test
     PRIVATE
     compile_time
 )
