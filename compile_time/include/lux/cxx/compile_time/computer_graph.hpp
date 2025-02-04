@@ -8,9 +8,6 @@
 
 #include "tuple_traits.hpp"
 
-// ==============================================================
- // 2) Node Basics: in_binding / out_binding / node_dependency_map / NodeBase
- // ==============================================================
 namespace lux::cxx
 {
     // Represents an input binding with a specific location and type
@@ -65,9 +62,6 @@ namespace lux::cxx
     };
 }
 
-// ==============================================================
- // 3) Linear Topological Sorting
- // ==============================================================
 namespace lux::cxx
 {
     // Extracts dependencies of a node
@@ -212,9 +206,6 @@ namespace lux::cxx
     };
 }
 
-// ==============================================================
- // 4) Layered Topological Sorting
- // ==============================================================
 namespace lux::cxx
 {
     // Flattens a tuple of tuples into a single tuple
@@ -367,9 +358,6 @@ namespace lux::cxx
     };
 }
 
-// ==============================================================
- // 5) Helpers: Detecting Whether It's a Tuple of Tuples
- // ==============================================================
 namespace lux::cxx
 {
     // Determines if a type is a tuple of tuples
@@ -390,9 +378,6 @@ namespace lux::cxx
     inline constexpr bool is_tuple_of_tuples_v = is_tuple_of_tuples<T>::value;
 }
 
-// ==============================================================
- // 6) Node Output Storage: (Node, out_binding<Loc,T>) => std::optional<T>
- // ==============================================================
 namespace lux::cxx
 {
     // Pair structure to associate a node with its output binding
@@ -519,9 +504,6 @@ namespace lux::cxx
     using find_dep_map_t = typename find_dep_map<L, M>::type;
 }
 
-// ==============================================================
- // 7) Pipeline: Handles Linear or Layered Topological Results; Provides Node Data Storage
- // ==============================================================
 namespace lux::cxx
 {
     // Forward declaration of flatten_tuple_of_tuples

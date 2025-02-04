@@ -128,6 +128,28 @@ namespace lux::cxx
             }
         }
 
+		/**
+		 * @brief Accesses the value associated with a given key.
+		 * @param key The key to look up.
+		 * @return A reference to the value associated with the key.
+		 *
+		 * If the key is not in the set, it is inserted with a default-constructed value.
+		 */
+		Value& operator[](Key key)
+		{
+			ensure_sparse_size(key);
+			auto idx = sparse_[key];
+			if (idx == INVALID_INDEX) {
+				idx = dense_keys_.size();
+				dense_keys_.push_back(key);
+				dense_values_.push_back(Value{});
+				sparse_[key] = idx;
+			}
+			return dense_values_[idx];
+		}
+
+
+
         /**
          * @brief Inserts or updates an element with the specified key and value (rvalue reference).
          * @param key   The key to be inserted.
@@ -226,6 +248,23 @@ namespace lux::cxx
             }
             return dense_values_[sparse_[key]];
         }
+
+		/*
+		* @brief Extracts the value associated with a given key.
+        * @param key The key to look up.
+		* @throws std::out_of_range If the key is not in the set.
+		* @return The value associated with the key.
+        */
+		Value extract(Key key)
+		{
+			if (key >= sparse_.size() || sparse_[key] == INVALID_INDEX) {
+				throw std::out_of_range("SparseSet::extract: key not found");
+			}
+			auto idx = sparse_[key];
+			Value value = std::move(dense_values_[idx]);
+			erase(key);
+			return value;
+		}
 
         /**
          * @brief Returns a const reference to the value associated with a given key.
