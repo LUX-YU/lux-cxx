@@ -48,6 +48,10 @@ namespace lux::cxx
 
             return base;
         }
+
+        static inline consteval std::size_t combine_hashes_impl(std::size_t seed, std::size_t hash) noexcept {
+            return seed * 16777619u + hash;
+        }
     }
 
     template<typename Type>
@@ -100,5 +104,14 @@ namespace lux::cxx
 
     template<typename T> constexpr static inline basic_type_info make_basic_type_info() noexcept {
         return basic_type_info(std::in_place_type<T>);
+    }
+
+    template<std::size_t... Hashes>
+    consteval std::size_t combine_hashes(std::index_sequence<Hashes...>) noexcept {
+        // offset of FNV-1a
+        constexpr std::size_t offsetBasis = 14695981039346656037ull;
+        std::size_t combined = offsetBasis;
+        ((combined = detail::combine_hashes_impl(combined, Hashes)), ...);
+        return combined;
     }
 }
