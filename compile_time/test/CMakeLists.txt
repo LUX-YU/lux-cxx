@@ -30,3 +30,14 @@ target_link_libraries(
     PRIVATE
     compile_time
 )
+
+add_executable(
+    sequence_sort_test
+    sequence_sort_test.cpp
+)
+
+target_link_libraries(
+    sequence_sort_test
+    PRIVATE
+    compile_time
+)
