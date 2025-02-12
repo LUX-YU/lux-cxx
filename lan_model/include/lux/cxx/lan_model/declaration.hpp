@@ -1,7 +1,8 @@
 #pragma once
 #include "enumerator.hpp"
 #include "type.hpp"
-#include <cstdint>
+#include <string>
+#include <vector>
 #include <cstddef>
 
 namespace lux::cxx::lan_model
@@ -30,16 +31,21 @@ namespace lux::cxx::lan_model
 		EDeclarationKind	declaration_kind;
 		Type*				type;
 
-		// name is optional
-		// for class, name is class name
-		// for enumeration, name is enumeration type name
-		// for function and method, name is function/method name
-		// for constructor, name is class name
-		// for destructor, name is `~` + class name
-		// for parameter, name is parameter name (is exist)
-		// for variable, name is variable name
-		const char*			name;
-		const char*			attribute;
+		/*
+		 * name is optional
+		 * for class, name is class name
+		 * for enumeration, name is enumeration type name
+		 * for function and method, name is function/method name
+		 * for constructor, name is class name
+		 * for destructor, name is `~` + class name
+		 * for parameter, name is parameter name (if exists)
+		 * for variable, name is variable name
+		*/
+		std::string			name;
+		std::string			full_qualified_name;
+		std::string			spelling;
+		std::string         usr;
+		std::string			attribute;
 	};
 
 	enum class Visibility
@@ -51,87 +57,71 @@ namespace lux::cxx::lan_model
 	};
 
 	struct ClassDeclaration;
-	struct MemberDeclaration : public Declaration
+	struct MemberDeclaration : Declaration
 	{
 		ClassDeclaration* class_declaration;
 		Visibility		  visibility;
 	};
 
-	struct FieldDeclaration : public MemberDeclaration
+	struct FieldDeclaration : MemberDeclaration
 	{
 		static constexpr EDeclarationKind kind = EDeclarationKind::MEMBER_DATA;
 		size_t offset;
 	};
 
-	struct ConstructorDeclaration;
-	struct DestructorDeclaration;
-	struct MemberFunctionDeclaration;
-	struct ClassDeclaration : public Declaration
-	{
-		static constexpr EDeclarationKind kind = EDeclarationKind::CLASS;
-
-		ClassDeclaration**			base_class_decls;
-		size_t						base_class_num;
-
-		ConstructorDeclaration**	constructor_decls;
-		size_t						constructor_num;
-
-		DestructorDeclaration*		destructor_decl;
-
-		FieldDeclaration**			field_decls;
-		size_t						field_num;
-
-		MemberFunctionDeclaration** member_function_decls;
-		size_t						member_function_num;
-
-		MemberFunctionDeclaration** static_member_function_decls;
-		size_t						static_member_function_num;
-	};
-
-	struct ParameterDeclaration : public Declaration
+	struct ParameterDeclaration : Declaration
 	{
 		size_t index;
 	};
 
 	struct CallableDeclCommon
 	{
-		Type*					result_type;
-		ParameterDeclaration**	parameter_decls;
-		size_t					parameter_number;
+		Type*								result_type;
+		std::string							mangling;
+		std::vector<ParameterDeclaration>	parameter_decls;
 	};
 
 	struct FunctionDeclaration : public Declaration, public CallableDeclCommon
 	{
-		static constexpr EDeclarationKind kind = EDeclarationKind::FUNCTION;
+		static constexpr auto kind = EDeclarationKind::FUNCTION;
 	};
 
-	struct MemberFunctionDeclaration : public MemberDeclaration, public CallableDeclCommon
+	struct MemberFunctionDeclaration : MemberDeclaration, CallableDeclCommon
 	{
-		static constexpr EDeclarationKind kind = EDeclarationKind::MEMBER_FUNCTION;
+		static constexpr auto kind = EDeclarationKind::MEMBER_FUNCTION;
 		bool is_static;
 		bool is_virtual;
 	};
 
-	struct ConstructorDeclaration : 
-		public MemberDeclaration, public CallableDeclCommon
+	struct ConstructorDeclaration : MemberDeclaration, CallableDeclCommon
 	{
-		static constexpr EDeclarationKind kind = EDeclarationKind::CONSTRUCTOR;
+		static constexpr auto kind = EDeclarationKind::CONSTRUCTOR;
 	};
 
-	struct DestructorDeclaration : 
-		public MemberDeclaration, public CallableDeclCommon 
+	struct DestructorDeclaration : MemberDeclaration, CallableDeclCommon
 	{
 		static constexpr EDeclarationKind kind = EDeclarationKind::DESTRUCTOR;
 		bool is_virtual;
 	};
 
-	struct EnumerationDeclaration : public Declaration
+	struct ClassDeclaration : Declaration
+	{
+		static constexpr EDeclarationKind kind = EDeclarationKind::CLASS;
+
+		std::vector<ClassDeclaration*>			base_class_decls;
+		std::vector<ConstructorDeclaration>		constructor_decls;
+		DestructorDeclaration					destructor_decl;
+		std::vector<FieldDeclaration>			field_decls;
+		std::vector<MemberFunctionDeclaration>	method_decls;
+		std::vector<MemberFunctionDeclaration>	static_method_decls;
+	};
+
+	struct EnumerationDeclaration : Declaration
 	{
 		static constexpr EDeclarationKind kind = EDeclarationKind::ENUMERATION;
-		Enumerator**  enumerators;
-		size_t		  enumerators_num;
-		bool		  is_scope;
-		Type*		  underlying_type;
+		std::vector<Enumerator>			enumerators;
+		bool							is_scope;
+		Type*							underlying_type;
 	};
 
 	LUX_DECLARE_DECLARATION_KIND_MAP(EDeclarationKind::BASIC,			Declaration)

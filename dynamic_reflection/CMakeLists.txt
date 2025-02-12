@@ -20,30 +20,65 @@ elseif()
     add_library(mstch::mstch ALIAS mstch)
 endif()
 
-set(DREF_SRCS 
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnit.cpp
-
+set(DREF_PARSER_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParserImpl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_class_declaration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_function_declaration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_enumeration_declaration.cpp
-
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_type_uncertain.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_class_type.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_function_type.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_enumeration_type.cpp
 )
 
-# start constructing component dynamic_reflection
+# start constructing component dynamic_reflection_runtime
+set(DREF_RUNTIME_SRCS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnit.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnitSerialization.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnitDeserialization.cpp
+)
+
 add_component(
-    COMPONENT_NAME                  dynamic_reflection
+    COMPONENT_NAME                  dynamic_reflection_runtime
     NAMESPACE                       lux::cxx
-    SOURCE_FILES                    ${DREF_SRCS}
+    SOURCE_FILES                    ${DREF_RUNTIME_SRCS}
 )
 
 component_include_directories(
-    dynamic_reflection
+    dynamic_reflection_runtime
+    BUILD_TIME_EXPORT
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${LUX_GENERATE_HEADER_DIR}
+    INSTALL_TIME
+        include
+    PRIVATE
+        pinclude
+        ${CLANG_INCLUDE_DIRS}
+)
+
+target_compile_definitions(
+    dynamic_reflection_runtime
+    PRIVATE
+    LUX_CXX_LIBRARY
+)
+
+component_add_internal_dependencies(
+    dynamic_reflection_runtime
+        lux::cxx::lan_model
+        lux::cxx::algorithm
+        lux::cxx::static_reflection
+)
+
+# start constructing component dynamic_reflection_parser
+add_component(
+    COMPONENT_NAME                  dynamic_reflection_parser
+    NAMESPACE                       lux::cxx
+    SOURCE_FILES                    ${DREF_PARSER_SRCS}
+)
+
+component_include_directories(
+    dynamic_reflection_parser
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
@@ -55,51 +90,53 @@ component_include_directories(
 )
 
 target_link_libraries(
-    dynamic_reflection
+    dynamic_reflection_parser
     PUBLIC
         libclang
-        mstch::mstch
 )  
 
 component_add_internal_dependencies(
-    dynamic_reflection
+    dynamic_reflection_parser
         lux::cxx::lan_model
         lux::cxx::algorithm
+        lux::cxx::dynamic_reflection_runtime
 )
 
 target_compile_definitions(
-    dynamic_reflection
+    dynamic_reflection_parser
     PRIVATE
     LUX_CXX_LIBRARY
 )
 
 component_add_transitive_commands(
-    dynamic_reflection
+    dynamic_reflection_parser
     "find_package(Clang REQUIRED)"
     "find_package(mstch CONFIG   REQUIRED)"
 )
 
-# stop constructing component dynamic_reflection
-
+# start constructing component dynamic_reflection_generator
+#[[
 add_executable(
-	lux_reflection_gen
-	${CMAKE_CURRENT_SOURCE_DIR}/src/generator/lux_df_gen.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/MetaUnitSerializer.cpp
+	lux_runtime_reflection_gen
+	${CMAKE_CURRENT_SOURCE_DIR}/src/generator/lux_runtime_reflection_gen.cpp
 )
 
 target_link_libraries(
-	lux_reflection_gen
+	lux_runtime_reflection_gen
 	PRIVATE
-	lux::cxx::dynamic_reflection
+	lux::cxx::dynamic_reflection_parser
+	lux::cxx::dynamic_reflection_runtime
+	lux::cxx::static_reflection
+    mstch::mstch
 )
 
 target_include_directories(
-    lux_reflection_gen
+    lux_runtime_reflection_gen
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     pinclude
 )
-
+]]
 set(ENABLE_DYNAMIC_REFLECTION_TEST true BOOL "Enable dynamic reflection test")
 if(ENABLE_DYNAMIC_REFLECTION_TEST)
     add_subdirectory(test)    

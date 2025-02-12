@@ -20,11 +20,13 @@ namespace lux::cxx::dref
 			CASE_ITEM(MEMBER_FUNCTION)
 			CASE_ITEM(CONSTRUCTOR)
 			CASE_ITEM(DESTRUCTOR)
+			default:
+				break;
 		}
 		return "DCL_KIND_UNKNOWN";
 	}
 
-	size_t MetaUnit::calculateTypeMetaId(const char* name)
+	size_t MetaUnit::calculateTypeMetaId(std::string_view name)
 	{
 		return lux::cxx::algorithm::fnv1a(name);
 	}
@@ -34,12 +36,12 @@ namespace lux::cxx::dref
 		return calculateTypeMetaId(meta->name);
 	}
 
-	size_t MetaUnit::calculateDeclarationId(EDeclarationKind kind, const char* name)
+	size_t MetaUnit::calculateDeclarationId(const EDeclarationKind kind, std::string_view name)
 	{
-		return lux::cxx::algorithm::fnv1a(name + declKind2Str(kind));
+		return lux::cxx::algorithm::fnv1a(std::string(name) + declKind2Str(kind));
 	}
 
-	size_t MetaUnit::calculateDeclarationId(Declaration* const decl)
+	size_t MetaUnit::calculateDeclarationId(const Declaration* const decl)
 	{
 		return calculateDeclarationId(decl->kind, decl->name);
 	}
@@ -90,25 +92,56 @@ namespace lux::cxx::dref
 		return _impl->_version;
 	}
 
-	const std::vector<Declaration*>& MetaUnit::markedDeclarationList() const
+	const std::deque<lan_model::ClassDeclaration>&
+	MetaUnit::markedClassDeclarationList() const
 	{
-		return _impl->_data->_markable_decl_list;
+		return _impl->_data->marked_decl_lists.class_decl_list;
 	}
 
-	const Declaration* MetaUnit::findDeclarationByName(EDeclarationKind kind, const std::string& name) const
+	const std::deque<lan_model::FunctionDeclaration>&
+	MetaUnit::markedFunctionDeclarationList() const
+	{
+		return _impl->_data->marked_decl_lists.function_decl_list;
+	}
+
+	const std::deque<lan_model::EnumerationDeclaration>&
+	MetaUnit::markedEnumerationDeclarationList() const
+	{
+		return _impl->_data->marked_decl_lists.enumeration_decl_list;
+	}
+
+	const std::deque<lan_model::ClassDeclaration>&
+	MetaUnit::unmarkedClassDeclarationList() const
+	{
+		return _impl->_data->unmarked_decl_lists.class_decl_list;
+	}
+
+	const std::deque<lan_model::FunctionDeclaration>&
+	MetaUnit::unmarkedFunctionDeclarationList() const
+	{
+		return _impl->_data->unmarked_decl_lists.function_decl_list;
+	}
+
+	const std::deque<lan_model::EnumerationDeclaration>&
+	MetaUnit::unmarkedEnumerationDeclarationList() const
+	{
+		return _impl->_data->unmarked_decl_lists.enumeration_decl_list;
+	}
+
+	const Declaration* MetaUnit::findDeclarationByName(EDeclarationKind kind, std::string_view name) const
 	{
 		if (_impl->_data == nullptr) 
 			return nullptr;
 
-		auto& map = _impl->_data->_markable_decl_map;
+		auto& map = _impl->_data->decl_map;
 
-		size_t id = calculateDeclarationId(kind, name.c_str());
-		return map.count(id) > 0 ? map[id] : nullptr;
+		const size_t id = calculateDeclarationId(kind, name);
+		return map.contains(id) ? map[id] : nullptr;
 	}
 
-	const std::vector<TypeMeta*>& MetaUnit::typeMetaList() const
+	const std::deque<TypeMeta>& MetaUnit::typeMetaList() const
 	{
-		return _impl->_data->_meta_type_list;
+		return _impl->_data->type_list;
 	}
 
 	const TypeMeta* MetaUnit::findTypeMetaByName(std::string_view name) const
@@ -116,9 +149,9 @@ namespace lux::cxx::dref
 		if (_impl->_data == nullptr)
 			return nullptr;
 
-		auto& map = _impl->_data->_meta_type_map;
+		auto& map = _impl->_data->type_map;
 
-		size_t id = calculateTypeMetaId(name.data());
-		return map.count(id) > 0 ? map[id] : nullptr;
+		const size_t id = calculateTypeMetaId(name.data());
+		return map.contains(id) ? map[id] : nullptr;
 	}
 }

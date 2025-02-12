@@ -13,41 +13,35 @@ configure_file(
     ${LUX_DREF_TEST_GEN_FILE_PATH}
 )
 
-# add test targets
 add_executable(
-    dref_test_libclang
-    dref_test_libclang.cpp
+	dref_parse_test
+	${CMAKE_CURRENT_SOURCE_DIR}/dref_parse_test.cpp
 )
 
 target_link_libraries(
-    dref_test_libclang
-    PRIVATE
-    lux::cxx::dynamic_reflection
-    libclang
+	dref_parse_test
+	PRIVATE
+	lux::cxx::dynamic_reflection_parser
 )
 
-target_include_directories(
-    dref_test_libclang
-    PRIVATE
-    ${LUX_DREF_TEST_GEN_FILE_PATH}
-)
-
-#[[
 add_executable(
-    dref_test_runtime_invoke
-    dref_test_runtime_invoke.cpp
+		dref_runtime_test
+		${CMAKE_CURRENT_SOURCE_DIR}/dref_runtime_test.cpp
 )
 
 target_link_libraries(
-    dref_test_runtime_invoke
-    PRIVATE
-    lux::cxx::dynamic_reflection
-    libclang
+		dref_runtime_test
+		PRIVATE
+		lux::cxx::dynamic_reflection_runtime
 )
 
-target_include_directories(
-    dref_test_runtime_invoke
-    PRIVATE
-    ${LUX_DREF_TEST_GEN_FILE_PATH}
+add_executable(
+		meta_unit_serializetion_test
+		${CMAKE_CURRENT_SOURCE_DIR}/meta_unit_serializetion_test.cpp
 )
-]]
+
+target_link_libraries(
+		meta_unit_serializetion_test
+		PRIVATE
+		lux::cxx::dynamic_reflection_parser
+)

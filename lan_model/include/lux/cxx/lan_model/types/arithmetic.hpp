@@ -3,48 +3,48 @@
 
 namespace lux::cxx::lan_model
 {
-	struct Arithmetic : public Fundamental { static constexpr ETypeKind kind = ETypeKind::ARITHMETIC; size_t size; };
-		struct IntegralType : public Arithmetic { static constexpr ETypeKind kind = ETypeKind::INTEGRAL; bool is_const; bool is_volatile; };
-			struct Bool : public IntegralType{ static constexpr ETypeKind kind = ETypeKind::BOOL;};
+	struct Arithmetic : public Fundamental { static constexpr auto kind = ETypeKind::ARITHMETIC;};
+		struct IntegralType : public Arithmetic { static constexpr auto kind = ETypeKind::INTEGRAL; bool is_const; bool is_volatile; };
+			struct Bool : public IntegralType{ static constexpr auto kind = ETypeKind::BOOL;};
 
-			struct CharacterTypes : public IntegralType{ static constexpr ETypeKind kind = ETypeKind::CHARACTER; };
-				struct NarrowCharacterType : public CharacterTypes { static constexpr ETypeKind kind = ETypeKind::NARROW_CHARACTER; };
-					struct OrdinaryCharacterType : public NarrowCharacterType { static constexpr ETypeKind kind = ETypeKind::ORDINARY_CHARACTER; };
-						struct Char : public OrdinaryCharacterType { static constexpr ETypeKind kind = ETypeKind::CHAR; using type = char; };
+			struct CharacterTypes : public IntegralType{ static constexpr auto kind = ETypeKind::CHARACTER; };
+				struct NarrowCharacterType : public CharacterTypes { static constexpr auto kind = ETypeKind::NARROW_CHARACTER; };
+					struct OrdinaryCharacterType : public NarrowCharacterType { static constexpr auto kind = ETypeKind::ORDINARY_CHARACTER; };
+						struct Char : public OrdinaryCharacterType { static constexpr auto kind = ETypeKind::CHAR; using type = char; };
 						// signed char and unsigned char are narrow character types, but they are not character types.In other words, 
 						// the set of narrow character types is not a subset of the set of character types.
-						struct SignedChar : public OrdinaryCharacterType { static constexpr ETypeKind kind = ETypeKind::SIGNED_CHAR; using type = signed char; };
-						struct UnsignedChar : public OrdinaryCharacterType { static constexpr ETypeKind kind = ETypeKind::UNSIGNED_CHAR; using type = unsigned char; };
+						struct SignedChar : public OrdinaryCharacterType { static constexpr auto kind = ETypeKind::SIGNED_CHAR; using type = signed char; };
+						struct UnsignedChar : public OrdinaryCharacterType { static constexpr auto kind = ETypeKind::UNSIGNED_CHAR; using type = unsigned char; };
 #if __cplusplus > 201703L // only support c++20
-					struct CHAR8T : public NarrowCharacterType{ static constexpr ETypeKind kind = ETypeKind::CHAR8T; using type = char8_t; };
+					struct CHAR8T : public NarrowCharacterType{ static constexpr auto kind = ETypeKind::CHAR8T; using type = char8_t; };
 #endif
-				struct WideCharacterType : public CharacterTypes { static constexpr ETypeKind kind = ETypeKind::WIDE_CHARACTER; };
-					struct CHAR16T : public WideCharacterType { static constexpr ETypeKind kind = ETypeKind::CHAR16_T; using type = char16_t; };
-					struct CHAR32T : public WideCharacterType { static constexpr ETypeKind kind = ETypeKind::CHAR32_T; using type = char32_t; };
-					struct WCHART  : public WideCharacterType { static constexpr ETypeKind kind = ETypeKind::WCHAR_T; using type = wchar_t; };
+				struct WideCharacterType : public CharacterTypes { static constexpr auto kind = ETypeKind::WIDE_CHARACTER; };
+					struct CHAR16T : public WideCharacterType { static constexpr auto kind = ETypeKind::CHAR16_T; using type = char16_t; };
+					struct CHAR32T : public WideCharacterType { static constexpr auto kind = ETypeKind::CHAR32_T; using type = char32_t; };
+					struct WCHART  : public WideCharacterType { static constexpr auto kind = ETypeKind::WCHAR_T; using type = wchar_t; };
 
-			struct SignedIntegral : public IntegralType{ static constexpr ETypeKind kind = ETypeKind::SIGNED_INTEGRAL;};
-				struct StandardSigned : public SignedIntegral { static constexpr ETypeKind kind = ETypeKind::STANDARD_SIGNED; };
-					struct ShortInt : public StandardSigned { static constexpr ETypeKind kind = ETypeKind::SHORT_INT; using type = short int; };
-					struct Int : public StandardSigned { static constexpr ETypeKind kind = ETypeKind::INT; using type = int; };
-					struct LongInt : public StandardSigned { static constexpr ETypeKind kind = ETypeKind::LONG_INT; using type = long int; };
-					struct LongLongInt : public StandardSigned { static constexpr ETypeKind kind = ETypeKind::LONG_LONG_INT; using type = long long int; };
-				struct ExtendedSigned : public SignedIntegral { static constexpr ETypeKind kind = ETypeKind::EXTENDED_SIGNED; };
+			struct SignedIntegral : public IntegralType{ static constexpr auto kind = ETypeKind::SIGNED_INTEGRAL;};
+				struct StandardSigned : public SignedIntegral { static constexpr auto kind = ETypeKind::STANDARD_SIGNED; };
+					struct ShortInt : public StandardSigned { static constexpr auto kind = ETypeKind::SHORT_INT; using type = short int; };
+					struct Int : public StandardSigned { static constexpr auto kind = ETypeKind::INT; using type = int; };
+					struct LongInt : public StandardSigned { static constexpr auto kind = ETypeKind::LONG_INT; using type = long int; };
+					struct LongLongInt : public StandardSigned { static constexpr auto kind = ETypeKind::LONG_LONG_INT; using type = long long int; };
+				struct ExtendedSigned : public SignedIntegral { static constexpr auto kind = ETypeKind::EXTENDED_SIGNED; };
 
-			struct UnsignedIntegral : public IntegralType { static constexpr ETypeKind kind = ETypeKind::UNSIGNED_INTEGRAL; };
-				struct StandardUnsigned : public UnsignedIntegral { static constexpr ETypeKind kind = ETypeKind::UNSIGNED_INTEGRAL; };
-					struct UnsignedShortInt : public StandardUnsigned { static constexpr ETypeKind kind = ETypeKind::UNSIGNED_SHORT_INT; using type = unsigned short int; };
-					struct UnsignedInt : public StandardUnsigned { static constexpr ETypeKind kind = ETypeKind::UNSIGNED_INT; using type = unsigned int; };
-					struct UnsignedLongInt : public StandardUnsigned { static constexpr ETypeKind kind = ETypeKind::UNSIGNED_LONG_INT; using type = unsigned long int; };
-					struct UnsignedLongLongInt : public StandardUnsigned { static constexpr ETypeKind kind = ETypeKind::UNSIGNED_LONG_LONG_INT; using type = unsigned long long int; };
-				struct ExtendedUnsigned : public UnsignedIntegral { static constexpr ETypeKind kind = ETypeKind::EXTENDED_UNSIGNED; };
+			struct UnsignedIntegral : public IntegralType { static constexpr auto kind = ETypeKind::UNSIGNED_INTEGRAL; };
+				struct StandardUnsigned : public UnsignedIntegral { static constexpr auto kind = ETypeKind::STANDARD_UNSIGNED; };
+					struct UnsignedShortInt : public StandardUnsigned { static constexpr auto kind = ETypeKind::UNSIGNED_SHORT_INT; using type = unsigned short int; };
+					struct UnsignedInt : public StandardUnsigned { static constexpr auto kind = ETypeKind::UNSIGNED_INT; using type = unsigned int; };
+					struct UnsignedLongInt : public StandardUnsigned { static constexpr auto kind = ETypeKind::UNSIGNED_LONG_INT; using type = unsigned long int; };
+					struct UnsignedLongLongInt : public StandardUnsigned { static constexpr auto kind = ETypeKind::UNSIGNED_LONG_LONG_INT; using type = unsigned long long int; };
+				struct ExtendedUnsigned : public UnsignedIntegral { static constexpr auto kind = ETypeKind::EXTENDED_UNSIGNED; };
 
-		struct FloatPoint : public Arithmetic{ static constexpr ETypeKind kind = ETypeKind::FLOAT_POINT; };
-			struct StandardFloatPoint : public FloatPoint { static constexpr ETypeKind kind = ETypeKind::STANDARD_FLOAT_POINT; };
-				struct Float : public StandardFloatPoint { static constexpr ETypeKind kind = ETypeKind::FLOAT; using type = float; };
-				struct Double : public StandardFloatPoint { static constexpr ETypeKind kind = ETypeKind::DOUBLE; using type = double; };
-				struct LongDouble : public StandardFloatPoint { static constexpr ETypeKind kind = ETypeKind::LONG_DOUBLE; using type = long double; };
-			struct ExtendFloatPoint : public FloatPoint { static constexpr ETypeKind kind = ETypeKind::EXTENDED_FLOAT_POINT; };
+		struct FloatPoint : public Arithmetic{ static constexpr auto kind = ETypeKind::FLOAT_POINT; };
+			struct StandardFloatPoint : public FloatPoint { static constexpr auto kind = ETypeKind::STANDARD_FLOAT_POINT; };
+				struct Float : public StandardFloatPoint { static constexpr auto kind = ETypeKind::FLOAT; using type = float; };
+				struct Double : public StandardFloatPoint { static constexpr auto kind = ETypeKind::DOUBLE; using type = double; };
+				struct LongDouble : public StandardFloatPoint { static constexpr auto kind = ETypeKind::LONG_DOUBLE; using type = long double; };
+			struct ExtendFloatPoint : public FloatPoint { static constexpr auto kind = ETypeKind::EXTENDED_FLOAT_POINT; };
 
 	// specialized version
 	template<> struct type_kind_map<ETypeKind::ARITHMETIC> { using type = Arithmetic; };

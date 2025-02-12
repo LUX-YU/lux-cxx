@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 #include "entity.hpp"
 
 namespace lux::cxx::lan_model
@@ -10,6 +11,6 @@ namespace lux::cxx::lan_model
 		ReferenceType*	type;
 
 		// optional
-		const char*		name;
+		std::string		name;
 	};
 }

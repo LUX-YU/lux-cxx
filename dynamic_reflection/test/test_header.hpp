@@ -35,6 +35,7 @@ struct LUX_REF_MARK(struct) TestStruct
 {
     int a1;
     int a2;
+    std::string b1;
     TestStruct* a4;
 
     UnexposedClass* a3;
@@ -45,6 +46,10 @@ enum class LUX_REF_MARK(enum) TestEnum
     VALUE1,
     VALUE2 = 100,
     VALUE3
+};
+
+enum LUX_REF_MARK(enum){
+  AnonymousEnum = 100,
 };
 
 class LUX_REF_MARK(class) TestClass
@@ -59,6 +64,8 @@ public:
     int LUX_REF_MARK(int) a1;
 protected:
     int a2;
+
+    virtual void __virtual_func() = 0;
 private:
     const int* a3;
     

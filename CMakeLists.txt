@@ -38,7 +38,8 @@ set(ENABLE_COMPONENTS
 set(ENABLE_DYNAMIC_REFLECTION OFF CACHE BOOL "ENABLE REFLECTION SUPPORT")
 if(ENABLE_DYNAMIC_REFLECTION)
     add_subdirectory(dynamic_reflection)
-    list(APPEND ENABLE_COMPONENTS dynamic_reflection)
+    list(APPEND ENABLE_COMPONENTS dynamic_reflection_parser)
+    list(APPEND ENABLE_COMPONENTS dynamic_reflection_runtime)
 endif()
 
 install_components(

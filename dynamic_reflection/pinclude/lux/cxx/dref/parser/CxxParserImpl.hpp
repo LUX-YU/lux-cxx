@@ -3,9 +3,7 @@
 #include <lux/cxx/dref/parser/CxxParser.hpp>
 #include <lux/cxx/dref/runtime/MetaUnitImpl.hpp>
 #include <lux/cxx/lan_model/declaration.hpp>
-#include <lux/cxx/lan_model/type.hpp>
-#include <lux/cxx/lan_model/types/class_type.hpp>
-#include <lux/cxx/lan_model/types/enumeration.hpp>
+#include <lux/cxx/lan_model/types.hpp>
 #include <memory>
 
 namespace lux::cxx::dref
@@ -22,28 +20,25 @@ namespace lux::cxx::dref
         ParseResult parse(std::string_view file, std::vector<std::string_view> commands, std::string_view name, std::string_view version);
 
         // static size_t declaration_id(const Cursor& cursor);
-        static size_t declaration_id(EDeclarationKind kind, const char* name);
-        static size_t declaration_id(Declaration* decl);
-        static size_t type_meta_id(const char* name);
+        static size_t declaration_id(EDeclarationKind kind, std::string_view name);
+        static size_t declaration_id(const std::unique_ptr<Declaration>& decl);
+        static size_t type_meta_id(std::string_view name);
 
         static std::string fullQualifiedName(const Cursor& cursor);
         static std::string fullQualifiedParameterName(const Cursor& cursor, size_t index);
 
-        // the return string should be deleted by user
-        static char* nameFromClangString(const String&);
-        static char* nameFromStdString(std::string_view);
-        static ::lux::cxx::lan_model::Visibility visibiltyFromClangVisibility(CX_CXXAccessSpecifier);
+        static ::lux::cxx::lan_model::Visibility visibilityFromClangVisibility(CX_CXXAccessSpecifier);
 
-        static char* annotationFromClangCursor(const Cursor&);
+        static std::string annotationFromClangCursor(const Cursor&);
     private:
         
-        [[nodiscard]] TranslationUnit   translate(std::string_view file, std::vector<std::string_view> commands);
+        [[nodiscard]] TranslationUnit   translate(std::string_view file, std::vector<std::string_view> commands) const;
 
-        std::vector<Cursor>             findMarkedCursors(const Cursor& root_cursor);
+        std::vector<Cursor>             findMarkedCursors(const Cursor& root_cursor) const;
         Declaration*              parseDeclaration(const Cursor& cursor);
 
         template<EDeclarationKind E, typename T = typename lux::cxx::lan_model::declaration_kind_map<E>::type>
-        T* TParseDeclaration(const Cursor&, T*);
+        void TParseDeclaration(const Cursor&, T*);
 
         template<EDeclarationKind E>
         TypeMeta* TDeclTypeGen(const Cursor& cursor)
@@ -72,131 +67,172 @@ namespace lux::cxx::dref
         }
 
         template<EDeclarationKind E, typename T = typename lux::cxx::lan_model::declaration_kind_map<E>::type>
-        T* TParseDeclarationDecorator(const Cursor& cursor, bool is_marked = false)
+        T* TParseDeclarationDecorator(const Cursor& cursor, const bool is_marked = false)
         {
-            auto full_qualified_name = fullQualifiedName(cursor);
+            const auto usr = cursor.USR().to_std();
+            auto id = declaration_id(E, usr);
 
-            auto id = declaration_id(E, full_qualified_name.c_str());
             if (hasDeclarationInContextById(id))
             {
                 return static_cast<T*>(getDeclarationFromContextById(id));
             }
 
-            auto declaration = new T{};
-            if (is_marked)
+            auto type_meta = TDeclTypeGen<E>(cursor);
+            if (type_meta == nullptr)
             {
-                registMarkableDeclaration(id, declaration);
+                return nullptr;
             }
-            else
+
+            T declaration;
+            declaration.type                   = type_meta;
+            declaration.declaration_kind       = E;
+            declaration.name                   = cursor.displayName().to_std();
+            declaration.full_qualified_name    = fullQualifiedName(cursor);
+            declaration.spelling               = cursor.cursorSpelling().to_std();
+            declaration.usr                    = usr;
+            declaration.attribute              = annotationFromClangCursor(cursor);
+
+            auto raw_ptr = TRegisterDeclaration<E>(is_marked, id, declaration);
+
+            if constexpr (E == EDeclarationKind::CLASS || E == EDeclarationKind::ENUMERATION)
             {
-                registUnmarkableDeclaration(id, declaration);
+                type_meta->declaration = raw_ptr;
             }
+
+            TParseDeclaration<E>(cursor, raw_ptr);
+
+            return raw_ptr;
+        }
+
+        template<EDeclarationKind E, typename T = typename lux::cxx::lan_model::declaration_kind_map<E>::type>
+        void TParseLocalDeclarationDecorator(const Cursor& cursor, T& declaration)
+        {
+            const auto usr = cursor.USR().to_std();
 
             auto type_meta = TDeclTypeGen<E>(cursor);
 
-            if (type_meta == nullptr)
-            {
-                delete declaration;
-                // TODO remove from 
-                return nullptr;
-            }
+            declaration.type                   = type_meta;
+            declaration.declaration_kind       = E;
+            declaration.name                   = cursor.displayName().to_std();
+            declaration.full_qualified_name    = fullQualifiedName(cursor);
+            declaration.spelling               = cursor.cursorSpelling().to_std();
+            declaration.usr                    = usr;
+            declaration.attribute              = annotationFromClangCursor(cursor);
 
-            declaration->type             = type_meta;
-            declaration->declaration_kind = E;
-            declaration->name             = nameFromStdString(full_qualified_name);
-            
-            declaration->attribute = annotationFromClangCursor(cursor);
-            if constexpr (E == EDeclarationKind::CLASS)
-            {
-                auto _tm = static_cast<::lux::cxx::lan_model::ClassType*>(type_meta);
-                _tm->declaration = declaration;
-            }
-            else if constexpr (E == EDeclarationKind::ENUMERATION)
-            {
-                auto _tm = static_cast<::lux::cxx::lan_model::EnumerationType*>(type_meta);
-                _tm->declaration = declaration;
-            }
-
-            TParseDeclaration<E>(cursor, declaration);
-
-            return declaration;
+            TParseDeclaration<E>(cursor, &declaration);
         }
 
-        lux::cxx::lan_model::ParameterDeclaration* TParseParameter(const Cursor& cursor, size_t index)
+        void parseParameter(const Cursor& cursor, size_t index, lux::cxx::lan_model::ParameterDeclaration& declaration)
         {
-            auto full_qualified_name = fullQualifiedParameterName(cursor, index);
-            auto id = declaration_id(EDeclarationKind::PARAMETER, full_qualified_name.c_str());
-            auto declaration = new lux::cxx::lan_model::ParameterDeclaration();
-            registUnmarkableDeclaration(id, declaration);
+            const auto full_qualified_name = fullQualifiedParameterName(cursor, index);
+            const auto display_name = cursor.displayName().to_std();
 
             auto type_meta = TDeclTypeGen<EDeclarationKind::PARAMETER>(cursor);
-
-            if (type_meta == nullptr)
-            {
-                delete declaration;
-                // TODO remove from 
-                return nullptr;
-            }
-
-            declaration->type = type_meta;
-            declaration->declaration_kind = EDeclarationKind::PARAMETER;
-            declaration->name = nameFromStdString(full_qualified_name);
-            declaration->index = index;
-
-            // TParseDeclaration<EDeclarationKind::PARAMETER>(cursor, declaration); no use
-
-            return declaration;
+            declaration.type                   = type_meta;
+            declaration.declaration_kind       = EDeclarationKind::PARAMETER;
+            declaration.name                   = cursor.displayName().to_std();
+            declaration.full_qualified_name    = full_qualified_name;
+            declaration.spelling               = cursor.cursorSpelling().to_std();
+            declaration.usr                    = ""; // parameter declaration doesn't have usr'
+            declaration.attribute              = annotationFromClangCursor(cursor);
         }
 
         template<ETypeMetaKind E, typename T = typename lux::cxx::lan_model::type_kind_map<E>::type>
-        T* TParseTypeMeta(const Type&, T*);
+        void TParseTypeMeta(const Type&, TypeMeta*);
 
-        template<ETypeMetaKind E, typename T = typename lux::cxx::lan_model::type_kind_map<E>::type>
-        T* TParseTypeMetaDecorator(const Type& type)
+        template<ETypeMetaKind E>
+        TypeMeta* TParseTypeMetaDecorator(const Type& clang_type)
         {
-            auto id = type_meta_id(type.typeSpelling().c_str());
+            const auto canonical_type = clang_type.canonicalType();
+            const auto canonical_type_name = canonical_type.typeSpelling().to_std();
+            const auto id = type_meta_id(canonical_type_name);
             if (hasTypeMetaInContextById(id))
             {
-                return static_cast<T*>(getTypeMetaFromContextById(id));
+                return getTypeMetaFromContextById(id);
             }
 
-            return TParseTypeMetaDecoratorNoCheck<E>(type, id);
+            return TParseTypeMetaDecoratorNoCheck<E>(canonical_type, id);
         }
 
-        template<ETypeMetaKind E, typename T = typename lux::cxx::lan_model::type_kind_map<E>::type>
-        T* TParseTypeMetaDecoratorNoCheck(const Type& type, size_t id)
+        template<ETypeMetaKind E>
+        TypeMeta* TParseTypeMetaDecoratorNoCheck(const Type& type, size_t id)
         {
-            T* meta_type = new T();
-            registTypeMeta(id, meta_type);
+            TypeMeta meta_type;
+            meta_type.type_kind    = E;
+            meta_type.is_const     = type.isConstQualifiedType();
+            meta_type.is_volatile  = type.isVolatileQualifiedType();
+            meta_type.name         = type.typeSpelling().to_std();
+            meta_type.size         = type.typeSizeof();
+            meta_type.align        = type.typeAlignof();
 
-            meta_type->type_kind    = E;
-            meta_type->is_const     = type.isConstQualifiedType();
-            meta_type->is_volatile  = type.isVolatileQualifiedType();
-            meta_type->name         = nameFromClangString(type.typeSpelling());
-
-            TParseTypeMeta<E>(type, meta_type);
-
-            return meta_type;
+            TypeMeta* raw_ptr      = registerTypeMeta(id, meta_type);
+            TParseTypeMeta<E>(type, raw_ptr);
+            return raw_ptr;
         }
 
         TypeMeta* parseUncertainTypeMeta(const Type& type);
         
-        bool hasDeclarationInContextById(size_t id) const;
-        bool hasDeclarationInContextByName(EDeclarationKind kind, const char* name) const;
+        [[nodiscard]] bool hasDeclarationInContextById(size_t id) const;
+        [[nodiscard]] bool hasDeclarationInContextByName(EDeclarationKind kind, const char* name) const;
         Declaration* getDeclarationFromContextById(size_t id);
         Declaration* getDeclarationFromContextByName(EDeclarationKind kind, const char* name);
 
-        bool hasTypeMetaInContextById(size_t id) const;
-        bool hasTypeMetaInContextByName(const char* name) const;
-        TypeMeta* getTypeMetaFromContextById(size_t id);
-        TypeMeta* getTypeMetaFromContextByName(EDeclarationKind kind, const char* name);
+        [[nodiscard]] bool hasTypeMetaInContextById(size_t id) const;
+        [[nodiscard]] bool hasTypeMetaInContextByName(const char* name) const;
+        TypeMeta* getTypeMetaFromContextById(size_t id) const;
+        TypeMeta* getTypeMetaFromContextByName(EDeclarationKind kind, std::string_view name);
 
-        void registTypeMeta(size_t, TypeMeta*);
-        void registUnmarkableDeclaration(Declaration*);
-        void registMarkableDeclaration(Declaration*);
+        TypeMeta* registerTypeMeta(size_t, const TypeMeta&);
 
-        void registUnmarkableDeclaration(size_t, Declaration*);
-        void registMarkableDeclaration(size_t, Declaration*);
+        lan_model::ClassDeclaration*        registerMarkedClassDeclaration(size_t, const lan_model::ClassDeclaration&);
+        lan_model::FunctionDeclaration*     registerMarkedFunctionDeclaration(size_t, const lan_model::FunctionDeclaration&);
+        lan_model::EnumerationDeclaration*  registerMarkedEnumerationDeclaration(size_t, const lan_model::EnumerationDeclaration&);
+
+        lan_model::ClassDeclaration*        registerUnmarkedClassDeclaration(size_t, const lan_model::ClassDeclaration&);
+        lan_model::FunctionDeclaration*     registerUnmarkedFunctionDeclaration(size_t, const lan_model::FunctionDeclaration&);
+        lan_model::EnumerationDeclaration*  registerUnmarkedEnumerationDeclaration(size_t, const lan_model::EnumerationDeclaration&);
+
+        template<EDeclarationKind E, typename T = lan_model::declaration_kind_map<E>::type>
+        T* TRegisterDeclaration(bool is_marked, size_t id, const typename lan_model::declaration_kind_map<E>::type& decl)
+        {
+            static_assert(
+                E == EDeclarationKind::CLASS ||
+                E == EDeclarationKind::FUNCTION ||
+                E == EDeclarationKind::ENUMERATION
+            );
+
+            if(is_marked)
+            {
+                if constexpr (E == EDeclarationKind::CLASS)
+                {
+                    return registerMarkedClassDeclaration(id, decl);
+                }
+                else if constexpr(E == EDeclarationKind::FUNCTION)
+                {
+                    return registerMarkedFunctionDeclaration(id, decl);
+                }
+                else if constexpr(E == EDeclarationKind::ENUMERATION)
+                {
+                    return registerMarkedEnumerationDeclaration(id, decl);
+                }
+            }
+            else
+            {
+                if constexpr (E == EDeclarationKind::CLASS)
+                {
+                    return registerUnmarkedClassDeclaration(id, decl);
+                }
+                else if constexpr(E == EDeclarationKind::FUNCTION)
+                {
+                    return registerUnmarkedFunctionDeclaration(id, decl);
+                }
+                else if constexpr(E == EDeclarationKind::ENUMERATION)
+                {
+                    return registerUnmarkedEnumerationDeclaration(id, decl);
+                }
+            }
+            return nullptr; // unreachable
+        }
 
         template<typename T>
         std::enable_if_t<std::is_base_of_v<::lux::cxx::lan_model::CallableDeclCommon, T>> 
@@ -204,13 +240,14 @@ namespace lux::cxx::dref
         {
             using namespace ::lux::cxx::lan_model;
             declaration->result_type = parseUncertainTypeMeta(cursor.cursorResultType());
-            declaration->parameter_number = cursor.numArguments();
-            declaration->parameter_decls = declaration->parameter_number > 0 ?
-                new ParameterDeclaration* [declaration->parameter_number] : nullptr;
-            for (size_t i = 0; i < declaration->parameter_number; i++)
+            declaration->mangling    = cursor.mangling().to_std();
+            for(size_t i = 0; i < cursor.numArguments(); i++)
             {
-                auto param_decl = TParseParameter(cursor.getArgument(i), i);
-                declaration->parameter_decls[i] = param_decl;
+                declaration->parameter_decls.push_back({});
+                parseParameter(
+                    cursor.getArgument(i), i,
+                    declaration->parameter_decls.back()
+                );
             }
         }
 
@@ -219,7 +256,7 @@ namespace lux::cxx::dref
         template<ETypeMetaKind E1, ETypeMetaKind E2>
         TypeMeta* parseReferenceSemtantic(const Type& type, size_t id)
         {
-            auto ref_type = rootAnonicalType(type.getPointeeType());
+            auto ref_type  = rootAnonicalType(type.getPointeeType());
             auto type_kind = ref_type.typeKind();
             if (type_kind != CXType_FunctionProto)
             {

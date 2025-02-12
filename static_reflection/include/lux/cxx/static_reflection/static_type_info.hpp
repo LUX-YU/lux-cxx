@@ -125,6 +125,9 @@ namespace lux::cxx
 #define MAKE_FIELD_TYPE_EX(owner, info, field_name)\
     ::lux::cxx::field_info<&owner::field_name, offsetof(owner, field_name), info, MAKE_CT_STRING_TYPE(#field_name)>
 
+#define MAKE_METHOD_TYPE(owner, method_name) \
+  	::lux::cxx::field_info<&owner::method_name, 0, void, MAKE_CT_STRING_TYPE(#method_name)>
+
 #define FIELD_TYPE(name)\
     MAKE_FIELD_TYPE(_type, decltype(_type::name), name)
 

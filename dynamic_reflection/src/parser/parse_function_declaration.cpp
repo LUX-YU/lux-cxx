@@ -9,7 +9,7 @@ namespace lux::cxx::dref
 	using namespace ::lux::cxx::lan_model;
 
 	template<>
-	FunctionDeclaration* CxxParserImpl::TParseDeclaration<EDeclarationKind::FUNCTION>(const Cursor& cursor, FunctionDeclaration* declaration)
+	void CxxParserImpl::TParseDeclaration<EDeclarationKind::FUNCTION>(const Cursor& cursor, FunctionDeclaration* declaration)
 	{
 		callableDeclInit(declaration, cursor);
 
@@ -20,13 +20,11 @@ namespace lux::cxx::dref
 
 			if (cursor_kind == CXCursorKind::CXCursor_AnnotateAttr)
 			{
-				declaration->attribute = nameFromClangString(cursor.displayName());
+				declaration->attribute = cursor.displayName().to_std();
 			}
 			return CXChildVisitResult::CXChildVisit_Continue;
 		};
 
 		cursor.visitChildren(std::move(function_handler));
-
-		return declaration;
 	}
 }

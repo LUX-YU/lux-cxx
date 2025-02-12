@@ -1,10 +1,9 @@
 #pragma once
+#include <deque>
 #include <lux/cxx/visibility.h>
 #include <lux/cxx/lan_model/declaration.hpp>
 #include <lux/cxx/lan_model/type.hpp>
-#include <unordered_map>
 #include <string_view>
-#include <vector>
 #include <memory>
 
 namespace lux::cxx::dref
@@ -17,42 +16,59 @@ namespace lux::cxx::dref
 	using Declaration		= ::lux::cxx::lan_model::Declaration;
 	using EDeclarationKind	= ::lux::cxx::lan_model::EDeclarationKind;
 
-	class MetaUnit
+	class LUX_CXX_PUBLIC MetaUnit
 	{
 		friend class CxxParserImpl;
 	public:
-		LUX_CXX_PUBLIC MetaUnit();
+		MetaUnit();
+		MetaUnit(MetaUnit&&) noexcept;
+		MetaUnit& operator=(MetaUnit&&) noexcept;
+		~MetaUnit();
 
-		LUX_CXX_PUBLIC MetaUnit(MetaUnit&&) noexcept;
-		LUX_CXX_PUBLIC MetaUnit& operator=(MetaUnit&&) noexcept;
+		static size_t calculateDeclarationId(EDeclarationKind kind, std::string_view name);
+		static size_t calculateDeclarationId(const Declaration* decl);
 
-		LUX_CXX_PUBLIC ~MetaUnit();
+		static size_t calculateTypeMetaId(std::string_view name);
+		static size_t calculateTypeMetaId(TypeMeta* meta);
 
-		LUX_CXX_PUBLIC static size_t calculateDeclarationId(EDeclarationKind kind, const char* name);
-		LUX_CXX_PUBLIC static size_t calculateDeclarationId(Declaration* const decl);
+		[[nodiscard]] bool isValid() const;
 
-		LUX_CXX_PUBLIC static size_t calculateTypeMetaId(const char* name);
-		LUX_CXX_PUBLIC static size_t calculateTypeMetaId(TypeMeta* const meta);
+		[[nodiscard]] size_t id() const;
 
-		LUX_CXX_PUBLIC bool isValid() const;
+		[[nodiscard]] const std::string& name() const;
 
-		LUX_CXX_PUBLIC size_t id() const;
+		[[nodiscard]] const std::string& version() const;
 
-		LUX_CXX_PUBLIC const std::string& name() const;
+		[[nodiscard]] const std::deque<lan_model::ClassDeclaration>&
+		markedClassDeclarationList() const;
 
-		LUX_CXX_PUBLIC const std::string& version() const;
+		[[nodiscard]] const std::deque<lan_model::FunctionDeclaration>&
+		markedFunctionDeclarationList() const;
 
-		LUX_CXX_PUBLIC const std::vector<Declaration*>& markedDeclarationList() const;
+		[[nodiscard]] const std::deque<lan_model::EnumerationDeclaration>&
+		markedEnumerationDeclarationList() const;
 
-		LUX_CXX_PUBLIC const Declaration* findDeclarationByName(EDeclarationKind kind, const std::string& name) const;
+		[[nodiscard]] const std::deque<lan_model::ClassDeclaration>&
+		unmarkedClassDeclarationList() const;
 
-		LUX_CXX_PUBLIC const std::vector<TypeMeta*>& typeMetaList() const;
+		[[nodiscard]] const std::deque<lan_model::FunctionDeclaration>&
+		unmarkedFunctionDeclarationList() const;
 
-		LUX_CXX_PUBLIC const TypeMeta* findTypeMetaByName(std::string_view name) const;
+		[[nodiscard]] const std::deque<lan_model::EnumerationDeclaration>&
+		unmarkedEnumerationDeclarationList() const;
+
+		[[nodiscard]] const Declaration* findDeclarationByName(EDeclarationKind kind, std::string_view name) const;
+
+		[[nodiscard]] const std::deque<TypeMeta>& typeMetaList() const;
+
+		[[nodiscard]] const TypeMeta* findTypeMetaByName(std::string_view name) const;
+
+		static std::vector<std::byte> serializeBinary(const MetaUnit& mu);
+		static MetaUnit deserializeBinary(const std::byte* data, size_t size);
 
 	private:
 		std::unique_ptr<MetaUnitImpl> _impl;
 
-		LUX_CXX_PUBLIC explicit MetaUnit(std::unique_ptr<MetaUnitImpl>);
+		explicit MetaUnit(std::unique_ptr<MetaUnitImpl>);
 	};
 }

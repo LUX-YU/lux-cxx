@@ -6,7 +6,6 @@ namespace lux::cxx::lan_model
 	struct EnumerationType : public Compound
 	{
 		static constexpr ETypeKind kind = ETypeKind::ENUMERATION;
-		EnumerationDeclaration*	   declaration;
 	};
 
 	struct ScopedEnumeration : public EnumerationType {};

@@ -10,6 +10,17 @@ target_link_libraries(
 )
 
 add_executable(
+    function_traits_test
+    function_traits_test.cpp
+)
+
+target_link_libraries(
+    function_traits_test
+    PRIVATE
+    compile_time
+)
+
+add_executable(
     computer_pipeline_test
     computer_pipeline_test.cpp
 )

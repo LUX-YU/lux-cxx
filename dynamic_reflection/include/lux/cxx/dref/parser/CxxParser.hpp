@@ -1,7 +1,6 @@
 #pragma once
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <lux/cxx/visibility.h>
 #include <lux/cxx/dref/runtime/MetaUnit.hpp>
 

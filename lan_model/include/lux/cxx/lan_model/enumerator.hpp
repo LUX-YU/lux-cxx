@@ -1,12 +1,13 @@
 #pragma once
 #include "entity.hpp"
 #include <cstddef>
+#include <string>
 
 namespace lux::cxx::lan_model
 {
-	struct Enumerator : public Entity
+	struct Enumerator : Entity
 	{
-		const char* name;
+		std::string name;
 		size_t		value;
 	};
 }

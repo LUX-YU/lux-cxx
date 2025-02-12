@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <string>
 #include "entity.hpp"
 
 namespace lux::cxx::lan_model
@@ -15,7 +16,7 @@ namespace lux::cxx::lan_model
 		void*		value;
 
 		// optional
-		const char* name;
+		std::string name;
 	};
 
 	static constexpr inline Object null_object()
@@ -25,7 +26,7 @@ namespace lux::cxx::lan_model
 		obj.align	= 0;
 		obj.type	= nullptr;
 		obj.value	= nullptr;
-		obj.name	= nullptr;
+		obj.name	= "";
 		return obj;
 	}
 }

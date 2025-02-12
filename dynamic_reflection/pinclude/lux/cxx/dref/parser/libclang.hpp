@@ -28,19 +28,18 @@ namespace lux::cxx::dref
 			}
 		}
 
-		bool isVaild()
+		[[nodiscard]] bool isValid() const
 		{
 			return _unit != nullptr;
 		}
 
 		std::vector<std::string> diagnostics() {
-			int nbDiag = clang_getNumDiagnostics(_unit);
+			const auto nbDiag = clang_getNumDiagnostics(_unit);
 
-			bool foundError = false;
 			std::vector<std::string> error_list;
 			for (unsigned int currentDiag = 0; currentDiag < nbDiag; ++currentDiag) {
-				CXDiagnostic diagnotic = clang_getDiagnostic(_unit, currentDiag);
-				CXString errorString = clang_formatDiagnostic(diagnotic, clang_defaultDiagnosticDisplayOptions());
+				const CXDiagnostic diagnostic = clang_getDiagnostic(_unit, currentDiag);
+				const CXString errorString = clang_formatDiagnostic(diagnostic, clang_defaultDiagnosticDisplayOptions());
 				std::string tmp{clang_getCString(errorString)};
 				error_list.push_back(std::move(tmp));
 			}
@@ -51,29 +50,30 @@ namespace lux::cxx::dref
 		CXTranslationUnit _unit;
 	};
 
-	class String
+	class ClangString
 	{
 		friend class Type;
 		friend class Cursor;
 		friend class CursorKind;
 	public:
-		String(String&& other) noexcept
+
+		ClangString(ClangString&& other) noexcept
 		{
 			_string = other._string;
 			other._string.data = nullptr;
 		}
 
-		String& operator=(String&& other) noexcept
+		ClangString& operator=(ClangString&& other) noexcept
 		{
 			_string = other._string;
 			other._string.data = nullptr;
 			return *this;
 		}
 
-		String& operator=(const String&) = delete;
-		String(const String&) = delete;
+		ClangString& operator=(const ClangString&) = delete;
+		ClangString(const ClangString&) = delete;
 
-		~String()
+		~ClangString()
 		{
 			if (_string.data) clang_disposeString(_string);
 		}
@@ -97,13 +97,13 @@ namespace lux::cxx::dref
 		}
 
 	private:
-		explicit String(CXString string)
+		explicit ClangString(CXString string)
 			:_string(string) {}
 
 		CXString _string{};
 	};
 
-	static std::ostream& operator<<(std::ostream& os, const String& str)
+	static std::ostream& operator<<(std::ostream& os, const ClangString& str)
 	{
 		return os << str.c_str();
 	}
@@ -149,14 +149,14 @@ namespace lux::cxx::dref
 			return clang_equalTypes(_type, other._type);
 		}
 
-		[[nodiscard]] String typeSpelling() const
+		[[nodiscard]] ClangString typeSpelling() const
 		{
-			return String{ clang_getTypeSpelling(_type) };
+			return ClangString{ clang_getTypeSpelling(_type) };
 		}
 		
-		[[nodiscard]] String typeKindSpelling() const
+		[[nodiscard]] ClangString typeKindSpelling() const
 		{
-			return String{ clang_getTypeKindSpelling(_type.kind) };
+			return ClangString{ clang_getTypeKindSpelling(_type.kind) };
 		}
 
 		/**
@@ -208,7 +208,7 @@ namespace lux::cxx::dref
 		 * If the type declaration is a dependent type, CXTypeLayoutError_Dependent is
 		 *   returned.
 		 */
-		[[nodiscard]] size_t typeSizeof() const
+		[[nodiscard]] auto typeSizeof() const
 		{
 			return clang_Type_getSizeOf(_type);
 		}
@@ -226,7 +226,7 @@ namespace lux::cxx::dref
 		 * If the field's name S is not found,
 		 *   CXTypeLayoutError_InvalidFieldName is returned.
 		 */
-		size_t typeOffset(const char* name) const
+		auto typeOffset(const char* name) const
 		{
 			return clang_Type_getOffsetOf(_type, name);
 		}
@@ -271,9 +271,9 @@ namespace lux::cxx::dref
 			return clang_getAddressSpace(_type);
 		}
 
-		[[nodiscard]] String getTypedefName() const
+		[[nodiscard]] ClangString getTypedefName() const
 		{
-			return String(clang_getTypedefName(_type));
+			return ClangString(clang_getTypedefName(_type));
 		}
 
 		[[nodiscard]] int getNumTemplateArguments() const
@@ -542,9 +542,9 @@ namespace lux::cxx::dref
 
 		// wrapper of clang_getCursorKindSpelling, which convert enum CXCursorKind
 		// to CXString
-		[[nodiscard]] String cursorKindSpelling() const
+		[[nodiscard]] ClangString cursorKindSpelling() const
 		{
-			return String{ clang_getCursorKindSpelling(_kind) };
+			return ClangString{ clang_getCursorKindSpelling(_kind) };
 		}
 
 		[[nodiscard]] CXCursorKind kindEnum() const
@@ -666,19 +666,24 @@ namespace lux::cxx::dref
 			return clang_getEnumConstantDeclUnsignedValue(_cursor);
 		}
 
-		[[nodiscard]] String displayName() const
+		[[nodiscard]] ClangString displayName() const
 		{
-			return String(clang_getCursorDisplayName(_cursor));
+			return ClangString(clang_getCursorDisplayName(_cursor));
 		}
 
-		[[nodiscard]] String mangling() const
+		[[nodiscard]] ClangString USR() const
 		{
-			return String(clang_Cursor_getMangling(_cursor));
+			return ClangString(clang_getCursorUSR(_cursor));
 		}
 
-		[[nodiscard]] String cursorSpelling() const
+		[[nodiscard]] ClangString mangling() const
 		{
-			return String(clang_getCursorSpelling(_cursor));
+			return ClangString(clang_Cursor_getMangling(_cursor));
+		}
+
+		[[nodiscard]] ClangString cursorSpelling() const
+		{
+			return ClangString(clang_getCursorSpelling(_cursor));
 		}
 
 		[[nodiscard]] Type cursorResultType() const
@@ -800,14 +805,14 @@ namespace lux::cxx::dref
 		// clang_Cursor_isExternalSymbol
 		// clang_Cursor_getCommentRange
 
-		[[nodiscard]] String rawCommentText() const
+		[[nodiscard]] ClangString rawCommentText() const
 		{
-			return String(clang_Cursor_getRawCommentText(_cursor));
+			return ClangString(clang_Cursor_getRawCommentText(_cursor));
 		}
 		
-		[[nodiscard]] String briefCommentText() const
+		[[nodiscard]] ClangString briefCommentText() const
 		{
-			return String(clang_Cursor_getBriefCommentText(_cursor));
+			return ClangString(clang_Cursor_getBriefCommentText(_cursor));
 		}
 
 		// clang_CXXConstructor_isConvertingConstructor

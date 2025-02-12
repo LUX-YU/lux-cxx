@@ -10,8 +10,7 @@ namespace lux::cxx::dref
 	using namespace ::lux::cxx::lan_model;
 
 	template<>
-	FunctionType* CxxParserImpl::TParseTypeMeta<ETypeMetaKind::FUNCTION>(const Type& type, FunctionType* type_meta)
+	void CxxParserImpl::TParseTypeMeta<ETypeMetaKind::FUNCTION>(const Type& type, TypeMeta* type_meta)
 	{
-		return type_meta;
 	}
 }

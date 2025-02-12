@@ -9,25 +9,24 @@
 
 namespace lux::cxx::dref
 {
-	size_t CxxParserImpl::declaration_id(EDeclarationKind kind, const char* name)
+	size_t CxxParserImpl::declaration_id(const EDeclarationKind kind, std::string_view name)
 	{
 		return MetaUnit::calculateDeclarationId(kind, name);
 	}
 
-	size_t CxxParserImpl::type_meta_id(const char* name)
+	size_t CxxParserImpl::type_meta_id(const std::string_view name)
 	{
 		return MetaUnit::calculateTypeMetaId(name);
 	}
 
-	size_t CxxParserImpl::declaration_id(Declaration* decl)
+	size_t CxxParserImpl::declaration_id(const std::unique_ptr<Declaration>& decl)
 	{
 		return declaration_id(decl->kind, decl->name);
 	}
 
-	bool CxxParserImpl::hasDeclarationInContextById(size_t id) const
+	bool CxxParserImpl::hasDeclarationInContextById(const size_t id) const
 	{
-		return _meta_unit_data->_markable_decl_map.count(id) > 0
-			|| _meta_unit_data->_unmarkable_decl_map.count(id) > 0;
+		return _meta_unit_data->decl_map.contains(id);
 	}
 
 	bool CxxParserImpl::hasDeclarationInContextByName(EDeclarationKind kind, const char* name) const
@@ -38,11 +37,10 @@ namespace lux::cxx::dref
 
 	Declaration* CxxParserImpl::getDeclarationFromContextById(size_t id)
 	{
-		if (_meta_unit_data->_markable_decl_map.count(id) > 0)
-			return _meta_unit_data->_markable_decl_map[id];
+		if (_meta_unit_data->decl_map.contains(id))
+			return _meta_unit_data->decl_map[id];
 
-		return _meta_unit_data->_unmarkable_decl_map.count(id) > 0 ?
-			_meta_unit_data->_unmarkable_decl_map[id] : nullptr;
+		return nullptr;
 	}
 
 	Declaration* CxxParserImpl::getDeclarationFromContextByName(EDeclarationKind kind, const char* name)
@@ -53,7 +51,7 @@ namespace lux::cxx::dref
 
 	bool CxxParserImpl::hasTypeMetaInContextById(size_t id) const
 	{
-		return _meta_unit_data->_meta_type_map.count(id) > 0;
+		return _meta_unit_data->type_map.contains(id);
 	}
 
 	bool CxxParserImpl::hasTypeMetaInContextByName(const char* name) const
@@ -62,65 +60,81 @@ namespace lux::cxx::dref
 		return hasTypeMetaInContextById(id);
 	}
 
-	TypeMeta* CxxParserImpl::getTypeMetaFromContextById(size_t id)
+	TypeMeta* CxxParserImpl::getTypeMetaFromContextById(size_t id) const
 	{
-		return _meta_unit_data->_meta_type_map.count(id) > 0 ?
-			_meta_unit_data->_meta_type_map[id] : nullptr;
+		return _meta_unit_data->type_map.contains(id) ?
+			_meta_unit_data->type_map[id] : nullptr;
 	}
 
-	TypeMeta* CxxParserImpl::getTypeMetaFromContextByName(EDeclarationKind kind, const char* name)
+	TypeMeta* CxxParserImpl::getTypeMetaFromContextByName(EDeclarationKind kind, std::string_view name)
 	{
-		auto id = MetaUnit::calculateTypeMetaId(name);
+		const auto id = MetaUnit::calculateTypeMetaId(name);
 		return getTypeMetaFromContextById(id);
 	}
 
-	void CxxParserImpl::registTypeMeta(size_t id, TypeMeta* type_meta)
+	TypeMeta* CxxParserImpl::registerTypeMeta(size_t id, const TypeMeta& type_meta)
 	{
-		_meta_unit_data->_meta_type_list.push_back(type_meta);
-		_meta_unit_data->_meta_type_map[id] = type_meta;
+		_meta_unit_data->type_list.push_back(type_meta);
+		_meta_unit_data->type_map[id] =
+			&_meta_unit_data->type_list.back();
+		return &_meta_unit_data->type_list.back();
 	}
 
-	void CxxParserImpl::registUnmarkableDeclaration(Declaration* decl)
+	lan_model::ClassDeclaration*
+	CxxParserImpl::registerMarkedClassDeclaration(size_t id, const lan_model::ClassDeclaration& decl)
 	{
-		_meta_unit_data->_unmarkable_decl_list.push_back(decl);
-		_meta_unit_data->_unmarkable_decl_map[declaration_id(decl)] = decl;
-	}
-	void CxxParserImpl::registMarkableDeclaration(Declaration* decl)
-	{
-		_meta_unit_data->_markable_decl_list.push_back(decl);
-		_meta_unit_data->_markable_decl_map[declaration_id(decl)] = decl;
+		_meta_unit_data->marked_decl_lists.class_decl_list.push_back(decl);
+		_meta_unit_data->decl_map[id] =
+			&_meta_unit_data->marked_decl_lists.class_decl_list.back();
+		return &_meta_unit_data->marked_decl_lists.class_decl_list.back();
 	}
 
-	void CxxParserImpl::registUnmarkableDeclaration(size_t id, Declaration* decl)
+	lan_model::FunctionDeclaration*
+	CxxParserImpl::registerMarkedFunctionDeclaration(size_t id, const lan_model::FunctionDeclaration& decl)
 	{
-		_meta_unit_data->_unmarkable_decl_list.push_back(decl);
-		_meta_unit_data->_unmarkable_decl_map[id] = decl;
-	}
-	void CxxParserImpl::registMarkableDeclaration(size_t id, Declaration* decl)
-	{
-		_meta_unit_data->_markable_decl_list.push_back(decl);
-		_meta_unit_data->_markable_decl_map[id] = decl;
+		_meta_unit_data->marked_decl_lists.function_decl_list.push_back(decl);
+		_meta_unit_data->decl_map[id] =
+			&_meta_unit_data->marked_decl_lists.function_decl_list.back();
+		return &_meta_unit_data->marked_decl_lists.function_decl_list.back();
 	}
 
-	char* CxxParserImpl::nameFromClangString(const String& string)
+	lan_model::EnumerationDeclaration*
+	CxxParserImpl::registerMarkedEnumerationDeclaration(size_t id, const lan_model::EnumerationDeclaration& decl)
 	{
-		auto string_len = string.size();
-		char* ret = new char[string_len + 1];
-		std::strcpy(ret, string.c_str());
-		
-		return ret;
+		_meta_unit_data->marked_decl_lists.enumeration_decl_list.push_back(decl);
+		_meta_unit_data->decl_map[id] =
+			&_meta_unit_data->marked_decl_lists.enumeration_decl_list.back();
+		return &_meta_unit_data->marked_decl_lists.enumeration_decl_list.back();
 	}
 
-	char* CxxParserImpl::nameFromStdString(std::string_view str)
+	lan_model::ClassDeclaration*
+	CxxParserImpl::registerUnmarkedClassDeclaration(size_t id, const lan_model::ClassDeclaration& decl)
 	{
-		auto string_len = str.size();
-		char* ret = new char[string_len + 1];
-		std::strcpy(ret, str.data());
-
-		return ret;
+		_meta_unit_data->unmarked_decl_lists.class_decl_list.push_back(decl);
+		_meta_unit_data->decl_map[id] =
+			&_meta_unit_data->unmarked_decl_lists.class_decl_list.back();
+		return &_meta_unit_data->unmarked_decl_lists.class_decl_list.back();
 	}
 
-	::lux::cxx::lan_model::Visibility CxxParserImpl::visibiltyFromClangVisibility(CX_CXXAccessSpecifier specifier)
+	lan_model::FunctionDeclaration*
+	CxxParserImpl::registerUnmarkedFunctionDeclaration(size_t id, const lan_model::FunctionDeclaration& decl)
+	{
+		_meta_unit_data->unmarked_decl_lists.function_decl_list.push_back(decl);
+		_meta_unit_data->decl_map[id] =
+			&_meta_unit_data->unmarked_decl_lists.function_decl_list.back();
+		return &_meta_unit_data->unmarked_decl_lists.function_decl_list.back();
+	}
+
+	lan_model::EnumerationDeclaration*
+	CxxParserImpl::registerUnmarkedEnumerationDeclaration(size_t id, const lan_model::EnumerationDeclaration& decl)
+	{
+		_meta_unit_data->unmarked_decl_lists.enumeration_decl_list.push_back(decl);
+		_meta_unit_data->decl_map[id] =
+			&_meta_unit_data->unmarked_decl_lists.enumeration_decl_list.back();
+		return &_meta_unit_data->unmarked_decl_lists.enumeration_decl_list.back();
+	}
+
+	lan_model::Visibility CxxParserImpl::visibilityFromClangVisibility(const CX_CXXAccessSpecifier specifier)
 	{
 		using namespace ::lux::cxx::lan_model;
 		switch (specifier)
@@ -137,21 +151,19 @@ namespace lux::cxx::dref
 		return Visibility::INVALID;;
 	}
 
-	char* CxxParserImpl::annotationFromClangCursor(const Cursor& cursor)
+	std::string CxxParserImpl::annotationFromClangCursor(const Cursor& cursor)
 	{
 		if (!cursor.hasAttrs())
 		{
-			return nullptr;
+			return "";
 		}
-		char* ret{nullptr};
+		std::string ret;
 		cursor.visitChildren(
 			[&ret](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
 			{
-				auto cursor_kind = cursor.cursorKind();
-
-				if (cursor_kind == CXCursorKind::CXCursor_AnnotateAttr)
+				if (auto cursor_kind = cursor.cursorKind(); cursor_kind == CXCursorKind::CXCursor_AnnotateAttr)
 				{
-					ret = nameFromClangString(cursor.displayName());
+					ret = cursor.displayName().to_std();
 					return CXChildVisitResult::CXChildVisit_Break;
 				}
 				// else if(cursor_kind == CXCursorKind::Att)
@@ -168,8 +180,7 @@ namespace lux::cxx::dref
 			return std::string{};
 		}
 		auto spelling = cursor.displayName().to_std();
-		std::string res = fullQualifiedName(cursor.getCursorSemanticParent());
-		if (!res.empty())
+		if (const std::string res = fullQualifiedName(cursor.getCursorSemanticParent()); !res.empty())
 		{
 			return res + "::" + spelling;
 		}
@@ -178,7 +189,6 @@ namespace lux::cxx::dref
 
 	std::string CxxParserImpl::fullQualifiedParameterName(const Cursor& cursor, size_t index)
 	{
-
 		if (cursor.cursorKind().kindEnum() == CXCursor_TranslationUnit)
 		{
 			return std::string{};
@@ -215,12 +225,11 @@ namespace lux::cxx::dref
 		auto error_list = translate_unit.diagnostics();
 		for (auto& str : error_list)
 		{
-			std::cout << str << std::endl;
+			std::cerr << str << std::endl;
 		}
 
-		Cursor cursor(translate_unit);
-
-		auto marked_cursors = findMarkedCursors(cursor);
+		const Cursor cursor(translate_unit);
+		const auto marked_cursors = findMarkedCursors(cursor);
 
 		// set global parse context
 		_meta_unit_data = std::make_unique<MetaUnitData>();
@@ -239,8 +248,6 @@ namespace lux::cxx::dref
 			std::string(name), 
 			std::string(version)
 		);
-
-		meta_unit_impl->setDeleteFlat(true);
 
 		MetaUnit return_meta_unit(std::move(meta_unit_impl));
 		return std::make_pair(EParseResult::SUCCESS, std::move(return_meta_unit));
@@ -270,7 +277,7 @@ namespace lux::cxx::dref
 		return nullptr;
 	}
 
-	std::vector<Cursor> CxxParserImpl::findMarkedCursors(const Cursor& root_cursor)
+	std::vector<Cursor> CxxParserImpl::findMarkedCursors(const Cursor& root_cursor) const
 	{
 		std::vector<Cursor> cursor_list;
 
@@ -298,7 +305,7 @@ namespace lux::cxx::dref
 						if (!cursor_kind.isAttribute())
 							return CXChildVisitResult::CXChildVisit_Continue;
 
-						String attr_name = cursor.displayName();
+						ClangString attr_name = cursor.displayName();
 						const char* attr_c_name = attr_name.c_str();
 						if (std::strncmp(attr_c_name, LUX_REF_MARK_PREFIX, 10) != 0)
 							return CXChildVisitResult::CXChildVisit_Continue;
@@ -320,7 +327,7 @@ namespace lux::cxx::dref
 
 	TranslationUnit CxxParserImpl::translate(
 		std::string_view file_path,
-		std::vector<std::string_view> commands)
+		std::vector<std::string_view> commands) const
 	{
 		CXTranslationUnit translation_unit;
 		commands.emplace_back("-D__LUX_PARSE_TIME__=1");
@@ -329,7 +336,7 @@ namespace lux::cxx::dref
 		// +1 for add definition
 		const char** _c_commands = new const char*[commands_size];
 
-        for (size_t i = 0; i < commands_size; i++)
+		for (size_t i = 0; i < commands_size; i++)
 		{
 			_c_commands[i] = commands[i].data();
 		}

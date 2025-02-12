@@ -8,42 +8,35 @@ namespace lux::cxx::dref
 	using namespace ::lux::cxx::lan_model;
 
 	template<>
-	EnumerationDeclaration* CxxParserImpl::TParseDeclaration<EDeclarationKind::ENUMERATION>(const Cursor& cursor, EnumerationDeclaration* declaration)
+	void CxxParserImpl::TParseDeclaration<EDeclarationKind::ENUMERATION>(const Cursor& cursor, EnumerationDeclaration* declaration)
 	{
 		declaration->is_scope		 = cursor.isEnumDeclScoped();
 		declaration->underlying_type = parseUncertainTypeMeta(cursor.enumDeclIntegerType());
 
-		std::vector<Enumerator*> context;
+		std::vector<Enumerator> context;
 
 		cursor.visitChildren(
 			[this, declaration, &context](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
 			{
-				auto cursor_kind = cursor.cursorKind();
-
-				if (cursor_kind == CXCursorKind::CXCursor_EnumConstantDecl)
+				if (auto cursor_kind = cursor.cursorKind(); cursor_kind == CXCursorKind::CXCursor_EnumConstantDecl)
 				{
-					auto* element = new Enumerator();
-					element->name = nameFromClangString(cursor.displayName());
-					element->value = cursor.enumConstantDeclUnsignedValue();
-					context.push_back(element);
+					Enumerator enumerator;
+					enumerator.name  = cursor.displayName().to_std();
+					enumerator.value = cursor.enumConstantDeclUnsignedValue();
+					context.push_back(enumerator);
 				}
 				else if (cursor_kind == CXCursorKind::CXCursor_AnnotateAttr)
 				{
-					declaration->attribute = nameFromClangString(cursor.displayName());
+					declaration->attribute = cursor.displayName().to_std();
 				}
 				// else if(cursor_kind == CXCursorKind::Att)
 				return CXChildVisitResult::CXChildVisit_Continue;
 			}
 		);
 
-		declaration->enumerators_num = context.size();
-		declaration->enumerators = declaration->enumerators_num > 0 ? 
-			new Enumerator* [declaration->enumerators_num] : nullptr;
-		for (size_t i = 0 ; i < declaration->enumerators_num; i++)
+		for (auto & enumerator : context)
 		{
-			declaration->enumerators[i] = context[i];
+			declaration->enumerators.push_back(std::move(enumerator));
 		}
-
-		return declaration;
 	}
 }

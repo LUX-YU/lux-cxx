@@ -1,5 +1,6 @@
 #pragma once
 #include <type_traits>
+#include <string>
 #include "entity.hpp"
 #include "type_kind.hpp"
 
@@ -7,23 +8,29 @@ namespace lux::cxx::lan_model
 {
 	template<ETypeKind> struct type_kind_map;
 
-	struct Type : public Entity
+	struct Declaration;
+	struct Type : Entity
 	{
-		ETypeKind	type_kind;
-		const char* name;
-		bool		is_const;
-		bool		is_volatile;
+		ETypeKind		type_kind;
+		std::string 	name;
+		bool			is_const;
+		bool			is_volatile;
+		int				size;
+		int				align;
+		Type*			pointee_type{ nullptr };  // only if type is (R/L)reference or point
+		Declaration*	declaration{ nullptr };   // only if type is class, struct or enum
+		Type*			element_type{ nullptr };  // only if type is array
 	};
 
-	struct IncompleteType : public Type { static constexpr ETypeKind kind = ETypeKind::IMCOMPLETE; };
-	struct Fundamental : public Type{ static constexpr ETypeKind kind = ETypeKind::FUNDAMENTAL; };
-		struct Void : public Fundamental{ static constexpr ETypeKind kind = ETypeKind::VOID_TYPE; };
-		struct Nullptr_t : public Fundamental{ static constexpr ETypeKind kind = ETypeKind::NULLPTR_T; };
+	struct IncompleteType : Type { static constexpr ETypeKind kind = ETypeKind::INCOMPLETE; };
+	struct Fundamental : Type{ static constexpr ETypeKind kind = ETypeKind::FUNDAMENTAL; };
+		struct Void : Fundamental{ static constexpr ETypeKind kind = ETypeKind::VOID_TYPE; };
+		struct Nullptr_t :  Fundamental{ static constexpr ETypeKind kind = ETypeKind::NULLPTR_T; };
 
-	struct Compound : public Type { static constexpr ETypeKind kind = ETypeKind::COMPOUND; };
-	struct Unsupported : public Type { static constexpr ETypeKind kind = ETypeKind::UNSUPPORTED; };
+	struct Compound :  Type { static constexpr ETypeKind kind = ETypeKind::COMPOUND; };
+	struct Unsupported :  Type { static constexpr ETypeKind kind = ETypeKind::UNSUPPORTED; };
 
-	template<> struct type_kind_map<ETypeKind::IMCOMPLETE>	{ using type = IncompleteType; };
+	template<> struct type_kind_map<ETypeKind::INCOMPLETE>	{ using type = IncompleteType; };
 	template<> struct type_kind_map<ETypeKind::FUNDAMENTAL> { using type = Fundamental; };
 		template<> struct type_kind_map<ETypeKind::VOID_TYPE>	{ using type = Void; };
 		template<> struct type_kind_map<ETypeKind::NULLPTR_T>	{ using type = Nullptr_t; };
