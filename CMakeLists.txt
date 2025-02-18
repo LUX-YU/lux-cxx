@@ -21,7 +21,6 @@ add_subdirectory(static_reflection)
 add_subdirectory(compile_time)
 add_subdirectory(subprogram)
 add_subdirectory(arguments)
-add_subdirectory(lan_model)
 add_subdirectory(algorithm)
 
 set(ENABLE_COMPONENTS 
@@ -29,9 +28,8 @@ set(ENABLE_COMPONENTS
     concurrent
     subprogram 
     arguments
-    compile_time 
-    lan_model 
-    algorithm 
+    compile_time
+    algorithm
     static_reflection
 )
 

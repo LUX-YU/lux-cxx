@@ -1,42 +1,34 @@
-#include <lux/cxx/dref/runtime/MetaUnit.hpp>
 #include <lux/cxx/dref/parser/CxxParserImpl.hpp>
-
-#include <lux/cxx/lan_model/types/enumeration.hpp>
 
 namespace lux::cxx::dref
 {
-	using namespace ::lux::cxx::lan_model;
-
-	template<>
-	void CxxParserImpl::TParseDeclaration<EDeclarationKind::ENUMERATION>(const Cursor& cursor, EnumerationDeclaration* declaration)
+	void CxxParserImpl::parseEnumDecl(const Cursor& cursor, EnumDecl& decl)
 	{
-		declaration->is_scope		 = cursor.isEnumDeclScoped();
-		declaration->underlying_type = parseUncertainTypeMeta(cursor.enumDeclIntegerType());
-
-		std::vector<Enumerator> context;
+		decl.is_scoped		 = cursor.isEnumDeclScoped();
+		auto underlying_type = createOrFindType(cursor.enumDeclIntegerType());
+		assert(underlying_type->kind == ETypeKind::BUILTIN);
+		decl.underlying_type = static_cast<BuiltinType*>(underlying_type);
 
 		cursor.visitChildren(
-			[this, declaration, &context](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
+			[this, &decl](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
 			{
-				if (auto cursor_kind = cursor.cursorKind(); cursor_kind == CXCursorKind::CXCursor_EnumConstantDecl)
+				if (const auto cursor_kind = cursor.cursorKind(); cursor_kind == CXCursor_EnumConstantDecl)
 				{
 					Enumerator enumerator;
-					enumerator.name  = cursor.displayName().to_std();
-					enumerator.value = cursor.enumConstantDeclUnsignedValue();
-					context.push_back(enumerator);
+					enumerator.name			  = cursor.displayName().to_std();
+					enumerator.signed_value   = cursor.enumConstantDeclValue();
+					enumerator.unsigned_value = cursor.enumConstantDeclUnsignedValue();
+					decl.enumerators.push_back(enumerator);
 				}
-				else if (cursor_kind == CXCursorKind::CXCursor_AnnotateAttr)
-				{
-					declaration->attribute = cursor.displayName().to_std();
-				}
-				// else if(cursor_kind == CXCursorKind::Att)
-				return CXChildVisitResult::CXChildVisit_Continue;
+				return CXChildVisit_Continue;
 			}
 		);
 
-		for (auto & enumerator : context)
-		{
-			declaration->enumerators.push_back(std::move(enumerator));
-		}
+		decl.tag_kind = TagDecl::ETagKind::Enum;
+		decl.kind	  = EDeclKind::ENUM_DECL;
+		parseNamedDecl(cursor, decl);
+		auto enum_type = dynamic_cast<EnumType*>(decl.type);
+		assert(enum_type != nullptr);
+		enum_type->decl = &decl;
 	}
 }

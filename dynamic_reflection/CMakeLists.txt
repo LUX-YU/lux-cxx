@@ -1,42 +1,18 @@
 # import target libclang
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang_unix.cmake)
-
-# see https://mustache.github.io/mustache.5.html
-find_package(mstch CONFIG)
-if(mstch_FOUND)
-    get_target_property(MSTCH_INCLUDE_DIRS mstch::mstch INTERFACE_INCLUDE_DIRECTORIES)
-    if(NOT MSTCH_INCLUDE_DIRS)
-        message("mstch::mstch INTERFACE_INCLUDE_DIRECTORIES not found")
-    endif()
-    find_path(MSTCH_INCLUDE_DIRS mstch/mstch.hpp REQUIRED)
-    set_target_properties(mstch::mstch PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${MSTCH_INCLUDE_DIRS}")
-elseif()
-    find_path(MSTCH_INCLUDE_DIRS mstch/mstch.hpp REQUIRED)
-    find_library(MSTCH_LIBRARIES mstch REQUIRED)
-
-    add_library(mstch INTERFACE)
-    target_include_directories(mstch INTERFACE ${MSTCH_INCLUDE_DIRS})
-    target_link_libraries(mstch INTERFACE ${MSTCH_LIBRARIES})
-    add_library(mstch::mstch ALIAS mstch)
-endif()
+cmake_policy(SET CMP0167 NEW)
+find_package(bustache CONFIG REQUIRED)
 
 set(DREF_PARSER_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParserImpl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_class_declaration.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_function_declaration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_enumeration_declaration.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_type_uncertain.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_class_type.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_function_type.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_enumeration_type.cpp
 )
 
 # start constructing component dynamic_reflection_runtime
 set(DREF_RUNTIME_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnit.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnitSerialization.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnitDeserialization.cpp
 )
 
 add_component(
@@ -65,9 +41,13 @@ target_compile_definitions(
 
 component_add_internal_dependencies(
     dynamic_reflection_runtime
-        lux::cxx::lan_model
         lux::cxx::algorithm
         lux::cxx::static_reflection
+)
+
+component_add_cmake_scripts(
+	dynamic_reflection_runtime
+	${CMAKE_CURRENT_SOURCE_DIR}/cmake/static_meta.cmake
 )
 
 # start constructing component dynamic_reflection_parser
@@ -97,7 +77,6 @@ target_link_libraries(
 
 component_add_internal_dependencies(
     dynamic_reflection_parser
-        lux::cxx::lan_model
         lux::cxx::algorithm
         lux::cxx::dynamic_reflection_runtime
 )
@@ -115,28 +94,27 @@ component_add_transitive_commands(
 )
 
 # start constructing component dynamic_reflection_generator
-#[[
 add_executable(
-	lux_runtime_reflection_gen
-	${CMAKE_CURRENT_SOURCE_DIR}/src/generator/lux_runtime_reflection_gen.cpp
+	lux_meta_generator
+	${CMAKE_CURRENT_SOURCE_DIR}/src/generator/meta_generator.cpp
 )
 
 target_link_libraries(
-	lux_runtime_reflection_gen
+	lux_meta_generator
 	PRIVATE
 	lux::cxx::dynamic_reflection_parser
 	lux::cxx::dynamic_reflection_runtime
 	lux::cxx::static_reflection
-    mstch::mstch
+    bustache::bustache
 )
 
 target_include_directories(
-    lux_runtime_reflection_gen
+    lux_meta_generator
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     pinclude
 )
-]]
+
 set(ENABLE_DYNAMIC_REFLECTION_TEST true BOOL "Enable dynamic reflection test")
 if(ENABLE_DYNAMIC_REFLECTION_TEST)
     add_subdirectory(test)    

@@ -1,9 +1,0 @@
-#pragma once
-#include "types/arithmetic.hpp"
-#include "types/array.hpp"
-#include "types/class_type.hpp"
-#include "types/enumeration.hpp"
-#include "types/function_type.hpp"
-#include "types/member_pointer_type.hpp"
-#include "types/pointer_type.hpp"
-#include "types/reference_type.hpp"

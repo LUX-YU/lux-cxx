@@ -1,5 +1,5 @@
 #include <lux/cxx/dref/parser/CxxParserImpl.hpp>
-#include <lux/cxx/dref/parser/Attribute.hpp>
+#include <lux/cxx/dref/runtime/Attribute.hpp>
 
 #include <lux/cxx/dref/runtime/MetaUnit.hpp>
 
@@ -9,165 +9,42 @@
 
 namespace lux::cxx::dref
 {
-	size_t CxxParserImpl::declaration_id(const EDeclarationKind kind, std::string_view name)
+	[[nodiscard]] bool CxxParserImpl::hasDeclaration(const std::string& id) const
 	{
-		return MetaUnit::calculateDeclarationId(kind, name);
+		return _meta_unit_data->declaration_map.contains(id);
 	}
 
-	size_t CxxParserImpl::type_meta_id(const std::string_view name)
+	[[nodiscard]] Decl* CxxParserImpl::getDeclaration(const std::string& id) const
 	{
-		return MetaUnit::calculateTypeMetaId(name);
+		return _meta_unit_data->declaration_map[id];
 	}
 
-	size_t CxxParserImpl::declaration_id(const std::unique_ptr<Declaration>& decl)
-	{
-		return declaration_id(decl->kind, decl->name);
-	}
-
-	bool CxxParserImpl::hasDeclarationInContextById(const size_t id) const
-	{
-		return _meta_unit_data->decl_map.contains(id);
-	}
-
-	bool CxxParserImpl::hasDeclarationInContextByName(EDeclarationKind kind, const char* name) const
-	{
-		auto id = MetaUnit::calculateDeclarationId(kind, name);
-		return hasDeclarationInContextById(id);
-	}
-
-	Declaration* CxxParserImpl::getDeclarationFromContextById(size_t id)
-	{
-		if (_meta_unit_data->decl_map.contains(id))
-			return _meta_unit_data->decl_map[id];
-
-		return nullptr;
-	}
-
-	Declaration* CxxParserImpl::getDeclarationFromContextByName(EDeclarationKind kind, const char* name)
-	{
-		auto id = MetaUnit::calculateDeclarationId(kind, name);
-		return getDeclarationFromContextById(id);
-	}
-
-	bool CxxParserImpl::hasTypeMetaInContextById(size_t id) const
+	[[nodiscard]] bool CxxParserImpl::hasType(const std::string& id) const
 	{
 		return _meta_unit_data->type_map.contains(id);
 	}
-
-	bool CxxParserImpl::hasTypeMetaInContextByName(const char* name) const
+	[[nodiscard]] Type* CxxParserImpl::getType(const std::string& id) const
 	{
-		auto id = MetaUnit::calculateTypeMetaId(name);
-		return hasTypeMetaInContextById(id);
+		return _meta_unit_data->type_map[id];
 	}
 
-	TypeMeta* CxxParserImpl::getTypeMetaFromContextById(size_t id) const
-	{
-		return _meta_unit_data->type_map.contains(id) ?
-			_meta_unit_data->type_map[id] : nullptr;
-	}
-
-	TypeMeta* CxxParserImpl::getTypeMetaFromContextByName(EDeclarationKind kind, std::string_view name)
-	{
-		const auto id = MetaUnit::calculateTypeMetaId(name);
-		return getTypeMetaFromContextById(id);
-	}
-
-	TypeMeta* CxxParserImpl::registerTypeMeta(size_t id, const TypeMeta& type_meta)
-	{
-		_meta_unit_data->type_list.push_back(type_meta);
-		_meta_unit_data->type_map[id] =
-			&_meta_unit_data->type_list.back();
-		return &_meta_unit_data->type_list.back();
-	}
-
-	lan_model::ClassDeclaration*
-	CxxParserImpl::registerMarkedClassDeclaration(size_t id, const lan_model::ClassDeclaration& decl)
-	{
-		_meta_unit_data->marked_decl_lists.class_decl_list.push_back(decl);
-		_meta_unit_data->decl_map[id] =
-			&_meta_unit_data->marked_decl_lists.class_decl_list.back();
-		return &_meta_unit_data->marked_decl_lists.class_decl_list.back();
-	}
-
-	lan_model::FunctionDeclaration*
-	CxxParserImpl::registerMarkedFunctionDeclaration(size_t id, const lan_model::FunctionDeclaration& decl)
-	{
-		_meta_unit_data->marked_decl_lists.function_decl_list.push_back(decl);
-		_meta_unit_data->decl_map[id] =
-			&_meta_unit_data->marked_decl_lists.function_decl_list.back();
-		return &_meta_unit_data->marked_decl_lists.function_decl_list.back();
-	}
-
-	lan_model::EnumerationDeclaration*
-	CxxParserImpl::registerMarkedEnumerationDeclaration(size_t id, const lan_model::EnumerationDeclaration& decl)
-	{
-		_meta_unit_data->marked_decl_lists.enumeration_decl_list.push_back(decl);
-		_meta_unit_data->decl_map[id] =
-			&_meta_unit_data->marked_decl_lists.enumeration_decl_list.back();
-		return &_meta_unit_data->marked_decl_lists.enumeration_decl_list.back();
-	}
-
-	lan_model::ClassDeclaration*
-	CxxParserImpl::registerUnmarkedClassDeclaration(size_t id, const lan_model::ClassDeclaration& decl)
-	{
-		_meta_unit_data->unmarked_decl_lists.class_decl_list.push_back(decl);
-		_meta_unit_data->decl_map[id] =
-			&_meta_unit_data->unmarked_decl_lists.class_decl_list.back();
-		return &_meta_unit_data->unmarked_decl_lists.class_decl_list.back();
-	}
-
-	lan_model::FunctionDeclaration*
-	CxxParserImpl::registerUnmarkedFunctionDeclaration(size_t id, const lan_model::FunctionDeclaration& decl)
-	{
-		_meta_unit_data->unmarked_decl_lists.function_decl_list.push_back(decl);
-		_meta_unit_data->decl_map[id] =
-			&_meta_unit_data->unmarked_decl_lists.function_decl_list.back();
-		return &_meta_unit_data->unmarked_decl_lists.function_decl_list.back();
-	}
-
-	lan_model::EnumerationDeclaration*
-	CxxParserImpl::registerUnmarkedEnumerationDeclaration(size_t id, const lan_model::EnumerationDeclaration& decl)
-	{
-		_meta_unit_data->unmarked_decl_lists.enumeration_decl_list.push_back(decl);
-		_meta_unit_data->decl_map[id] =
-			&_meta_unit_data->unmarked_decl_lists.enumeration_decl_list.back();
-		return &_meta_unit_data->unmarked_decl_lists.enumeration_decl_list.back();
-	}
-
-	lan_model::Visibility CxxParserImpl::visibilityFromClangVisibility(const CX_CXXAccessSpecifier specifier)
-	{
-		using namespace ::lux::cxx::lan_model;
-		switch (specifier)
-		{
-		case CX_CXXInvalidAccessSpecifier:
-			return Visibility::INVALID;
-		case CX_CXXPublic:
-			return Visibility::PUBLIC;
-		case CX_CXXProtected:
-			return Visibility::PROTECTED;
-		case CX_CXXPrivate:
-			return Visibility::PRIVATE;
-		}
-		return Visibility::INVALID;;
-	}
-
-	std::string CxxParserImpl::annotationFromClangCursor(const Cursor& cursor)
+	std::vector<std::string> CxxParserImpl::parseAnnotations(const Cursor& cursor)
 	{
 		if (!cursor.hasAttrs())
 		{
-			return "";
+			return std::vector<std::string>{};
 		}
-		std::string ret;
+		std::vector<std::string> ret;
 		cursor.visitChildren(
-			[&ret](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
+			[&ret](const Cursor& current_cursor, const Cursor& parent_cursor) -> CXChildVisitResult
 			{
-				if (auto cursor_kind = cursor.cursorKind(); cursor_kind == CXCursorKind::CXCursor_AnnotateAttr)
+				if (const auto cursor_kind = current_cursor.cursorKind(); cursor_kind == CXCursor_AnnotateAttr)
 				{
-					ret = cursor.displayName().to_std();
-					return CXChildVisitResult::CXChildVisit_Break;
+					ret.push_back(current_cursor.displayName().to_std());
+					return CXChildVisit_Break;
 				}
 				// else if(cursor_kind == CXCursorKind::Att)
-				return CXChildVisitResult::CXChildVisit_Continue;
+				return CXChildVisit_Continue;
 			}
 		);
 		return ret;
@@ -193,7 +70,8 @@ namespace lux::cxx::dref
 		{
 			return std::string{};
 		}
-		auto spelling = "arg" + std::to_string(index);
+		auto cursor_spelling = cursor.cursorSpelling();
+		std::string spelling = cursor_spelling.size() > 0 ? cursor_spelling.to_std() : "arg" + std::to_string(index);
 		std::string res = fullQualifiedName(cursor.getCursorSemanticParent());
 		if (!res.empty())
 		{
@@ -221,6 +99,7 @@ namespace lux::cxx::dref
 
 	ParseResult CxxParserImpl::parse(std::string_view file, std::vector<std::string_view> commands, std::string_view name, std::string_view version)
 	{
+		commands.push_back("-Wunknown-attributes");
 		auto translate_unit = translate(file, std::move(commands));
 		auto error_list = translate_unit.diagnostics();
 		for (auto& str : error_list)
@@ -236,8 +115,7 @@ namespace lux::cxx::dref
 
 		for (auto& marked_cursor : marked_cursors)
 		{
-			Declaration* decl = parseDeclaration(marked_cursor);
-			if (decl == nullptr)
+			if (!parseMarkedDeclaration(marked_cursor))
 			{
 				return std::make_pair(EParseResult::FAILED, MetaUnit{});
 			}
@@ -253,28 +131,39 @@ namespace lux::cxx::dref
 		return std::make_pair(EParseResult::SUCCESS, std::move(return_meta_unit));
 	}
 
-	Declaration* CxxParserImpl::parseDeclaration(const Cursor& cursor)
+	bool CxxParserImpl::parseMarkedDeclaration(const Cursor& cursor)
 	{
-		int cursor_kind = cursor.cursorKind().kindEnum();
-		switch(cursor_kind)
+		std::unique_ptr<Decl> decl = nullptr;
+		switch(cursor.cursorKind().kindEnum())
 		{
-			case CXCursorKind::CXCursor_StructDecl:
-			case CXCursorKind::CXCursor_ClassDecl: // implement
+			case CXCursor_StructDecl: [[fallthrough]];
+			case CXCursor_ClassDecl: // implement
 			{
-				return TParseDeclarationDecorator<EDeclarationKind::CLASS>(cursor, true);
+				auto class_decl = std::make_unique<CXXRecordDecl>();
+				parseCXXRecordDecl(cursor, *class_decl);
+				decl = std::move(class_decl);
+				break;
 			}
-			case CXCursorKind::CXCursor_EnumDecl: // implement
+			case CXCursor_EnumDecl: // implement
 			{
-				return TParseDeclarationDecorator<EDeclarationKind::ENUMERATION>(cursor, true);
+				auto enum_decl = std::make_unique<EnumDecl>();
+				parseEnumDecl(cursor, *enum_decl);
+				decl = std::move(enum_decl);
+				break;
 			}
-			case CXCursorKind::CXCursor_FunctionDecl:
+			case CXCursor_FunctionDecl:
 			{
-				return TParseDeclarationDecorator<EDeclarationKind::FUNCTION>(cursor, true);
+				auto func_decl = std::make_unique<FunctionDecl>();
+				parseFunctionDecl(cursor, *func_decl);
+				decl = std::move(func_decl);
+				break;
 			}
-            default:
-                return nullptr;
+			default:
+				return false;
 		}
-		return nullptr;
+		registerDeclaration(std::move(decl), true);
+
+		return true;
 	}
 
 	std::vector<Cursor> CxxParserImpl::findMarkedCursors(const Cursor& root_cursor) const
@@ -284,41 +173,37 @@ namespace lux::cxx::dref
 		root_cursor.visitChildren(
 			[this, &cursor_list](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
 			{
-				CursorKind cursor_kind = cursor.cursorKind();
-
-				if (cursor_kind.isNamespace())
+				if (const CursorKind cursor_kind = cursor.cursorKind(); cursor_kind.isNamespace())
 				{
-					auto ns_name = cursor.cursorSpelling().to_std();
-					if (ns_name == "std")
-						return CXChildVisitResult::CXChildVisit_Continue;
+					if (const auto ns_name = cursor.cursorSpelling().to_std(); ns_name == "std")
+						return CXChildVisit_Continue;
 
-					return CXChildVisitResult::CXChildVisit_Recurse;
+					return CXChildVisit_Recurse;
 				}
 
 				if (!cursor.hasAttrs())
-					return CXChildVisitResult::CXChildVisit_Continue;
+					return CXChildVisit_Continue;
 
 				cursor.visitChildren(
 					[this, &cursor_list](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
 					{
-						CursorKind cursor_kind = cursor.cursorKind();
-						if (!cursor_kind.isAttribute())
-							return CXChildVisitResult::CXChildVisit_Continue;
+						if (CursorKind cursor_kind = cursor.cursorKind(); !cursor_kind.isAttribute())
+							return CXChildVisit_Continue;
 
-						ClangString attr_name = cursor.displayName();
+						const ClangString attr_name = cursor.displayName();
 						const char* attr_c_name = attr_name.c_str();
 						if (std::strncmp(attr_c_name, LUX_REF_MARK_PREFIX, 10) != 0)
-							return CXChildVisitResult::CXChildVisit_Continue;
+							return CXChildVisit_Continue;
 
 						std::string mark_name(attr_c_name + 10);
 
 						cursor_list.push_back(parent_cursor);
 
-						return CXChildVisitResult::CXChildVisit_Break;
+						return CXChildVisit_Break;
 					}
 				);
 
-				return CXChildVisitResult::CXChildVisit_Continue;
+				return CXChildVisit_Continue;
 			}
 		);
 

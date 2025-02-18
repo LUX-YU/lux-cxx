@@ -52,7 +52,7 @@ namespace lux::cxx::dref
 
 	class ClangString
 	{
-		friend class Type;
+		friend class ClangType;
 		friend class Cursor;
 		friend class CursorKind;
 	public:
@@ -108,7 +108,7 @@ namespace lux::cxx::dref
 		return os << str.c_str();
 	}
 
-	class Type
+	class ClangType
 	{
 		friend class Cursor;
 	public:
@@ -121,7 +121,7 @@ namespace lux::cxx::dref
 		// clang_Type_getNumObjCTypeArgs
 		// clang_Type_getObjCTypeArg
 
-		[[nodiscard]] CXTypeKind typeKind() const
+		[[nodiscard]] CXTypeKind kind() const
 		{
 			return _type.kind;
 		}
@@ -142,7 +142,7 @@ namespace lux::cxx::dref
 			return _type.kind == CXTypeKind::CXType_Enum;
 		}
 
-		bool operator==(Type other) const
+		bool operator==(ClangType other) const
 		{
 			// non-zero if the CXTypes represent the same type and
 			// zero otherwise.
@@ -171,7 +171,7 @@ namespace lux::cxx::dref
 		* If the type declaration is not a constant size type,
 		*   CXTypeLayoutError_NotConstantSize is returned.
 		*/
-		[[nodiscard]] size_t typeAlignof() const
+		[[nodiscard]] size_t typeAlignOf() const
 		{
 			return clang_Type_getAlignOf(_type);
 		}
@@ -181,9 +181,17 @@ namespace lux::cxx::dref
 		 *
 		 * If a non-member-pointer type is passed in, an invalid type is returned.
 		 */
-		[[nodiscard]] Type classType() const
+		[[nodiscard]] ClangType classType() const
 		{
-			return Type(clang_Type_getClassType(_type));
+			return ClangType(clang_Type_getClassType(_type));
+		}
+
+		/**
+		 * For pointer types, returns the type of the pointee.
+		 */
+		[[nodiscard]] ClangType pointeeType() const
+		{
+			return ClangType(clang_getPointeeType(_type));
 		}
 
 		/**
@@ -194,9 +202,9 @@ namespace lux::cxx::dref
 		 * type with all the "sugar" removed.  For example, if 'T' is a typedef
 		 * for 'int', the canonical type for 'T' would be 'int'.
 		 */
-		[[nodiscard]] Type canonicalType() const
+		[[nodiscard]] ClangType canonicalType() const
 		{
-			return Type(clang_getCanonicalType(_type));
+			return ClangType(clang_getCanonicalType(_type));
 		}
 
 		/**
@@ -236,9 +244,9 @@ namespace lux::cxx::dref
 		 *
 		 * If the type is not an attributed type, an invalid type is returned.
 		 */
-		[[nodiscard]] Type modifiedType() const
+		[[nodiscard]] ClangType modifiedType() const
 		{
-			return Type(clang_Type_getModifiedType(_type));
+			return ClangType(clang_Type_getModifiedType(_type));
 		}
 
 		/**
@@ -246,9 +254,9 @@ namespace lux::cxx::dref
 		 *
 		 * If a non-atomic type is passed in, an invalid type is returned.
 		 */
-		[[nodiscard]] Type valueType() const
+		[[nodiscard]] ClangType valueType() const
 		{
-			return Type(clang_Type_getValueType(_type));
+			return ClangType(clang_Type_getValueType(_type));
 		}
 
 		[[nodiscard]] bool isConstQualifiedType() const
@@ -281,9 +289,9 @@ namespace lux::cxx::dref
 			return clang_Type_getNumTemplateArguments(_type);
 		}
 
-		[[nodiscard]] Type getPointeeType() const
+		[[nodiscard]] ClangType getPointeeType() const
 		{
-			return Type(clang_getPointeeType(_type));
+			return ClangType(clang_getPointeeType(_type));
 		}
 
 		[[nodiscard]] CXCallingConv getFunctionTypeCallingConv() const
@@ -304,9 +312,9 @@ namespace lux::cxx::dref
 		 * of functions or methods. For other cursors and for invalid indices, an
 		 * invalid cursor is returned.
 		 */
-		[[nodiscard]] Type resultType() const
+		[[nodiscard]] ClangType resultType() const
 		{
-			return Type(clang_getResultType(_type));
+			return ClangType(clang_getResultType(_type));
 		}
 
 		// function related
@@ -316,9 +324,9 @@ namespace lux::cxx::dref
 		}
 
 		// function related
-		[[nodiscard]] Type getArgType(unsigned i) const
+		[[nodiscard]] ClangType getArgType(unsigned i) const
 		{
-			return Type(clang_getArgType(_type, i));
+			return ClangType(clang_getArgType(_type, i));
 		}
 
 		[[nodiscard]] bool isFunctionTypeVariadic() const
@@ -326,9 +334,9 @@ namespace lux::cxx::dref
 			return clang_isFunctionTypeVariadic(_type);
 		}
 
-		[[nodiscard]] Type getTemplateArgumentAsType(unsigned i) const
+		[[nodiscard]] ClangType getTemplateArgumentAsType(unsigned i) const
 		{
-			return Type(clang_Type_getTemplateArgumentAsType(_type, i));
+			return ClangType(clang_Type_getTemplateArgumentAsType(_type, i));
 		}
 
 		[[nodiscard]] size_t getNumElements() const
@@ -341,14 +349,14 @@ namespace lux::cxx::dref
 			return clang_isPODType(_type);
 		}
 
-		[[nodiscard]] Type getElementType() const
+		[[nodiscard]] ClangType getElementType() const
 		{
-			return Type(clang_getElementType(_type));
+			return ClangType(clang_getElementType(_type));
 		}
 
-		[[nodiscard]] Type getArrayElementType() const
+		[[nodiscard]] ClangType getArrayElementType() const
 		{
-			return Type(clang_getArrayElementType(_type));
+			return ClangType(clang_getArrayElementType(_type));
 		}
 
 		[[nodiscard]] size_t getArraySize() const
@@ -356,9 +364,9 @@ namespace lux::cxx::dref
 			return clang_getArraySize(_type);
 		}
 
-		[[nodiscard]] Type getNamedType() const
+		[[nodiscard]] ClangType getNamedType() const
 		{
-			return Type(clang_Type_getNamedType(_type));
+			return ClangType(clang_Type_getNamedType(_type));
 		}
 
 		[[nodiscard]] CXTypeNullabilityKind getNullability() const
@@ -391,7 +399,7 @@ namespace lux::cxx::dref
 		}
 
 	private:
-		explicit Type(CXType type) : _type(type) {}
+		explicit ClangType(CXType type) : _type(type) {}
 
 		CXType _type;
 	};
@@ -410,12 +418,12 @@ namespace lux::cxx::dref
 			return other_enum == _kind;
 		}
 
-		[[nodiscard]] inline bool isDeclatation() const
+		[[nodiscard]] bool isDeclaration() const
 		{
 			return clang_isDeclaration(_kind);
 		}
 
-		[[nodiscard]] inline bool isReference() const
+		[[nodiscard]] bool isReference() const
 		{
 			return clang_isReference(_kind);
 		}
@@ -423,7 +431,7 @@ namespace lux::cxx::dref
 		/**
 		 * Determine whether the given cursor kind represents an expression.
 		 */
-		[[nodiscard]] inline bool isExpression() const
+		[[nodiscard]] bool isExpression() const
 		{
 			return clang_isExpression(_kind);
 		}
@@ -431,7 +439,7 @@ namespace lux::cxx::dref
 		/**
 		 * Determine whether the given cursor kind represents a statement.
 		 */
-		[[nodiscard]] inline bool isStatement() const
+		[[nodiscard]] bool isStatement() const
 		{
 			return clang_isStatement(_kind);
 		}
@@ -439,7 +447,7 @@ namespace lux::cxx::dref
 		/**
 		 * Determine whether the given cursor kind represents an attribute.
 		 */
-		[[nodiscard]] inline bool isAttribute() const
+		[[nodiscard]] bool isAttribute() const
 		{
 			return clang_isAttribute(_kind);
 		}
@@ -448,7 +456,7 @@ namespace lux::cxx::dref
 		 * Determine whether the given cursor kind represents an invalid
 		 * cursor.
 		 */
-		[[nodiscard]] inline bool isInvalid() const
+		[[nodiscard]] bool isInvalid() const
 		{
 			return clang_isInvalid(_kind);
 		}
@@ -457,7 +465,7 @@ namespace lux::cxx::dref
 		 * Determine whether the given cursor kind represents a translation
 		 * unit.
 		 */
-		[[nodiscard]] inline bool isTranslationUnit() const
+		[[nodiscard]] bool isTranslationUnit() const
 		{
 			return clang_isTranslationUnit(_kind);
 		}
@@ -466,7 +474,7 @@ namespace lux::cxx::dref
 		 * Determine whether the given cursor represents a preprocessing
 		 * element, such as a preprocessor directive or macro instantiation.
 		 */
-		[[nodiscard]] inline bool isPreprocessing() const
+		[[nodiscard]] bool isPreprocessing() const
 		{
 			return clang_isPreprocessing(_kind);
 		}
@@ -561,7 +569,7 @@ namespace lux::cxx::dref
 		CXCursorKind _kind;
 	};
 
-	static bool operator==(Type l_type, Type r_type)
+	static bool operator==(ClangType l_type, ClangType r_type)
 	{
 		return l_type.operator==(r_type);
 	}
@@ -572,7 +580,7 @@ namespace lux::cxx::dref
 		explicit Cursor(const TranslationUnit& unit)
 			: _cursor(clang_getTranslationUnitCursor(unit._unit)) {}
 
-		explicit Cursor(CXCursor cursor)
+		explicit Cursor(const CXCursor& cursor)
 			: _cursor(cursor) {}
 
 		Cursor(const Cursor& other) : _cursor(other._cursor){}
@@ -582,6 +590,11 @@ namespace lux::cxx::dref
 			_cursor.data[0] = nullptr;
 			_cursor.data[1] = nullptr;
 			_cursor.data[2] = nullptr;
+		}
+
+		static Cursor declOfType(const ClangType& type)
+		{
+			return Cursor{clang_getTypeDeclaration(type._type)};
 		}
 
 		[[nodiscard]] bool isValid() const
@@ -686,29 +699,29 @@ namespace lux::cxx::dref
 			return ClangString(clang_getCursorSpelling(_cursor));
 		}
 
-		[[nodiscard]] Type cursorResultType() const
+		[[nodiscard]] ClangType cursorResultType() const
 		{
-			return Type(clang_getCursorResultType(_cursor));
+			return ClangType(clang_getCursorResultType(_cursor));
 		}
 
-		[[nodiscard]] Type cursorType() const
+		[[nodiscard]] ClangType cursorType() const
 		{
-			return Type(clang_getCursorType(_cursor));
+			return ClangType(clang_getCursorType(_cursor));
 		}
 
 		// typedef a b;
 		// clang_getTypedefDeclUnderlyingType returns a
-		[[nodiscard]] Type typedefDeclUnderlyingType() const
+		[[nodiscard]] ClangType typedefDeclUnderlyingType() const
 		{
-			return Type(clang_getTypedefDeclUnderlyingType(_cursor));
+			return ClangType(clang_getTypedefDeclUnderlyingType(_cursor));
 		}
 
-		[[nodiscard]] Type enumDeclIntegerType() const
+		[[nodiscard]] ClangType enumDeclIntegerType() const
 		{
-			return Type(clang_getEnumDeclIntegerType(_cursor));
+			return ClangType(clang_getEnumDeclIntegerType(_cursor));
 		}
 
-		static Cursor fromTypeDeclaration(Type type)
+		static Cursor fromTypeDeclaration(ClangType type)
 		{
 			return Cursor{ clang_getTypeDeclaration(type._type) };
 		}

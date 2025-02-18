@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/cxx/dref/parser/Attribute.hpp>
+#include <lux/cxx/dref/runtime/Attribute.hpp>
 
 /*
 #include <vector>
@@ -20,10 +20,10 @@ using FuncType = void(int, double);
 class UnexposedClass;
 typedef int myint;
 
-LUX_REF_MARK(function) void TestFunction( 
-    LUX_REF_MARK(parameter) myint z, 
-    size_t&& c, 
-    const double& d, 
+LUX_REFL(static_reflection) void TestFunction(
+    LUX_REFL(parameter) myint z,
+    size_t&& c,
+    const double& d,
     const std::string& str,
     FuncType* func_ptr
 )
@@ -31,7 +31,7 @@ LUX_REF_MARK(function) void TestFunction(
 
 }
 
-struct LUX_REF_MARK(struct) TestStruct
+struct LUX_REFL(static_reflection) TestStruct
 {
     int a1;
     int a2;
@@ -41,18 +41,18 @@ struct LUX_REF_MARK(struct) TestStruct
     UnexposedClass* a3;
 };
 
-enum class LUX_REF_MARK(enum) TestEnum
+enum class LUX_REFL(static_reflection) TestEnum
 {
     VALUE1,
     VALUE2 = 100,
     VALUE3
 };
 
-enum LUX_REF_MARK(enum){
+enum LUX_REFL(static_reflection){
   AnonymousEnum = 100,
 };
 
-class LUX_REF_MARK(class) TestClass
+class LUX_REFL(static_reflection) TestClass
 {
 public:
     TestClass();
@@ -61,25 +61,25 @@ public:
 
     ~TestClass();
 
-    int LUX_REF_MARK(int) a1;
+    int LUX_REFL(int) a1;
 protected:
     int a2;
 
     virtual void __virtual_func() = 0;
 private:
     const int* a3;
-    
+
     void __function(int**, double*, long&){}
 };
 
 namespace test_ns
 {
-    class LUX_REF_MARK(class) TestClass2
+    class LUX_REFL(dynamic_reflection) TestClass2
     {
     public:
         int a1;
     protected:
-        long LUX_REF_MARK(long) a2;
+        long LUX_REFL(long) a2;
     private:
         const int* a3;
         FuncType a4;
@@ -87,7 +87,7 @@ namespace test_ns
 
     namespace test_ns_2
     {
-        class LUX_REF_MARK(class) TestClass3
+        class LUX_REFL(static_reflection) TestClass3
         {
         public:
             enum class InternalEnum
@@ -98,7 +98,7 @@ namespace test_ns
 
             int a1;
         protected:
-            long LUX_REF_MARK(long) a2;
+            long LUX_REFL(long) a2;
         private:
             const int* a3;
             FuncType a4;
@@ -106,7 +106,7 @@ namespace test_ns
     }
 }
 
-struct LUX_REF_MARK(struct) TestStruct2 : public test_ns::test_ns_2::TestClass3, test_ns::TestClass2
+struct LUX_REFL(static_reflection) TestStruct2 : public test_ns::test_ns_2::TestClass3, test_ns::TestClass2
 {
 public:
     using AliasType = test_ns::TestClass2;

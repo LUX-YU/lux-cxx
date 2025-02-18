@@ -5,7 +5,7 @@ if(Clang_FOUND)
 endif()
 
 if(NOT UNIX)
-    message(FATAL_MESSAGE "Couldn't find libclang")
+    message(FATAL_ERROR "Couldn't find libclang")
 endif()
 
 file(GLOB CLANG_SEARCH_PATH

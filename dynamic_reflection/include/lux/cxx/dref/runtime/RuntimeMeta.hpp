@@ -6,12 +6,11 @@
 #include <unordered_map>
 #include <cstddef>
 
-#include <lux/cxx/lan_model/declaration.hpp>
-#include <lux/cxx/lan_model/type.hpp>
+#include <lux/cxx/dref/runtime/Declaration.hpp>
+#include <lux/cxx/dref/runtime/Type.hpp>
 
 namespace lux::cxx::dref::runtime
 {
-
     //------------------------------------------------------------
     // 1) FieldMeta
     //------------------------------------------------------------
@@ -19,7 +18,7 @@ namespace lux::cxx::dref::runtime
     {
     public:
         // 构造时传入 lan_model::FieldDeclaration* 
-        FieldMeta(const ::lux::cxx::lan_model::FieldDeclaration* declPtr)
+        FieldMeta(const FieldDecl* declPtr)
             : m_decl(declPtr)
         {
         }
@@ -42,12 +41,12 @@ namespace lux::cxx::dref::runtime
         std::string name() const {
             return m_decl ? m_decl->name : "";
         }
-        const ::lux::cxx::lan_model::FieldDeclaration* declaration() const {
+        const FieldDecl* declaration() const {
             return m_decl;
         }
 
     private:
-        const ::lux::cxx::lan_model::FieldDeclaration* m_decl = nullptr;
+        const FieldDecl* m_decl = nullptr;
     };
 
 
@@ -60,7 +59,7 @@ namespace lux::cxx::dref::runtime
         // 通用的“桥接函数”签名
         using InvokerFn = void(*)(void* obj, void** args, void* retVal);
 
-        MethodMeta(const ::lux::cxx::lan_model::MemberFunctionDeclaration* declPtr,
+        MethodMeta(const CXXMethodDecl* declPtr,
             InvokerFn fn)
             : m_decl(declPtr)
             , m_invoker(fn)
@@ -78,15 +77,17 @@ namespace lux::cxx::dref::runtime
         std::string name() const {
             return m_decl ? m_decl->name : "";
         }
-        const ::lux::cxx::lan_model::MemberFunctionDeclaration* declaration() const {
+
+        const CXXMethodDecl* declaration() const {
             return m_decl;
         }
+
         InvokerFn invoker() const {
             return m_invoker;
         }
 
     private:
-        const ::lux::cxx::lan_model::MemberFunctionDeclaration* m_decl = nullptr;
+        const CXXMethodDecl* m_decl = nullptr;
         InvokerFn m_invoker = nullptr;
     };
 
@@ -98,7 +99,7 @@ namespace lux::cxx::dref::runtime
     {
     public:
         // 构造时带一个 lan_model::ClassDeclaration 指针 
-        ClassMeta(const ::lux::cxx::lan_model::ClassDeclaration* declPtr)
+        ClassMeta(const CXXRecordDecl* declPtr)
             : m_decl(declPtr)
         {
         }
@@ -117,7 +118,7 @@ namespace lux::cxx::dref::runtime
         std::string fullQualifiedName() const {
             return m_decl ? m_decl->full_qualified_name : "";
         }
-        const ::lux::cxx::lan_model::ClassDeclaration* declaration() const {
+        const CXXRecordDecl* declaration() const {
             return m_decl;
         }
 
@@ -140,7 +141,7 @@ namespace lux::cxx::dref::runtime
         }
 
     private:
-        const ::lux::cxx::lan_model::ClassDeclaration* m_decl = nullptr;
+        const CXXRecordDecl* m_decl = nullptr;
     };
 
 

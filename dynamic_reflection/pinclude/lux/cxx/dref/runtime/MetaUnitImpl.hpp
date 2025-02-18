@@ -1,31 +1,23 @@
 #pragma once
-#include <lux/cxx/dref/runtime/MetaUnit.hpp>
+#include <lux/cxx/dref/runtime/Declaration.hpp>
+#include <lux/cxx/dref/runtime/Type.hpp>
 #include <lux/cxx/algotithm/hash.hpp>
-#include <lux/cxx/lan_model/types.hpp>
 
 #include <unordered_map>
-#include <deque>
 
 namespace lux::cxx::dref
 {
-	struct DeclarationLists
-	{
-		std::deque<lan_model::ClassDeclaration>			class_decl_list;
-		std::deque<lan_model::FunctionDeclaration>		function_decl_list; // global functions
-		std::deque<lan_model::EnumerationDeclaration>	enumeration_decl_list;
-	};
-
 	struct MetaUnitData
 	{
-		// marked declarations
-		DeclarationLists								 marked_decl_lists;
-		DeclarationLists								 unmarked_decl_lists;
+		// All declaration and types
+		std::vector<std::unique_ptr<Decl>> declarations;
+		std::vector<std::unique_ptr<Type>> types;
 
-		std::unordered_map<std::size_t, Declaration*>    decl_map;
+		std::unordered_map<std::string, Decl*>  declaration_map;
+		std::unordered_map<std::string, Type*>  type_map;
 
-		// type meta
-		std::deque<lan_model::Type>					     type_list;
-		std::unordered_map<std::size_t, TypeMeta*>       type_map;
+		// Marked declarations
+		std::vector<Decl*>				   marked_declarations;
 	};
 
 	class MetaUnitImpl
@@ -37,15 +29,15 @@ namespace lux::cxx::dref
 			: _data(std::move(data)), _name(std::move(unit_name)), _version(std::move(unit_version))
 		{
 			const std::string id_str = _name + _version;
-			_id = lux::cxx::algorithm::fnv1a(id_str);
+			_id = algorithm::fnv1a(id_str);
 		}
 
 		~MetaUnitImpl() = default;
 
 	private:
-		size_t							_id;
-		std::unique_ptr<MetaUnitData>	_data;
-		std::string						_name;
-		std::string						_version;
+		size_t		 _id;
+		std::unique_ptr<MetaUnitData> _data;
+		std::string	 _name;
+		std::string	 _version;
 	};
 }

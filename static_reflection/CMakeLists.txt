@@ -13,7 +13,6 @@ component_include_directories(
 
 component_add_internal_dependencies(
     static_reflection
-        lux::cxx::lan_model
         lux::cxx::compile_time
 )
 

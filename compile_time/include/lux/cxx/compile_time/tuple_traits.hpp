@@ -78,7 +78,7 @@ namespace lux::cxx
 			handler_.template operator() < T, FUNC > (
 				std::forward<FUNC>(func),
 				std::make_index_sequence<std::tuple_size_v<TupleType>>{}
-				);
+			);
 		}
 	};
 
