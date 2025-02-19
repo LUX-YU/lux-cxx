@@ -1,7 +1,8 @@
 # import target libclang
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang_unix.cmake)
 cmake_policy(SET CMP0167 NEW)
-find_package(bustache CONFIG REQUIRED)
+find_package(bustache  CONFIG REQUIRED)
+find_package(RapidJSON CONFIG REQUIRED)
 
 set(DREF_PARSER_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParser.cpp
@@ -106,6 +107,7 @@ target_link_libraries(
 	lux::cxx::dynamic_reflection_runtime
 	lux::cxx::static_reflection
     bustache::bustache
+    rapidjson
 )
 
 target_include_directories(
@@ -113,6 +115,10 @@ target_include_directories(
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     pinclude
+)
+
+install(
+	TARGETS lux_meta_generator
 )
 
 set(ENABLE_DYNAMIC_REFLECTION_TEST true BOOL "Enable dynamic reflection test")

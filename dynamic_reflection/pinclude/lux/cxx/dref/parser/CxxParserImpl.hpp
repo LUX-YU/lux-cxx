@@ -19,7 +19,7 @@ namespace lux::cxx::dref
 
         ~CxxParserImpl();
 
-        ParseResult parse(std::string_view file, std::vector<std::string_view> commands, std::string_view name, std::string_view version);
+        ParseResult parse(std::string_view file, std::vector<std::string> commands, std::string_view name, std::string_view version);
 
         static size_t                       type_meta_id(std::string_view name);
 
@@ -29,7 +29,7 @@ namespace lux::cxx::dref
         static std::vector<std::string>     parseAnnotations(const Cursor&);
     private:
 
-        [[nodiscard]] TranslationUnit       translate(std::string_view file, std::vector<std::string_view> commands) const;
+        [[nodiscard]] TranslationUnit       translate(std::string_view file, std::vector<std::string> commands) const;
 
         [[nodiscard]] std::vector<Cursor>   findMarkedCursors(const Cursor& root_cursor) const;
         bool                                parseMarkedDeclaration(const Cursor& cursor);
@@ -316,7 +316,7 @@ namespace lux::cxx::dref
 				}
 				// case CXType_Auto:
 				case CXType_Elaborated:
-					return createOrFindType(clang_type.getNamedType());
+					return createOrFindType(clang_type.canonicalType());
 				// case CXType_Attributed:
 				default:
 				{

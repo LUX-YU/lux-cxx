@@ -25,7 +25,7 @@ static constexpr void displayField()
 
 template<typename T, typename Meta = type_meta<T>>
 requires (Meta::meta_type == EMetaType::ClASS || Meta::meta_type == EMetaType::STRUCT)
-static constexpr void displayClassInfo(TestClass& obj)
+static constexpr void displayClassInfo(T& obj)
 {
     std::cout << "Class name: " << Meta::name << std::endl;
     std::cout << "size:       " << Meta::size << std::endl;

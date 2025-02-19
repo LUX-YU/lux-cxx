@@ -43,7 +43,7 @@ namespace lux::cxx::dref
 		 * @return ParseResult The result of the parsing
 		 */
         [[nodiscard]] LUX_CXX_PUBLIC ParseResult 
-        parse(std::string_view file, std::vector<std::string_view> commands, std::string_view name, std::string_view version) const;
+        parse(std::string_view file, std::vector<std::string> commands, std::string_view name, std::string_view version) const;
 
         /*
          * @brief Set the PCH file to use

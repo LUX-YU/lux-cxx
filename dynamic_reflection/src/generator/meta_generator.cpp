@@ -1,7 +1,7 @@
-#include <clang_config.h>
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <set>
 #include <filesystem>
 #include <lux/cxx/dref/parser/CxxParser.hpp>
 #include <lux/cxx/dref/parser/libclang.hpp>
@@ -9,22 +9,35 @@
 #include <lux/cxx/dref/runtime/Type.hpp>
 #include <bustache/format.hpp>
 #include <bustache/model.hpp>
+#include <rapidjson/rapidjson.h>
+#include <rapidjson/document.h>
 
 #include "static_meta.mustache.hpp"
+
+static std::vector<std::string> fetchIncludePaths(const std::filesystem::path&, const std::filesystem::path&);
 
 static std::string renderDeclaration(const std::vector<lux::cxx::dref::Decl*>&);
 static bool renderCxxRecord(lux::cxx::dref::CXXRecordDecl& decl, bustache::array& classes);
 static bool renderEnumeration(lux::cxx::dref::EnumDecl& decl, bustache::array& enums);
 
+/**
+ * argv0: Path of meta_generator.exe
+ * argv1: A file path needs to be parsed
+ * argv2: Output path
+ * argv3: A source file which needs meta-info (this file should in compile commands)
+ * argv4: compile_commands.json path
+ */
 int main(const int argc, const char* argv[])
 {
-    if (argc < 3)
+    if (argc < 5)
     {
         return 0;
     }
 
     static auto target_file = argv[1];
     static auto output_file = argv[2];
+    static auto source_file = argv[3];
+    static auto compile_command_path = argv[4];
 
     if (!std::filesystem::exists(target_file))
     {
@@ -32,13 +45,29 @@ int main(const int argc, const char* argv[])
         return 1;
     }
 
+    if (!std::filesystem::exists(source_file))
+    {
+        std::cerr << "Source file " << target_file << " does not exist" << std::endl;
+        return 1;
+    }
+
+    if (!std::filesystem::exists(compile_command_path))
+    {
+        std::cerr << "Compile command file " << target_file << " does not exist" << std::endl;
+        return 1;
+    }
+
+    auto include_paths = fetchIncludePaths(compile_command_path, source_file);
+
     const lux::cxx::dref::CxxParser cxx_parser;
 
     // 构造编译选项
-    std::vector<std::string_view> options;
-    // 添加预定义的 C++ 标准和 include 路径（这些宏由你的环境或配置文件定义）
-    options.emplace_back(__LUX_CXX_INCLUDE_DIR_DEF__);
+    std::vector<std::string> options;
     options.emplace_back("--std=c++20");
+    for (auto& path : include_paths)
+    {
+        options.emplace_back(std::move(path));
+    }
 
     // 输出编译选项，便于调试
     std::cout << "Compile options:" << std::endl;
@@ -70,9 +99,119 @@ int main(const int argc, const char* argv[])
     catch (const std::exception& e)
     {
         std::cerr << "MSTCH render error: \n" << e.what() << std::endl;
+        return 1;
     }
 
     return 0;
+}
+
+static std::vector<std::string> splitCommand(const std::string &cmd) {
+    std::vector<std::string> tokens;
+    std::istringstream iss(cmd);
+    std::string token;
+    while (iss >> token) {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
+
+// 使用 std::filesystem::path 生成绝对路径
+static std::filesystem::path makeAbsolute(const std::filesystem::path &baseDir, const std::filesystem::path &p) {
+    if (p.is_absolute())
+        return p;
+    return std::filesystem::absolute(baseDir / p);
+}
+
+// 判断字符串是否符合 Windows 标准绝对路径（例如 "D:\..."）
+static bool isStandardAbsolute(const std::string &s) {
+    return (s.size() >= 3 && std::isalpha(s[0]) && s[1] == ':' && (s[2] == '\\' || s[2] == '/'));
+}
+
+std::vector<std::string> fetchIncludePaths(const std::filesystem::path& compile_command_path, const std::filesystem::path& source_file_path)
+{
+    std::ifstream ifs(compile_command_path, std::ios::binary);
+    if (!ifs) {
+        std::cerr << "Failed to open " << compile_command_path << std::endl;
+        return {};
+    }
+    std::stringstream buffer;
+    buffer << ifs.rdbuf();
+    std::string jsonContent = buffer.str();
+    ifs.close();
+
+    rapidjson::Document doc;
+    doc.Parse(jsonContent.c_str());
+    if (doc.HasParseError() || !doc.IsArray()) {
+        std::cerr << "Failed to parse compile_commands.json or root is not an array." << std::endl;
+        return {};
+    }
+
+    std::set<std::string> includePaths;
+
+    // 遍历所有编译条目
+    for (auto& entry : doc.GetArray()) {
+        if (!entry.IsObject())
+            continue;
+
+        if (!entry.HasMember("file") || !entry.HasMember("directory"))
+            continue;
+
+        std::string fileStr = entry["file"].GetString();
+        // 简单匹配目标文件（实际情况可能需要归一化路径）
+        if (std::filesystem::path(fileStr) != source_file_path)
+            continue;
+
+        std::filesystem::path baseDir = entry["directory"].GetString();
+        std::vector<std::string> args;
+
+        // 如果存在 "arguments" 字段，则直接作为数组处理
+        if (entry.HasMember("arguments") && entry["arguments"].IsArray()) {
+            for (auto& arg : entry["arguments"].GetArray()) {
+                args.push_back(arg.GetString());
+            }
+        } else if (entry.HasMember("command") && entry["command"].IsString()) {
+            std::string cmdStr = entry["command"].GetString();
+            args = splitCommand(cmdStr);
+        }
+
+        // 遍历参数，查找以 "-I" 或 "-external:" 开头的参数
+        for (size_t i = 0; i < args.size(); ++i)
+        {
+            std::string arg = args[i];
+            std::string pathStr;
+            if (arg.rfind("-I", 0) == 0) {
+                // 处理 -I 参数
+                if (arg == "-I") {
+                    if (i + 1 < args.size()) {
+                        pathStr = args[++i];
+                    }
+                } else {
+                    pathStr = arg.substr(2);
+                }
+            } else if (arg.rfind("-external:I", 0) == 0) {
+                // 处理 -external: 参数，将其转换为 -I
+                if (arg == "-external:I") {
+                    if (i + 1 < args.size()) {
+                        pathStr = args[++i];
+                    }
+                } else {
+                    pathStr = arg.substr(std::string("-external:I").length());
+                }
+                // 此时我们希望返回的仍然是 "-I" + 路径
+            }
+            if (!pathStr.empty()) {
+                std::filesystem::path incPath;
+                // 如果 pathStr 已经是标准的绝对路径，则直接使用
+                if (isStandardAbsolute(pathStr))
+                    incPath = std::filesystem::path(pathStr);
+                else
+                    incPath = makeAbsolute(baseDir, pathStr);
+                includePaths.insert("-I" + incPath.string());
+            }
+        }
+    }
+
+    return std::vector(includePaths.begin(), includePaths.end());
 }
 
 static std::string renderDeclaration(const std::vector<lux::cxx::dref::Decl*>& declarations)
@@ -83,7 +222,6 @@ static std::string renderDeclaration(const std::vector<lux::cxx::dref::Decl*>& d
 
     bustache::format format(static_meta_template);
     // 渲染模板
-
     for (const auto decl : declarations)
     {
         switch (decl->kind)
@@ -91,13 +229,19 @@ static std::string renderDeclaration(const std::vector<lux::cxx::dref::Decl*>& d
         case lux::cxx::dref::EDeclKind::CXX_RECORD_DECL:
             {
                 auto cxx_record_decl = static_cast<lux::cxx::dref::CXXRecordDecl*>(decl);
-                renderCxxRecord(*cxx_record_decl, classes);
+                if (!renderCxxRecord(*cxx_record_decl, classes))
+                {
+                    std::cerr << "Render CXX Record Failed!" << std::endl;
+                }
                 break;
             }
         case lux::cxx::dref::EDeclKind::ENUM_DECL:
             {
                 auto cxx_record_decl = static_cast<lux::cxx::dref::EnumDecl*>(decl);
-                renderEnumeration(*cxx_record_decl, enums);
+                if (!renderEnumeration(*cxx_record_decl, enums))
+                {
+                    std::cerr << "Render Enumeration Failed!" << std::endl;
+                }
                 break;
             }
         default:

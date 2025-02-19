@@ -68,7 +68,7 @@ int main(int argc, char* argv[])
     const CxxParser cxx_parser;
 
     // 构造编译选项
-    std::vector<std::string_view> options;
+    std::vector<std::string> options;
     // 添加预定义的 C++ 标准和 include 路径（这些宏由你的环境或配置文件定义）
     options.emplace_back(__LUX_CXX_INCLUDE_DIR_DEF__);
     options.emplace_back("--std=c++20");
