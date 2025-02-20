@@ -1,7 +1,7 @@
 # import target libclang
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang_unix.cmake)
 cmake_policy(SET CMP0167 NEW)
-find_package(bustache  CONFIG REQUIRED)
+find_package(inja      CONFIG REQUIRED)
 find_package(RapidJSON CONFIG REQUIRED)
 
 set(DREF_PARSER_SRCS
@@ -95,6 +95,9 @@ component_add_transitive_commands(
 )
 
 # start constructing component dynamic_reflection_generator
+set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 add_executable(
 	lux_meta_generator
 	${CMAKE_CURRENT_SOURCE_DIR}/src/generator/meta_generator.cpp
@@ -106,7 +109,7 @@ target_link_libraries(
 	lux::cxx::dynamic_reflection_parser
 	lux::cxx::dynamic_reflection_runtime
 	lux::cxx::static_reflection
-    bustache::bustache
+    pantor::inja
     rapidjson
 )
 
