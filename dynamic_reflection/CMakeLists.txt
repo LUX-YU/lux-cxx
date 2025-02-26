@@ -1,6 +1,5 @@
 # import target libclang
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang_unix.cmake)
-cmake_policy(SET CMP0167 NEW)
 find_package(bustache  CONFIG REQUIRED)
 find_package(RapidJSON CONFIG REQUIRED)
 
