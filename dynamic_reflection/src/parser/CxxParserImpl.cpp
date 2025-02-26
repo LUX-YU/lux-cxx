@@ -99,7 +99,6 @@ namespace lux::cxx::dref
 
 	ParseResult CxxParserImpl::parse(std::string_view file, std::vector<std::string> commands, std::string_view name, std::string_view version)
 	{
-		commands.push_back("-Wunknown-attributes");
 		auto translate_unit = translate(file, std::move(commands));
 		auto error_list = translate_unit.diagnostics();
 		for (auto& str : error_list)

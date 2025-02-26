@@ -19,6 +19,7 @@ enum class LUX_REFL(static_reflection) TestEnum
     THIRD_ENUMERATOR = 4,
 };
 
+namespace lux::cxx::dref{
 template<>
 class type_meta<TestEnum>
 {
@@ -59,6 +60,7 @@ public:
         return "";
     }
 };
+}
 
 int main(int argc, char* argv[])
 {

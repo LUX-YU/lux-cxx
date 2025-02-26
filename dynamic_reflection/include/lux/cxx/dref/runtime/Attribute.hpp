@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #define LUX_REF_MARK_PREFIX "LUX::META;"
 
 #if defined __LUX_PARSE_TIME__
