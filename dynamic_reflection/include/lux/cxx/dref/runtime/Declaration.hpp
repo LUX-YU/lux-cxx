@@ -5,12 +5,9 @@
 #include "Attribute.hpp"
 
 namespace lux::cxx::dref {
-class  Type;
-class  CXXMethodDecl;
-class  FieldDecl;
-class  CXXConstructorDecl;
-class  CXXDestructorDecl;
-
+class Type;
+class CXXConstructorDecl;
+class CXXDestructorDecl;
 /* Subset of complete c++ declaration system
  * Decl
  *	└── NamedDecl
@@ -59,12 +56,36 @@ enum class EDeclKind
 //-------------------------------------
 // (1) Decl : 所有声明节点的基类
 //-------------------------------------
+// 访问器基类
+class EnumDecl;
+class RecordDecl;
+class CXXRecordDecl;
+class CXXMethodDecl;
+class FieldDecl;
+class ParmVarDecl;
+class FunctionDecl;
+class DeclVisitor
+{
+public:
+    virtual ~DeclVisitor() = default;
+    // 只对具体的类型进行访问
+    virtual void visit(EnumDecl*) = 0;
+    virtual void visit(RecordDecl*) = 0;
+    virtual void visit(CXXRecordDecl*) = 0;
+    virtual void visit(FieldDecl*) = 0;
+    virtual void visit(FunctionDecl*) = 0;
+    virtual void visit(CXXMethodDecl*) = 0;
+    virtual void visit(ParmVarDecl*) = 0;
+};
+
 class Decl
 {
 public:
     std::string id;
     EDeclKind   kind;
     virtual ~Decl() = default;
+
+    virtual void accept(DeclVisitor*) = 0;
 };
 
 //-------------------------------------
@@ -130,6 +151,11 @@ public:
     std::vector<Enumerator> enumerators;
 
     ~EnumDecl() override = default;
+
+    void accept(DeclVisitor* visitor) override 
+    {
+		visitor->visit(this);
+    }
 };
 
 //-------------------------------------
@@ -140,6 +166,10 @@ class RecordDecl : public TagDecl
 public:
     // 基本的字段 or 方法可以放在这里
     // Clang 里 RecordDecl 不一定知道是否是 CXXRecordDecl(仅当是 C++ class/struct)
+    void accept(DeclVisitor* visitor) override
+    {
+        visitor->visit(this);
+    }
 };
 
 //-------------------------------------
@@ -161,6 +191,11 @@ public:
     std::vector<CXXMethodDecl*>      method_decls;
     std::vector<CXXMethodDecl*>      static_method_decls;
     std::vector<FieldDecl*>          field_decls;
+
+    void accept(DeclVisitor* visitor) override
+    {
+        visitor->visit(this);
+    }
 };
 
 //======================================================================
@@ -188,6 +223,11 @@ class FieldDecl final : public DeclaratorDecl
 public:
     EVisibility visibility = EVisibility::INVALID;
     std::size_t offset = 0; // 字段偏移(单位可自定义：字节或bit)
+
+    void accept(DeclVisitor* visitor) override
+    {
+        visitor->visit(this);
+    }
 };
 
 //-------------------------------------
@@ -203,6 +243,11 @@ public:
 
     // 替代你原先存的 "mangling"
     std::string mangling;
+
+    void accept(DeclVisitor* visitor) override
+    {
+        visitor->visit(this);
+    }
 };
 
 //-------------------------------------
@@ -216,6 +261,11 @@ public:
     bool is_static  = false;
     bool is_virtual = false;
     bool is_const   = false;
+
+    void accept(DeclVisitor* visitor) override
+    {
+        visitor->visit(this);
+    }
 };
 
 // (3B.1.1) CXXConstructorDecl
@@ -238,5 +288,7 @@ class ParmVarDecl final : public VarDecl
 public:
     std::size_t index = 0;  // 在函数形参中的顺序
 };
+
+
 
 } // namespace lux::cxx::dref

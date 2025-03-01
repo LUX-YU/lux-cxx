@@ -22,6 +22,28 @@ enum class ETypeKind {
 //=============================
 // 基类：Type
 //=============================
+
+class BuiltinType;
+class PointerType;
+class LValueReferenceType;
+class RValueReferenceType;
+class RecordType;
+class EnumType;
+class FunctionType;
+
+class TypeVisitor
+{
+public:
+    virtual void visit(Type*) = 0;
+	virtual void visit(BuiltinType*) = 0;
+	virtual void visit(PointerType*) = 0;
+	virtual void visit(LValueReferenceType*) = 0;
+	virtual void visit(RValueReferenceType*) = 0;
+	virtual void visit(RecordType*) = 0;
+	virtual void visit(EnumType*) = 0;
+	virtual void visit(FunctionType*) = 0;
+};
+
 class Type
 {
 public:
@@ -35,6 +57,10 @@ public:
     bool        is_volatile{false};
     int         size;
     int         align;
+
+    virtual void accept(TypeVisitor* visitor) {
+		visitor->visit(this);
+    }
 };
 
 class UnsupportedType : public Type{};
