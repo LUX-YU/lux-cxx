@@ -72,3 +72,13 @@ target_link_libraries(
 	lux::cxx::dynamic_reflection_parser
 )
 
+add_executable(
+	serializer_test
+	${CMAKE_CURRENT_SOURCE_DIR}/serializer_test.cpp
+)
+
+target_link_libraries(
+	serializer_test
+	PRIVATE
+	lux::cxx::dynamic_reflection_parser
+)

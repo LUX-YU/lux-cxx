@@ -34,7 +34,7 @@ struct LUX_REFL(static_reflection) TestClass
     }
 };
 
-enum class LUX_REFL(static_reflection) TestEnum
+enum class LUX_REFL(static_reflection;dynamic_reflection) TestEnum
 {
     FIRST_ENUMERATOR = 100,
     SECOND_ENUMERATOR = 200,

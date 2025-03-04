@@ -40,10 +40,21 @@ namespace lux::cxx::dref
 			{
 				if (const auto cursor_kind = current_cursor.cursorKind(); cursor_kind == CXCursor_AnnotateAttr)
 				{
-					ret.push_back(current_cursor.displayName().to_std());
+					std::string annotation = current_cursor.displayName().to_std();
+
+					// 分割注解字符串
+					std::stringstream ss(annotation);
+					std::string part;
+					while (std::getline(ss, part, ';'))
+					{
+						if (!part.empty())
+						{
+							ret.push_back(part);
+						}
+					}
+
 					return CXChildVisit_Break;
 				}
-				// else if(cursor_kind == CXCursorKind::Att)
 				return CXChildVisit_Continue;
 			}
 		);

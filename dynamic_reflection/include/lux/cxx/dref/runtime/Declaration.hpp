@@ -8,6 +8,7 @@ namespace lux::cxx::dref {
 class Type;
 class CXXConstructorDecl;
 class CXXDestructorDecl;
+
 /* Subset of complete c++ declaration system
  * Decl
  *	└── NamedDecl
@@ -29,7 +30,6 @@ class CXXDestructorDecl;
  *	                    ├── NonTypeTemplateParmDecl
  *	                    └── ParmVarDecl
  */
-
 enum class EDeclKind
 {
     NAMED_DECL,
@@ -287,8 +287,9 @@ class ParmVarDecl final : public VarDecl
 {
 public:
     std::size_t index = 0;  // 在函数形参中的顺序
+    void accept(DeclVisitor* visitor) override
+    {
+        visitor->visit(this);
+    }
 };
-
-
-
 } // namespace lux::cxx::dref

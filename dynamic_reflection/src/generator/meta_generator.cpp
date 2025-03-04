@@ -11,11 +11,11 @@
 #include <rapidjson/rapidjson.h>
 #include <rapidjson/document.h>
 
-// 移除 bustache 头文件，使用 inja 与 nlohmann/json
 #include <inja/inja.hpp>
 #include <nlohmann/json.hpp>
 
 #include "static_meta.inja.hpp"
+#include "dynamic_meta.inja.hpp"
 
 static std::vector<std::string> fetchIncludePaths(const std::filesystem::path&, const std::filesystem::path&);
 
@@ -434,6 +434,15 @@ bool renderEnumeration(lux::cxx::dref::EnumDecl& decl, nlohmann::json& enums)
         }
     }
     enum_info["elements"] = elements;
+
+    // 渲染 attributes
+    nlohmann::json attributes = nlohmann::json::array();
+    for (const auto& attr : decl.attributes)
+    {
+        attributes.push_back(attr);
+    }
+    enum_info["attributes"] = attributes;
+    enum_info["attributes_count"] = std::to_string(attributes.size());
 
     nlohmann::json cases = nlohmann::json::array();
     for (const auto& enumerator : decl.enumerators)

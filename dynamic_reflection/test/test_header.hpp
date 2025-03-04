@@ -59,7 +59,7 @@ public:
 
     TestClass(TestEnum);
 
-    ~TestClass();
+    ~TestClass() {}
 
     int LUX_REFL(int) a1;
 protected:
@@ -122,12 +122,16 @@ public:
 
     }
 
-    void __func_const_declaration() const;
+    void __func_const_declaration() const {
+
+    }
 
     static int __static_func()
     {
         return 1;
     }
 
-    static void __static_func_declaration();
+    static void __static_func_declaration() {
+
+    }
 };

@@ -4,6 +4,7 @@
 #include <lux/cxx/algotithm/hash.hpp>
 
 #include <unordered_map>
+#include <memory>
 
 namespace lux::cxx::dref
 {

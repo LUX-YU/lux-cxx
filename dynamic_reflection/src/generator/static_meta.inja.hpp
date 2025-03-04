@@ -69,7 +69,7 @@ namespace lux::cxx::dref{
         static constexpr void foreach_field(Func&& func, Obj& object)
         {
             {% for field in class.fields -%}
-            func(object.{{ field.name }}){% if not loop.is_last %};
+            func(object.{{ field.name }});{% if not loop.is_last %}
             {% endif %}{% endfor %}
         }
     };
@@ -91,6 +91,12 @@ namespace lux::cxx::dref{
             {% endif %}{% endfor %}
         };
 
+        static constexpr std::array<const char*, {{ length(enum.attributes) }}> attributes{
+            {% for attribute in enum.attributes -%}
+            "{{ attribute }}"{% if not loop.is_last %},
+            {% endif %}{% endfor %}
+        };
+
         static constexpr std::array<value_type, size> values{
             {% for value in enum.values -%}
             {{ value }}{%- if not loop.is_last -%},
@@ -109,7 +115,7 @@ namespace lux::cxx::dref{
             {
                 {% for case in enum.cases -%}
                 case {{ enum.name }}::{{ case }}:
-                    return "{{ case }}"{% if not loop.is_last %};
+                    return "{{ case }}";{% if not loop.is_last %}
                 {% endif %}{% endfor %}
             }
             return "";
