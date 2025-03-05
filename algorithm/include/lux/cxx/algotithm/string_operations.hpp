@@ -20,57 +20,34 @@
  * SOFTWARE.
  */
 
-#include <lux/cxx/dref/runtime/MetaUnit.hpp>
-#include <lux/cxx/dref/runtime/MetaUnitImpl.hpp>
+#pragma once
+#include <string>
+#include <string_view>
 
-namespace lux::cxx::dref
+namespace lux::cxx::algorithm
 {
-	size_t MetaUnit::calculateTypeMetaId(std::string_view name)
-	{
-		return lux::cxx::algorithm::fnv1a(name);
-	}
-	MetaUnit::MetaUnit()
-		:_impl(nullptr)
-	{
-		
-	}
+	static inline std::string_view trim(std::string_view text) {
+		size_t start = 0;
+		size_t end = text.size();
 
-	MetaUnit::MetaUnit(MetaUnit&& other) noexcept
-	{
-		_impl = std::move(other._impl);
-	}
+		while (start < end && std::isspace(text[start])) {
+			start++;
+		}
 
-	MetaUnit& MetaUnit::operator=(MetaUnit&& other) noexcept
-	{
-		_impl = std::move(other._impl);
-		return *this;
+		while (end > start && std::isspace(text[end - 1])) {
+			end--;
+		}
+
+		return text.substr(start, end - start);
 	}
 
-	MetaUnit::MetaUnit(std::unique_ptr<MetaUnitImpl> impl)
-	{
-		_impl = std::move(impl);
-	}
-
-	MetaUnit::~MetaUnit() = default;
-
-	size_t MetaUnit::id() const
-	{
-		return _impl->_id;
-	}
-
-	const std::string& MetaUnit::name() const
-	{
-		return _impl->_name;
-	}
-
-	const std::string& MetaUnit::version() const
-	{
-		return _impl->_version;
-	}
-
-	const std::vector<Decl*>&
-	MetaUnit::markedDeclarations() const
-	{
-		return _impl->_data->marked_declarations;
+	static inline std::string replace(std::string_view str, std::string_view old_value, std::string_view new_value) {
+		std::string result(str);
+		size_t pos = 0;
+		while ((pos = result.find(old_value, pos)) != std::string::npos) {
+			result.replace(pos, old_value.size(), new_value);
+			pos += new_value.size();
+		}
+		return result;
 	}
 }

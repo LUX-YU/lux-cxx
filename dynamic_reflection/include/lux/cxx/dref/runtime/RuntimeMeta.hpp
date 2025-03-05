@@ -1,3 +1,25 @@
+/*
+ * Copyright (c) 2025 Chenhui Yu
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #pragma once
 
 #include <vector>
@@ -11,47 +33,18 @@
 
 namespace lux::cxx::dref::runtime
 {
-    class RuntimeMeta
+    struct FunctionRuntimeMeta
     {
-    public:
-        virtual ~RuntimeMeta() = default;
-        std::string_view name; // “描述对象”的名称，比如类名、枚举名等
+		using InvokerFn = void(*)(void** args, void* retVal);
+        
+        std::string_view name;
+		InvokerFn invoker = nullptr;
+		std::vector<std::string> param_type_names;
+		std::string return_type;
     };
 
-    //=====================================
-    // 1) RecordRuntimeMeta (用于 class/struct)
-    //=====================================
-    class RecordRuntimeMeta : public RuntimeMeta
+    struct FieldRuntimeMeta
     {
-    public:
-        // 构造与析构
-        using ConstructorFn = void* (*)();       // 返回指针
-        using DestructorFn  = void  (*)(void*);  // 传入指针
-
-        std::vector<ConstructorFn> ctor = nullptr;
-        DestructorFn  dtor = nullptr;
-
-        // 字段元信息
-        std::vector<class FieldRuntimeMeta>   fields;
-        // 成员方法元信息
-        std::vector<class MethodRuntimeMeta*> methods;
-        // 静态方法元信息
-        std::vector<class MethodRuntimeMeta*> static_methods;
-
-        // 可加：基类信息
-        // std::vector<RecordRuntimeMeta*> bases;
-
-        // 也可加：构造函数、析构函数信息（如果你要区分不同参数签名的 ctor）
-        // std::vector<MethodRuntimeMeta*> constructors;
-        // MethodRuntimeMeta* destructor = nullptr;
-    };
-
-    //=====================================
-    // 2) FieldRuntimeMeta
-    //=====================================
-    class FieldRuntimeMeta
-    {
-    public:
         std::string_view name;
         std::ptrdiff_t   offset = 0;       // 字段相对对象首地址的偏移
         // 字段类型元信息，或者仅用字符串标识，如 "int"/"MyClass" 等
@@ -66,13 +59,43 @@ namespace lux::cxx::dref::runtime
     };
 
     //=====================================
+    // 1) RecordRuntimeMeta (用于 class/struct)
+    //=====================================
+    struct RecordRuntimeMeta
+    {
+        // 构造与析构
+        using ConstructorFn = void* (*)(void**); // 返回指针
+        using DestructorFn  = void  (*)(void*);  // 传入指针
+
+        std::string_view name;
+
+        std::vector<ConstructorFn> ctor{};
+        DestructorFn  dtor = nullptr;
+
+        // 字段元信息
+        std::vector<class FieldRuntimeMeta>     fields;
+        // 成员方法元信息
+        std::vector<class MethodRuntimeMeta*>   methods;
+        // 静态方法元信息
+        std::vector<class FunctionRuntimeMeta*> static_methods;
+
+        // 可加：基类信息
+        // std::vector<RecordRuntimeMeta*> bases;
+
+        // 也可加：构造函数、析构函数信息（如果你要区分不同参数签名的 ctor）
+        // std::vector<MethodRuntimeMeta*> constructors;
+        // MethodRuntimeMeta* destructor = nullptr;
+    };
+
+    //=====================================
     // 3) MethodRuntimeMeta
     //=====================================
-    class MethodRuntimeMeta : public RuntimeMeta
+    struct MethodRuntimeMeta
     {
-    public:
         // 通用的 “桥接函数” 签名 (实例方法)
         using MethodInvokerFn = void(*)(void* obj, void** args, void* retVal);
+
+        std::string_view name;
 
         // 对于静态方法，可能签名少一个 obj:
         //   using StaticInvokerFn = void(*)(void** args, void* retVal);
@@ -80,7 +103,7 @@ namespace lux::cxx::dref::runtime
         MethodInvokerFn invoker = nullptr;
 
         std::vector<std::string> param_type_names; // 每个参数的类型名（可做检查用）
-        std::string return_type_name;
+        std::string return_type;
 
         bool is_virtual = false;
         bool is_const   = false;
@@ -93,15 +116,15 @@ namespace lux::cxx::dref::runtime
     //=====================================
     // 4) EnumRuntimeMeta
     //=====================================
-    class EnumRuntimeMeta : public RuntimeMeta
+    struct EnumRuntimeMeta
     {
-    public:
         struct Enumerator
         {
             std::string_view name;
             long long        value;  // 也可以用 int64_t
         };
 
+        std::string_view name;
         bool is_scoped = false;
         std::string_view underlying_type_name;
         std::vector<Enumerator> enumerators;
@@ -138,6 +161,7 @@ namespace lux::cxx::dref::runtime
         {
             enum_map_[std::string(meta->name)] = meta;
         }
+
         EnumRuntimeMeta* findEnum(std::string_view name)
         {
             auto it = enum_map_.find(std::string(name));

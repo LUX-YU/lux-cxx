@@ -2,6 +2,7 @@
 #include <lux/cxx/dref/runtime/Attribute.hpp>
 
 #include <lux/cxx/dref/runtime/MetaUnit.hpp>
+#include <lux/cxx/algotithm/string_operations.hpp>
 
 #include <numeric>
 #include <iostream>
@@ -49,7 +50,8 @@ namespace lux::cxx::dref
 					{
 						if (!part.empty())
 						{
-							ret.push_back(part);
+							std::string trimed_part(lux::cxx::algorithm::trim(part));
+							ret.push_back(trimed_part);
 						}
 					}
 

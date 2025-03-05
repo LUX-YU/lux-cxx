@@ -19,7 +19,7 @@ if(GENERATOR)
 	message(STATUS "Found lux_meta_generator: ${GENERATOR}")
 	add_meta(
 		TARGET_NAME 		test_header2_meta
-		SOURCE_FILE 		${CMAKE_CURRENT_SOURCE_DIR}/generate_static_meta_test.cpp
+		SOURCE_FILE 		${CMAKE_CURRENT_SOURCE_DIR}/generate_meta_test.cpp
 		METAS 				${CMAKE_CURRENT_SOURCE_DIR}/test_header2.hpp
 		META_GEN_OUT_DIR 	${CMAKE_BINARY_DIR}/metagen
 		META_GENERATOR 		${GENERATOR}
@@ -32,24 +32,24 @@ if(GENERATOR)
 	)
 	
 	add_executable(
-		generate_static_meta_test
-		${CMAKE_CURRENT_SOURCE_DIR}/generate_static_meta_test.cpp
+		generate_meta_test
+		${CMAKE_CURRENT_SOURCE_DIR}/generate_meta_test.cpp
 	)
 	
 	target_link_libraries(
-		generate_static_meta_test
+		generate_meta_test
 		PRIVATE
 		dynamic_reflection_runtime
 	)
 	
 	target_include_directories(
-		generate_static_meta_test
+		generate_meta_test
 		PRIVATE
 		${CMAKE_BINARY_DIR}/metagen
 	)
 	
 	add_dependencies(
-		generate_static_meta_test
+		generate_meta_test
 		test_header2_meta
 	)
 endif()

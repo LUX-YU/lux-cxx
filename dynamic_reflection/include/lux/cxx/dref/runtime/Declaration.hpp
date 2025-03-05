@@ -1,3 +1,25 @@
+/*
+ * Copyright (c) 2025 Chenhui Yu
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #pragma once
 #include <string>
 #include <vector>
@@ -5,291 +27,330 @@
 #include "Attribute.hpp"
 
 namespace lux::cxx::dref {
-class Type;
-class CXXConstructorDecl;
-class CXXDestructorDecl;
 
-/* Subset of complete c++ declaration system
- * Decl
- *	└── NamedDecl
- *	     ├── TypeDecl
- *	     │    └── TagDecl
- *	     │         ├── EnumDecl
- *	     │         └── RecordDecl
- *	     │              └── CXXRecordDecl
- *	     └── ValueDecl
- *	          └── DeclaratorDecl
- *	               ├── FieldDecl
- *	               ├── FunctionDecl
- *	               │    └── CXXMethodDecl
- *	               │         ├── CXXConstructorDecl
- *	               │         ├── CXXConversionDecl
- *	               │         └── CXXDestructorDecl
- *	               └── VarDecl
- *	                    ├── ImplicitParamDecl
- *	                    ├── NonTypeTemplateParmDecl
- *	                    └── ParmVarDecl
- */
-enum class EDeclKind
-{
-    NAMED_DECL,
-    TYPED_DECL,
-    TAG_DECL,
-    ENUM_DECL,
-    RECORD_DECL,
-    CXX_RECORD_DECL,
-    VALUE_DECL,
-    DECLARATOR_DECL,
-    FIELD_DECL,
-    FUNCTION_DECL,
-    CXX_METHOD_DECL,
-    CXX_CONSTRUCTOR_DECL,
-    CXX_CONVERSION_DECL,
-    CXX_DESTRUCTOR_DECL,
-    VAR_DECL,
-    IMPLICIT_PARAM_DECL,
-    NONTYPE_TEMPLATE_PARAM_DECL,
-    PARAM_VAR_DECL,
-    UNKNOWN_PARAM_DECL
-};
+    /**
+     * Forward declarations to allow referencing these classes below.
+     * They will be defined later in this header.
+     */
+    class Type;
+    class CXXConstructorDecl;
+    class CXXDestructorDecl;
 
-//-------------------------------------
-// (1) Decl : 所有声明节点的基类
-//-------------------------------------
-// 访问器基类
-class EnumDecl;
-class RecordDecl;
-class CXXRecordDecl;
-class CXXMethodDecl;
-class FieldDecl;
-class ParmVarDecl;
-class FunctionDecl;
-class DeclVisitor
-{
-public:
-    virtual ~DeclVisitor() = default;
-    // 只对具体的类型进行访问
-    virtual void visit(EnumDecl*) = 0;
-    virtual void visit(RecordDecl*) = 0;
-    virtual void visit(CXXRecordDecl*) = 0;
-    virtual void visit(FieldDecl*) = 0;
-    virtual void visit(FunctionDecl*) = 0;
-    virtual void visit(CXXMethodDecl*) = 0;
-    virtual void visit(ParmVarDecl*) = 0;
-};
-
-class Decl
-{
-public:
-    std::string id;
-    EDeclKind   kind;
-    virtual ~Decl() = default;
-
-    virtual void accept(DeclVisitor*) = 0;
-};
-
-//-------------------------------------
-// (2) NamedDecl : 具有名字的声明
-//-------------------------------------
-class NamedDecl : public Decl
-{
-public:
-    std::string name;                // 用户可见名称
-    std::string full_qualified_name; // 可能需要时可存
-    std::string spelling;            // 源码中的拼写
-    std::vector<std::string> attributes;
-    Type* type = nullptr;
-};
-
-//======================================================================
-// Part A: TypeDecl => TagDecl => EnumDecl, RecordDecl => CXXRecordDecl
-//======================================================================
-
-/*
- * TypeDecl：用于“声明了一个类型名字”的实体，如 class/struct/union/enum/typedef/...
- * 在 Clang 中，TypeDecl 也是 NamedDecl 的子类。
- */
-class TypeDecl : public NamedDecl{};
-
-/*
- * TagDecl：C/C++ 中带“Tag”的类型声明，比如 struct/union/class/enum。
- * 这里我们只演示最常见的： Record(类/结构/联合) 与 Enum(枚举)。
- */
-class TagDecl : public TypeDecl
-{
-public:
-	enum class ETagKind
-	{
-		Struct,
-		Class,
-		Union,
-		Enum
-	};
-
-	ETagKind tag_kind;
-};
-
-//-------------------------------------
-// (2A) EnumDecl
-//-------------------------------------
-struct Enumerator
-{
-      std::string name;
-      int64_t	  signed_value;
-      uint64_t    unsigned_value;
-};
-
-class BuiltinType;
-class EnumDecl final : public TagDecl
-{
-public:
-    // 是否是 enum class (scoped enumeration)
-    bool is_scoped = false;
-    // 枚举的底层类型
-    BuiltinType* underlying_type = nullptr;
-    // 枚举项
-    std::vector<Enumerator> enumerators;
-
-    ~EnumDecl() override = default;
-
-    void accept(DeclVisitor* visitor) override 
+    /**
+     * A subset of a complete C++ declaration system.
+     *
+     * Decl (Base declaration)
+     *  └── NamedDecl
+     *       ├── TypeDecl
+     *       │    └── TagDecl
+     *       │         ├── EnumDecl
+     *       │         └── RecordDecl
+     *       │              └── CXXRecordDecl
+     *       └── ValueDecl
+     *            └── DeclaratorDecl
+     *                 ├── FieldDecl
+     *                 ├── FunctionDecl
+     *                 │    └── CXXMethodDecl
+     *                 │         ├── CXXConstructorDecl
+     *                 │         ├── CXXConversionDecl
+     *                 │         └── CXXDestructorDecl
+     *                 └── VarDecl
+     *                      ├── ImplicitParamDecl
+     *                      ├── NonTypeTemplateParmDecl
+     *                      └── ParmVarDecl
+     *
+     * This hierarchy is used to represent different kinds of declarations
+     * (classes, fields, methods, parameters, etc.) in a structured manner
+     * similar to Clang's AST.
+     */
+    enum class EDeclKind
     {
-		visitor->visit(this);
-    }
-};
+        NAMED_DECL,
+        TYPED_DECL,
+        TAG_DECL,
+        ENUM_DECL,
+        RECORD_DECL,
+        CXX_RECORD_DECL,
+        VALUE_DECL,
+        DECLARATOR_DECL,
+        FIELD_DECL,
+        FUNCTION_DECL,
+        CXX_METHOD_DECL,
+        CXX_CONSTRUCTOR_DECL,
+        CXX_CONVERSION_DECL,
+        CXX_DESTRUCTOR_DECL,
+        VAR_DECL,
+        IMPLICIT_PARAM_DECL,
+        NONTYPE_TEMPLATE_PARAM_DECL,
+        PARAM_VAR_DECL,
+        UNKNOWN_PARAM_DECL
+    };
 
-//-------------------------------------
-// (2B) RecordDecl : struct/class/union
-//-------------------------------------
-class RecordDecl : public TagDecl
-{
-public:
-    // 基本的字段 or 方法可以放在这里
-    // Clang 里 RecordDecl 不一定知道是否是 CXXRecordDecl(仅当是 C++ class/struct)
-    void accept(DeclVisitor* visitor) override
+    /**
+     * Visitor interface to traverse various concrete declaration nodes.
+     * Subclasses that implement this interface can be used to perform
+     * operations (e.g., printing, code generation, analysis) on specific
+     * declaration types.
+     */
+    class EnumDecl;
+    class RecordDecl;
+    class CXXRecordDecl;
+    class CXXMethodDecl;
+    class FieldDecl;
+    class ParmVarDecl;
+    class FunctionDecl;
+    class DeclVisitor
     {
-        visitor->visit(this);
-    }
-};
+    public:
+        virtual ~DeclVisitor() = default;
 
-//-------------------------------------
-// (2B.1) CXXRecordDecl : C++ 中的 class/struct
-//-------------------------------------
-class CXXRecordDecl final : public RecordDecl
-{
-public:
-    // 基类
-    // 原先在你的 ClassDeclaration 里：std::vector<ClassDeclaration*> base_class_decls;
-    // 这里用 CXXRecordDecl* 代替
-    std::vector<CXXRecordDecl*>      bases;
+        // Visit methods for each concrete decl type.
+        virtual void visit(EnumDecl*) = 0;
+        virtual void visit(RecordDecl*) = 0;
+        virtual void visit(CXXRecordDecl*) = 0;
+        virtual void visit(FieldDecl*) = 0;
+        virtual void visit(FunctionDecl*) = 0;
+        virtual void visit(CXXMethodDecl*) = 0;
+        virtual void visit(ParmVarDecl*) = 0;
+    };
 
-    // 构造函数、析构函数、普通方法、静态方法、字段声明
-    // 注意：Clang 里通常会将他们单独存放在 Redeclarable chains 里
-    // 也可把它们存在另外的数据结构中
-    std::vector<CXXConstructorDecl*> constructor_decls;
-    CXXDestructorDecl*               destructor_decl = nullptr;
-    std::vector<CXXMethodDecl*>      method_decls;
-    std::vector<CXXMethodDecl*>      static_method_decls;
-    std::vector<FieldDecl*>          field_decls;
-
-    void accept(DeclVisitor* visitor) override
+    /**
+     * Base class for all declaration nodes.
+     */
+    class Decl
     {
-        visitor->visit(this);
-    }
-};
+    public:
+        std::string id;     ///< A unique identifier for internal bookkeeping.
+        EDeclKind   kind;   ///< The specific kind of declaration (see EDeclKind).
 
-//======================================================================
-// Part B: ValueDecl => DeclaratorDecl => FieldDecl, FunctionDecl, VarDecl ...
-//======================================================================
+        virtual ~Decl() = default;
 
-/*
- * ValueDecl：表示“声明了一个可用作值的实体”，比如变量、函数
- * (Clang 中：ValueDecl 继承自 NamedDecl。)
- */
-class ValueDecl : public NamedDecl{};
+        /**
+         * Accepts a visitor, which then calls the appropriate overloaded
+         * visit method based on the dynamic type of this declaration.
+         */
+        virtual void accept(DeclVisitor*) = 0;
+    };
 
-/*
- * DeclaratorDecl：继承自 ValueDecl，表示通过 C/C++ 的“声明符”语法
- * 声明的实体（如变量, 函数, 字段, 形参, 等）。
- */
-class DeclaratorDecl : public ValueDecl{};
-
-//-------------------------------------
-// (3A) FieldDecl : 类/结构的字段
-//-------------------------------------
-
-class FieldDecl final : public DeclaratorDecl
-{
-public:
-    EVisibility visibility = EVisibility::INVALID;
-    std::size_t offset = 0; // 字段偏移(单位可自定义：字节或bit)
-
-    void accept(DeclVisitor* visitor) override
+    /**
+     * NamedDecl: Declarations that have an associated name (e.g., a class name, a function name).
+     */
+    class NamedDecl : public Decl
     {
-        visitor->visit(this);
-    }
-};
+    public:
+        std::string name;                ///< The user-visible name of the declaration.
+        std::string full_qualified_name; ///< The fully qualified name (including namespaces, classes, etc.).
+        std::string spelling;            ///< The exact spelling in the source code.
+        std::vector<std::string> attributes; ///< Additional attributes or annotations on the declaration.
+        Type* type = nullptr;                ///< Optional type information if applicable.
+    };
 
-//-------------------------------------
-// (3B) FunctionDecl
-//-------------------------------------
-class FunctionDecl : public DeclaratorDecl
-{
-public:
-    // 函数签名相关
-    Type* result_type = nullptr; // 返回类型
-    // 形参
-    std::vector<class ParmVarDecl*> params;
+    //======================================================================
+    // Part A: TypeDecl => TagDecl => EnumDecl, RecordDecl => CXXRecordDecl
+    //======================================================================
 
-    // 替代你原先存的 "mangling"
-    std::string mangling;
+    /**
+     * TypeDecl: Declarations that introduce a type name, such as class, struct,
+     * union, enum, typedef, etc. In Clang, TypeDecl also inherits from NamedDecl.
+     */
+    class TypeDecl : public NamedDecl {};
 
-    void accept(DeclVisitor* visitor) override
+    /**
+     * TagDecl: Declarations for tagged types in C/C++ such as struct, union,
+     * class, and enum. For simplicity, here we only showcase Record (class/struct/union)
+     * and Enum.
+     */
+    class TagDecl : public TypeDecl
     {
-        visitor->visit(this);
-    }
-};
+    public:
+        /**
+         * The specific kind of tagged type: struct, class, union, or enum.
+         */
+        enum class ETagKind
+        {
+            Struct,
+            Class,
+            Union,
+            Enum
+        };
 
-//-------------------------------------
-// (3B.1) CXXMethodDecl
-//-------------------------------------
-class CXXMethodDecl : public FunctionDecl
-{
-public:
-    EVisibility visibility = EVisibility::INVALID;
+        ETagKind tag_kind;
+    };
 
-    bool is_static  = false;
-    bool is_virtual = false;
-    bool is_const   = false;
-
-    void accept(DeclVisitor* visitor) override
+    /**
+     * A helper structure representing each enumerator inside an EnumDecl.
+     */
+    struct Enumerator
     {
-        visitor->visit(this);
-    }
-};
+        std::string name;       ///< The name of the enumerator.
+        int64_t     signed_value;    ///< The signed integer value it represents.
+        uint64_t    unsigned_value;  ///< The unsigned integer value it represents.
+    };
 
-// (3B.1.1) CXXConstructorDecl
-class CXXConstructorDecl final : public CXXMethodDecl{};
-// (3B.1.2) CXXConversionDecl
-class CXXConversionDecl final  : public CXXMethodDecl{};
-// (3B.1.3) CXXDestructorDecl
-class CXXDestructorDecl final  : public CXXMethodDecl{};
+    class BuiltinType; // Forward declaration for use within EnumDecl.
 
-//-------------------------------------
-// (3C) VarDecl
-//-------------------------------------
-class VarDecl : public DeclaratorDecl{};
-
-//-------------------------------------
-// (3C.1) ParmVarDecl
-//-------------------------------------
-class ParmVarDecl final : public VarDecl
-{
-public:
-    std::size_t index = 0;  // 在函数形参中的顺序
-    void accept(DeclVisitor* visitor) override
+    /**
+     * EnumDecl: Represents an enumeration type in C++.
+     */
+    class EnumDecl final : public TagDecl
     {
-        visitor->visit(this);
-    }
-};
+    public:
+        bool is_scoped = false;            ///< True if this enum is declared as 'enum class'.
+        BuiltinType* underlying_type = nullptr; ///< The underlying integer type of the enum, if specified.
+        std::vector<Enumerator> enumerators;    ///< The list of enumerators in this enum.
+
+        ~EnumDecl() override = default;
+
+        void accept(DeclVisitor* visitor) override
+        {
+            visitor->visit(this);
+        }
+    };
+
+    /**
+     * RecordDecl: Represents struct/class/union in C/C++. In Clang, RecordDecl doesn't
+     * necessarily know if it is a CXXRecordDecl (only in C++). It's a more general
+     * node for record-like types.
+     */
+    class RecordDecl : public TagDecl
+    {
+    public:
+        // Basic fields or methods can be stored here.
+        // For plain C structs or unions, you might not have C++-specific info.
+
+        void accept(DeclVisitor* visitor) override
+        {
+            visitor->visit(this);
+        }
+    };
+
+    /**
+     * CXXRecordDecl: Represents a C++ class or struct, containing additional
+     * information such as base classes, constructors, destructor, and methods.
+     */
+    class CXXRecordDecl final : public RecordDecl
+    {
+    public:
+        /// List of direct base classes (C++ inheritance).
+        std::vector<CXXRecordDecl*> bases;
+
+        /**
+         * Declarations for constructors, destructor, normal (non-static) methods,
+         * static methods, and fields in this class.
+         */
+        std::vector<CXXConstructorDecl*> constructor_decls;
+        CXXDestructorDecl* destructor_decl = nullptr;
+        std::vector<CXXMethodDecl*>      method_decls;
+        std::vector<CXXMethodDecl*>      static_method_decls;
+        std::vector<class FieldDecl*>    field_decls;
+
+        void accept(DeclVisitor* visitor) override
+        {
+            visitor->visit(this);
+        }
+    };
+
+    //======================================================================
+    // Part B: ValueDecl => DeclaratorDecl => FieldDecl, FunctionDecl, VarDecl ...
+    //======================================================================
+
+    /**
+     * ValueDecl: Represents declarations that can be used as a value,
+     * such as variables and functions. In Clang, ValueDecl inherits NamedDecl.
+     */
+    class ValueDecl : public NamedDecl {};
+
+    /**
+     * DeclaratorDecl: Inherits from ValueDecl, representing declarations that
+     * come from the C/C++ "declarator" syntax. This includes variables, functions,
+     * fields, parameters, etc.
+     */
+    class DeclaratorDecl : public ValueDecl {};
+
+    /**
+     * FieldDecl: Represents a non-static data member in a struct/class/union.
+     */
+    class FieldDecl final : public DeclaratorDecl
+    {
+    public:
+        EVisibility visibility = EVisibility::INVALID; ///< e.g., public, protected, private (if relevant).
+        std::size_t offset = 0; ///< The field offset in bytes (or bits, depending on usage).
+
+        void accept(DeclVisitor* visitor) override
+        {
+            visitor->visit(this);
+        }
+    };
+
+    /**
+     * FunctionDecl: Represents a function in C/C++ (including free functions).
+     */
+    class FunctionDecl : public DeclaratorDecl
+    {
+    public:
+        Type* result_type = nullptr;  ///< The return type of the function.
+        std::vector<class ParmVarDecl*> params; ///< The parameter list of the function.
+
+        std::string mangling; ///< The mangled name, if relevant for linkage.
+
+        void accept(DeclVisitor* visitor) override
+        {
+            visitor->visit(this);
+        }
+    };
+
+    /**
+     * CXXMethodDecl: Represents a non-constructor/destructor method declared in a C++ class.
+     * It can also represent static methods, virtual methods, etc.
+     */
+    class CXXMethodDecl : public FunctionDecl
+    {
+    public:
+        EVisibility visibility = EVisibility::INVALID; ///< Visibility (public, protected, private).
+
+        bool is_static = false; ///< True if this is a static method.
+        bool is_virtual = false; ///< True if this method is declared virtual.
+        bool is_const = false; ///< True if this method is declared const.
+
+        void accept(DeclVisitor* visitor) override
+        {
+            visitor->visit(this);
+        }
+    };
+
+    /**
+     * CXXConstructorDecl: Represents a constructor in a C++ class.
+     */
+    class CXXConstructorDecl final : public CXXMethodDecl {};
+
+    /**
+     * CXXConversionDecl: Represents a user-defined conversion function in C++ (e.g. operator int()).
+     */
+    class CXXConversionDecl final : public CXXMethodDecl {};
+
+    /**
+     * CXXDestructorDecl: Represents a destructor in a C++ class.
+     */
+    class CXXDestructorDecl final : public CXXMethodDecl {};
+
+    /**
+     * VarDecl: Represents a variable declaration (non-parameter) in C/C++,
+     * such as global/local variables.
+     */
+    class VarDecl : public DeclaratorDecl {};
+
+    /**
+     * ParmVarDecl: Represents a parameter variable declaration in a function parameter list.
+     */
+    class ParmVarDecl final : public VarDecl
+    {
+    public:
+        std::size_t index = 0;  ///< The index of this parameter in the function parameter list.
+
+        void accept(DeclVisitor* visitor) override
+        {
+            visitor->visit(this);
+        }
+    };
+
 } // namespace lux::cxx::dref
