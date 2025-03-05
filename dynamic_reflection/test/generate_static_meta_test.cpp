@@ -1,5 +1,5 @@
 #include "test_header2.hpp"
-#include "test_header2.meta.hpp"
+#include "test_header2.meta.static.hpp"
 
 #include <iostream>
 

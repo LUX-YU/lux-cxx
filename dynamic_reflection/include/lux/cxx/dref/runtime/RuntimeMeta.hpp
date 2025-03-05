@@ -28,7 +28,7 @@ namespace lux::cxx::dref::runtime
         using ConstructorFn = void* (*)();       // 返回指针
         using DestructorFn  = void  (*)(void*);  // 传入指针
 
-        ConstructorFn ctor = nullptr;
+        std::vector<ConstructorFn> ctor = nullptr;
         DestructorFn  dtor = nullptr;
 
         // 字段元信息

@@ -2,7 +2,7 @@
 #include <lux/cxx/dref/runtime/Attribute.hpp>
 #include <string>
 
-struct LUX_REFL(static_reflection) TestClass
+struct LUX_REFL(static_reflection;dynamic_reflection) TestClass
 {
     std::string_view field1;
     int              field2;

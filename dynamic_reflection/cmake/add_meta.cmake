@@ -12,7 +12,7 @@ set(_COMPONENT_META_TOOLS_INCLUDED_ TRUE)
 # KEY6             COMPILE_COMMANDS    compile_commands.json 的路径（必选）
 # KEY7             RESULT_OUTPUT       存放生成器输出信息的变量（可选）
 # KEY8             GENERATED_FILES_OUTPUT 存放生成的元数据文件列表（可选）
-function(add_static_meta_target)
+function(add_meta)
     # 定义单值参数和多值参数
     set(_one_value_arguments
         TARGET_NAME
@@ -69,12 +69,14 @@ function(add_static_meta_target)
     foreach(meta_file IN LISTS ARGS_METAS)
         # 以输入文件名（不含扩展名）作为输出文件名，加上 .meta.hpp 后缀
         get_filename_component(meta_filename ${meta_file} NAME_WE)
-        set(output_file ${ARGS_META_GEN_OUT_DIR}/${meta_filename}.meta.hpp)
+        set(static_output_file  ${ARGS_META_GEN_OUT_DIR}/${meta_filename}.meta.static.hpp)
+        set(dynamic_output_file ${ARGS_META_GEN_OUT_DIR}/${meta_filename}.meta.dynamic.hpp)
         list(APPEND GENERATED_META_FILES ${output_file})
+        list(APPEND GENERATED_META_FILES ${dynamic_output_file})
 
         add_custom_command(
-            OUTPUT ${output_file}
-            COMMAND ${META_GENERATOR} ${meta_file} ${output_file} ${ARGS_SOURCE_FILE} ${ARGS_COMPILE_COMMANDS}
+            OUTPUT ${GENERATED_META_FILES}
+            COMMAND ${META_GENERATOR} ${meta_file} ${ARGS_META_GEN_OUT_DIR} ${ARGS_SOURCE_FILE} ${ARGS_COMPILE_COMMANDS}
             DEPENDS ${meta_file}
             COMMENT "Generating meta file for ${meta_file}"
             VERBATIM

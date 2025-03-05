@@ -17,13 +17,18 @@ find_program(
 )
 if(GENERATOR)
 	message(STATUS "Found lux_meta_generator: ${GENERATOR}")
-	add_static_meta_target(
+	add_meta(
 		TARGET_NAME 		test_header2_meta
 		SOURCE_FILE 		${CMAKE_CURRENT_SOURCE_DIR}/generate_static_meta_test.cpp
 		METAS 				${CMAKE_CURRENT_SOURCE_DIR}/test_header2.hpp
 		META_GEN_OUT_DIR 	${CMAKE_BINARY_DIR}/metagen
 		META_GENERATOR 		${GENERATOR}
 		COMPILE_COMMANDS 	${CMAKE_BINARY_DIR}/compile_commands.json
+	)
+
+	add_dependencies(
+		test_header2_meta
+		lux_meta_generator
 	)
 	
 	add_executable(
