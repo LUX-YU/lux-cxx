@@ -1,0 +1,2 @@
+# LUX-CXX
+LUX-CXX is a part of LUX Project. It is a C++ library for developing applications that require high performance and low latency. It is designed to be used in real-time applications, such as games, simulations, and other interactive applications.
