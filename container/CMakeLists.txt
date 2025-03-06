@@ -10,3 +10,8 @@ component_include_directories(
     INSTALL_TIME
         include
 )
+
+set(CONTAINER_TEST true BOOL "Enable container test")
+if(CONTAINER_TEST)
+    add_subdirectory(test)    
+endif()

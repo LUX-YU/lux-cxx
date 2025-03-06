@@ -20,10 +20,12 @@ if(GENERATOR)
 	add_meta(
 		TARGET_NAME 		test_header2_meta
 		SOURCE_FILE 		${CMAKE_CURRENT_SOURCE_DIR}/generate_meta_test.cpp
+		INCLUDE_PATH        test_header2.hpp
 		METAS 				${CMAKE_CURRENT_SOURCE_DIR}/test_header2.hpp
 		META_GEN_OUT_DIR 	${CMAKE_BINARY_DIR}/metagen
 		META_GENERATOR 		${GENERATOR}
 		COMPILE_COMMANDS 	${CMAKE_BINARY_DIR}/compile_commands.json
+		SOURCE_FILES_OUTPUT GENERATED_META_FILES
 	)
 
 	add_dependencies(
@@ -34,6 +36,7 @@ if(GENERATOR)
 	add_executable(
 		generate_meta_test
 		${CMAKE_CURRENT_SOURCE_DIR}/generate_meta_test.cpp
+		${GENERATED_META_FILES}
 	)
 	
 	target_link_libraries(
@@ -46,6 +49,7 @@ if(GENERATOR)
 		generate_meta_test
 		PRIVATE
 		${CMAKE_BINARY_DIR}/metagen
+		${CMAKE_CURRENT_SOURCE_DIR}
 	)
 	
 	add_dependencies(

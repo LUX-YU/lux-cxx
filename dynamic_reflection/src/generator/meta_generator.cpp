@@ -89,6 +89,8 @@ struct GeneratorConfig
 {
     std::filesystem::path target_dir;       ///< Directory where generated files will be placed.
     std::string           file_name;        ///< Base name of the output file.
+    std::string           file_hash;
+    std::string           include_path;
     std::string           static_meta_suffix;   ///< Suffix for static meta files (e.g. ".meta.static.hpp").
     std::string           dynamic_meta_suffix;  ///< Suffix for dynamic meta files (e.g. ".meta.dynamic.hpp").
 };
@@ -165,42 +167,49 @@ public:
         dynamic_data["classes"] = context.dynamic_records;
         dynamic_data["enums"] = context.dynamic_enums;
 
-        // (3) Render static meta template
-        try
+        if (static_data["classes"].size() != 0 && static_data["enums"].size() != 0)
         {
-            inja::Environment env;
-            inja::Template tpl = env.parse(static_meta_template.data());
-            std::string result = env.render(tpl, static_data);
+            try
+            {
+                inja::Environment env;
+                inja::Template tpl = env.parse(static_meta_template.data());
+                std::string result = env.render(tpl, static_data);
 
-            // Write output to file
-            auto output_path = _config.target_dir / (_config.file_name + _config.static_meta_suffix);
-            std::ofstream ofs(output_path);
-            ofs << result;
-            ofs.close();
-        }
-        catch (std::exception& e)
-        {
-            std::cerr << "[MetaGenerator] Error rendering static meta: " << e.what() << std::endl;
-            return EGenerateError::FAILED;
+                // Write output to file
+                auto output_path = _config.target_dir / (_config.file_name + _config.static_meta_suffix);
+                std::ofstream ofs(output_path);
+                ofs << result;
+                ofs.close();
+            }
+            catch (std::exception& e)
+            {
+                std::cerr << "[MetaGenerator] Error rendering static meta: " << e.what() << std::endl;
+                return EGenerateError::FAILED;
+            }
         }
 
-        // (4) Render dynamic meta template
-        try
+        if (dynamic_data["classes"].size() != 0 && dynamic_data["enums"].size() != 0)
         {
-            inja::Environment env;
-            inja::Template tpl = env.parse(dynamic_meta_template.data());
-            std::string result = env.render(tpl, dynamic_data);
+            // (4) Render dynamic meta template
+            dynamic_data["file_hash"] = _config.file_hash;
+            dynamic_data["include_path"] = _config.include_path;
+            try
+            {
+                inja::Environment env;
+                inja::Template tpl = env.parse(dynamic_meta_template.data());
+                std::string result = env.render(tpl, dynamic_data);
 
-            // Write output to file
-            auto output_path = _config.target_dir / (_config.file_name + _config.dynamic_meta_suffix);
-            std::ofstream ofs(output_path);
-            ofs << result;
-            ofs.close();
-        }
-        catch (std::exception& e)
-        {
-            std::cerr << "[MetaGenerator] Error rendering dynamic meta: " << e.what() << std::endl;
-            return EGenerateError::FAILED;
+                // Write output to file
+                auto output_path = _config.target_dir / (_config.file_name + _config.dynamic_meta_suffix);
+                std::ofstream ofs(output_path);
+                ofs << result;
+                ofs.close();
+            }
+            catch (std::exception& e)
+            {
+                std::cerr << "[MetaGenerator] Error rendering dynamic meta: " << e.what() << std::endl;
+                return EGenerateError::FAILED;
+            }
         }
 
         return EGenerateError::SUCCESS;
@@ -731,25 +740,29 @@ private:
  *
  * Usage:
  *   - argv[1]: The file path to parse for reflection data (e.g., a header file).
- *   - argv[2]: The output directory for generated files.
- *   - argv[3]: A source file that needs metadata (must appear in compile_commands.json).
- *   - argv[4]: The path to compile_commands.json.
+ *   - argv[2]: Include path
+ *   - argv[3]: Identity
+ *   - argv[4]: The output directory for generated files.
+ *   - argv[5]: A source file that needs metadata (must appear in compile_commands.json).
+ *   - argv[6]: The path to compile_commands.json.
  *
  * The program will parse the file using libclang, extract reflection data,
  * then produce static and dynamic metadata files under the output directory.
  */
 int main(const int argc, const char* argv[])
 {
-    if (argc < 5)
+    if (argc < 6)
     {
         return 1;
     }
 
     // Input arguments
-    static auto target_file = argv[1];
-    static auto output_path = argv[2];
-    static auto source_file = argv[3];
-    static auto compile_command_path = argv[4];
+    auto target_file  = argv[1];
+	auto include_path = argv[2];
+	auto identity     = argv[3];
+    auto output_path  = argv[4];
+    auto source_file  = argv[5];
+    auto compile_command_path = argv[6];
 
     inja::Environment env;
 
@@ -782,14 +795,6 @@ int main(const int argc, const char* argv[])
         options.emplace_back(std::move(path));
     }
 
-    // Print compile options for debugging
-    std::cout << "Compile options:";
-    for (const auto& opt : options)
-    {
-        std::cout << "\t" << opt;
-    }
-	std::cout << std::endl;
-
     // Parse the target file using the reflection parser
     auto [parse_rst, data] = cxx_parser.parse(
         target_file,
@@ -811,8 +816,10 @@ int main(const int argc, const char* argv[])
     GeneratorConfig config{
         .target_dir = std::filesystem::path(output_path),
         .file_name = file_name,
+		.file_hash = identity,
+		.include_path = include_path,
         .static_meta_suffix = ".meta.static.hpp",
-        .dynamic_meta_suffix = ".meta.dynamic.hpp"
+        .dynamic_meta_suffix = ".meta.dynamic.cpp"
     };
 
     // Instantiate and run the meta generator

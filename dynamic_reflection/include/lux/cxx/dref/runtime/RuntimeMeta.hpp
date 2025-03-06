@@ -39,7 +39,7 @@ namespace lux::cxx::dref::runtime
         
         std::string_view name;
 		InvokerFn invoker = nullptr;
-		std::vector<std::string> param_type_names;
+		std::vector<std::string> param_types;
 		std::string return_type;
     };
 
@@ -58,9 +58,22 @@ namespace lux::cxx::dref::runtime
         bool is_static = false;
     };
 
-    //=====================================
-    // 1) RecordRuntimeMeta (用于 class/struct)
-    //=====================================
+    struct MethodRuntimeMeta
+    {
+        // 通用的 “桥接函数” 签名 (实例方法)
+        using MethodInvokerFn = void(*)(void* obj, void** args, void* retVal);
+
+        std::string_view name;
+        MethodInvokerFn invoker = nullptr;
+
+        std::vector<std::string> param_types; // 每个参数的类型名（可做检查用）
+        std::string return_type;
+
+        bool is_virtual = false;
+        bool is_const   = false;
+        bool is_static  = false;
+    };
+
     struct RecordRuntimeMeta
     {
         // 构造与析构
@@ -73,44 +86,11 @@ namespace lux::cxx::dref::runtime
         DestructorFn  dtor = nullptr;
 
         // 字段元信息
-        std::vector<class FieldRuntimeMeta>     fields;
+        std::vector<FieldRuntimeMeta>    fields;
         // 成员方法元信息
-        std::vector<class MethodRuntimeMeta*>   methods;
+        std::vector<MethodRuntimeMeta>   methods;
         // 静态方法元信息
-        std::vector<class FunctionRuntimeMeta*> static_methods;
-
-        // 可加：基类信息
-        // std::vector<RecordRuntimeMeta*> bases;
-
-        // 也可加：构造函数、析构函数信息（如果你要区分不同参数签名的 ctor）
-        // std::vector<MethodRuntimeMeta*> constructors;
-        // MethodRuntimeMeta* destructor = nullptr;
-    };
-
-    //=====================================
-    // 3) MethodRuntimeMeta
-    //=====================================
-    struct MethodRuntimeMeta
-    {
-        // 通用的 “桥接函数” 签名 (实例方法)
-        using MethodInvokerFn = void(*)(void* obj, void** args, void* retVal);
-
-        std::string_view name;
-
-        // 对于静态方法，可能签名少一个 obj:
-        //   using StaticInvokerFn = void(*)(void** args, void* retVal);
-
-        MethodInvokerFn invoker = nullptr;
-
-        std::vector<std::string> param_type_names; // 每个参数的类型名（可做检查用）
-        std::string return_type;
-
-        bool is_virtual = false;
-        bool is_const   = false;
-        bool is_static  = false;
-
-        // 也可以增加：参数个数 param_count, 
-        // 以及更详细的 ParamMeta 结构
+        std::vector<FunctionRuntimeMeta> static_methods;
     };
 
     //=====================================

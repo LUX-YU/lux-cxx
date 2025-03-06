@@ -1,3 +1,4 @@
+#pragma once
 /*
  * Copyright (c) 2025 Chenhui Yu
  *
@@ -19,14 +20,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
-#pragma once
 static inline std::string_view dynamic_meta_template =
-R"(#pragma once
+R"(
 #include <lux/cxx/dref/runtime/Declaration.hpp>
 #include <lux/cxx/dref/runtime/Type.hpp>
 #include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
 #include <array>
+#include "{{ include_path }}"
 
 namespace lux::cxx::dref::runtime {
     {% for class in classes %}
@@ -81,36 +81,6 @@ namespace lux::cxx::dref::runtime {
     }
     {% endif %}
 
-    namespace {
-        {% for method in class.methods %}
-        static MethodRuntimeMeta s_{{ class.extended_name }}_{{ method.name }}_method {
-            .name = "{{ method.name }}",
-            .invoker = &{{ class.extended_name }}_{{ method.name }}_invoker,
-            .param_type_names = {
-                {% for p in method.parameters -%}
-                "{{ p.type_name }}"{% if not loop.is_last %}, {% endif %}{% endfor %}
-            },
-            .return_type = "{{ method.return_type }}",
-            .is_virtual = {{ method.is_virtual }},
-            .is_const   = {{ method.is_const }},
-            .is_static  = false
-        };
-        {% endfor %}
-        
-        // -- (B') 静态方法 static 对象
-        {% for sm in class.static_methods %}
-        static FunctionRuntimeMeta s_{{ class.extended_name }}_{{ sm.name }}_static_method {
-            .name = "{{ sm.name }}",
-            .invoker = &{{ class.extended_name }}_{{ sm.name }}_static_invoker,
-            .param_type_names = {
-                {% for p in sm.parameters -%}
-                "{{ p.type_name }}"{% if not loop.is_last %},{% endif %}{% endfor %}
-            },
-            .return_type = "{{ sm.return_type }}"
-        };
-        {% endfor %}
-    } // end anonymous namespace
-
     static RecordRuntimeMeta s_meta_{{ class.extended_name }} {
         // 名字
         .name = "{{ class.name }}",
@@ -131,22 +101,36 @@ namespace lux::cxx::dref::runtime {
             }{% if not loop.is_last %},
             {% endif %}{% endfor %}
         },
-        .methods = std::vector<class MethodRuntimeMeta*>{
+        .methods = std::vector<MethodRuntimeMeta>{
             {% for method in class.methods -%}
-            &s_{{ class.extended_name }}_{{ method.name }}_method{% if not loop.is_last %},
+            {
+                .name = "{{ method.name }}",
+                .invoker = &{{ class.extended_name }}_{{ method.name }}_invoker,
+                .param_types = {
+                    {% for p in method.parameters -%}
+                    "{{ p.type_name }}"{% if not loop.is_last %}, {% endif %}{% endfor %}
+                },
+                .return_type = "{{ method.return_type }}",
+                .is_virtual = {{ method.is_virtual }},
+                .is_const   = {{ method.is_const }},
+                .is_static  = false
+            }{% if not loop.is_last %},
             {% endif %}{% endfor %}
         },
-        .static_methods = std::vector<class FunctionRuntimeMeta*>{
+        .static_methods = std::vector<FunctionRuntimeMeta>{
             {% for sm in class.static_methods -%}
-            &s_{{ class.extended_name }}_{{ sm.name }}_static_method{% if not loop.is_last %},
+            {
+                .name = "{{ sm.name }}",
+                .invoker = &{{ class.extended_name }}_{{ sm.name }}_static_invoker,
+                .param_types = {
+                    {% for p in sm.parameters -%}
+                    "{{ p.type_name }}"{% if not loop.is_last %},{% endif %}{% endfor %}
+                },  
+                .return_type = "{{ sm.return_type }}"
+            }{% if not loop.is_last %},
             {% endif %}{% endfor %}
         }
     };
-
-    static bool s_registered_{{ class.extended_name }} = [](){
-        RuntimeRegistry::instance().registerRecord(&s_meta_{{ class.extended_name }});
-        return true;
-    }();
      // end for classes
     {% endfor %}
 
@@ -164,13 +148,34 @@ namespace lux::cxx::dref::runtime {
             {% endif %}{% endfor %}
         }
     };
-    
-    static bool s_enum_registered_{{ enum.extended_name }} = [](){
-        RuntimeRegistry::instance().registerEnum(&s_enum_meta_{{ enum.extended_name }});
-        return true;
-    }();
     {% endfor %}
 
-} // end namespace lux::cxx::dref::runtime
+    // Combine all record metas into an array
+    static RecordRuntimeMeta* const s_all_records[] = {
+        {% for class in classes -%}
+        &s_meta_{{ class.extended_name }}{% if not loop.is_last %},
+        {% endif %}{% endfor %}
+    };
 
+    // Combine all enum metas into an array
+    static EnumRuntimeMeta* const s_all_enums[] = {
+        {% for enum in enums -%}
+        &s_enum_meta_{{ enum.extended_name }}{% if not loop.is_last %}, 
+        {% endif %}{% endfor %}
+    };
+
+    // Provide a unique function for registration: "registerReflections_<file_hash>"
+    void register_reflections_{{ file_hash }}(RuntimeRegistry& registry)
+    {
+        // Register all records for this file
+        for (auto* r : s_all_records) {
+            registry.registerRecord(r);
+        }
+        // Register all enums for this file
+        for (auto* e : s_all_enums) {
+            registry.registerEnum(e);
+        }
+    }
+
+} // end namespace lux::cxx::dref::runtime
 )";
