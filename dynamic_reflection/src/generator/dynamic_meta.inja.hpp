@@ -21,8 +21,7 @@
  * SOFTWARE.
  */
 static inline std::string_view dynamic_meta_template =
-R"(
-#include <lux/cxx/dref/runtime/Declaration.hpp>
+R"(#include <lux/cxx/dref/runtime/Declaration.hpp>
 #include <lux/cxx/dref/runtime/Type.hpp>
 #include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
 #include <array>
@@ -30,7 +29,7 @@ R"(
 
 namespace lux::cxx::dref::runtime {
     {% for class in classes %}
-    {% for method in class.methods %}
+    {% for method in class.methods -%}
     static void {{ class.extended_name }}_{{ method.name }}_invoker(void* obj, void** args, void* retVal)
     {
         auto self = static_cast<{{ class.name }}*>(obj);
@@ -45,7 +44,7 @@ namespace lux::cxx::dref::runtime {
             *static_cast<{{ method.return_type }}*>(retVal) = result;
         }{% endif %}
     }
-    {% endfor %}
+    {% endfor -%}
 
     {% for sm in class.static_methods %}
     static void {{ class.extended_name }}_{{ sm.name }}_static_invoker(void** args, void* retVal)
@@ -53,15 +52,13 @@ namespace lux::cxx::dref::runtime {
         {% for p in sm.parameters -%}
         auto arg{{ p.index }} = *static_cast<{{ p.type_name }}*>(args[{{ p.index }}]);
         {% endfor %}
-        {% if sm.return_type == "void" %}
-        {{ class.name }}::{{ sm.name }}({% for p in sm.parameters %}arg{{ p.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
-        {% else %}
+        {% if sm.return_type == "void" %}{{ class.name }}::{{ sm.name }}({% for p in sm.parameters %}arg{{ p.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});{% else %}
         auto result = {{ class.name }}::{{ sm.name }}({% for p in sm.parameters %}arg{{ p.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
         if(retVal) {
-            *static_cast<{{ sm.return_type }}*>(retVal) = result;
+            *static_cast<{{ sm.return_type }}*>(retVal) = std::move(result);
         }{% endif %}
     }
-    {% endfor %}
+    {% endfor -%}
 
     {% if class.constructor_num > 0 %}{% for ctor in class.constructors %}
     static void* {{ ctor.bridge_name }}(void** args)
@@ -74,12 +71,11 @@ namespace lux::cxx::dref::runtime {
                 arg{{ p.index }}{% if not loop.is_last %}, {% endif %}
             {% endfor %}
         );
-    }{% endfor %}{% else %}
+    }{% endfor -%}{% else %}
     static void* {{ class.extended_name }}_default_ctor(void** /*args*/)
     {
         return new {{ class.name }}();
-    }
-    {% endif %}
+    }{% endif %}
 
     static RecordRuntimeMeta s_meta_{{ class.extended_name }} {
         // 名字
@@ -131,8 +127,7 @@ namespace lux::cxx::dref::runtime {
             {% endif %}{% endfor %}
         }
     };
-     // end for classes
-    {% endfor %}
+    {% endfor -%}
 
     {% for enum in enums %}
     static EnumRuntimeMeta s_enum_meta_{{ enum.extended_name }} {
@@ -148,7 +143,7 @@ namespace lux::cxx::dref::runtime {
             {% endif %}{% endfor %}
         }
     };
-    {% endfor %}
+    {% endfor -%}
 
     // Combine all record metas into an array
     static RecordRuntimeMeta* const s_all_records[] = {

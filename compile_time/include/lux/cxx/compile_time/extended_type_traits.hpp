@@ -1,3 +1,4 @@
+#pragma once
 /*
  * Copyright (c) 2025 Chenhui Yu
  *
@@ -20,7 +21,6 @@
  * SOFTWARE.
  */
 
-#pragma once
 #include <string_view>
 #include <array>
 #include <utility>

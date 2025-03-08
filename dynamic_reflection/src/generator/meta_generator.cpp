@@ -24,15 +24,10 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
-#include <set>
 #include <filesystem>
-
-#include <lux/cxx/dref/parser/CxxParser.hpp>
-#include <lux/cxx/dref/parser/libclang.hpp>
-#include <lux/cxx/dref/runtime/Declaration.hpp>
-#include <lux/cxx/dref/runtime/Type.hpp>
-#include <lux/cxx/algotithm/hash.hpp>
-#include <lux/cxx/algotithm/string_operations.hpp>
+#include <optional>
+#include <set>
+#include <array>
 
 #include <rapidjson/rapidjson.h>
 #include <rapidjson/document.h>
@@ -40,29 +35,100 @@
 #include <inja/inja.hpp>
 #include <nlohmann/json.hpp>
 
+ // Your reflection/AST parsing library headers
+#include <lux/cxx/dref/parser/CxxParser.hpp>
+#include <lux/cxx/dref/parser/libclang.hpp>
+#include <lux/cxx/dref/runtime/Declaration.hpp>
+#include <lux/cxx/dref/runtime/Type.hpp>
+#include <lux/cxx/algotithm/hash.hpp>
+#include <lux/cxx/algotithm/string_operations.hpp>
+
+// The text of your Inja templates:
 #include "static_meta.inja.hpp"
 #include "dynamic_meta.inja.hpp"
 
-/**
- * @brief Fetch additional include paths from compile_commands.json for a given source file.
- *
- * The compile_commands.json is searched for entries corresponding to @p source_file_path.
- * Any "-I" or "-external:I" arguments found in those entries are turned into strings prefixed
- * with "-I" that can be passed to the compiler invocation.
- *
- * @param compile_command_path Path to compile_commands.json.
- * @param source_file_path The source file to match in compile_commands.json.
- * @return A list of strings (e.g. {"-I/path/to/include", ...}).
- */
-static std::vector<std::string> fetchIncludePaths(const std::filesystem::path& compile_command_path,
-    const std::filesystem::path& source_file_path);
+// ------------------------------------------------------
+// Utility to parse the compile_commands "command"/"arguments" fields
+// and split them into tokens
+// ------------------------------------------------------
+static std::vector<std::string> splitCommand(const std::string& cmd)
+{
+    std::vector<std::string> tokens;
+    std::istringstream iss(cmd);
+    std::string token;
+    while (iss >> token) {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
 
-/**
- * @brief Converts an EVisibility enum value to a string for C++ code generation or debugging.
- *
- * @param visibility The EVisibility value (PUBLIC, PROTECTED, PRIVATE, INVALID).
- * @return A const char* representing the visibility in a descriptive form.
- */
+// ------------------------------------------------------
+// Convert a baseDir + path to an absolute path
+// ------------------------------------------------------
+static std::filesystem::path makeAbsolute(
+    const std::filesystem::path& baseDir,
+    const std::filesystem::path& p)
+{
+    if (p.is_absolute())
+        return p;
+    return std::filesystem::absolute(baseDir / p);
+}
+
+// ------------------------------------------------------
+// Check if a string is a Windows-style absolute path
+// e.g., "C:\..." or "D:/..."
+// ------------------------------------------------------
+static bool isStandardAbsolute(const std::string& s)
+{
+    return (s.size() >= 3 && std::isalpha(s[0]) && s[1] == ':' &&
+        (s[2] == '\\' || s[2] == '/'));
+}
+
+// -------------------------------------------------------------------------
+// Attempt to see if a file is inside one of the 'includeList' directories
+// If so, return the relative path, otherwise std::nullopt
+// -------------------------------------------------------------------------
+static std::optional<std::filesystem::path> findRelativeIncludePath(
+    const std::filesystem::path& metaFile,
+    const std::vector<std::filesystem::path>& includeList)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    // Normalize the metaFile path
+    fs::path absFile = fs::canonical(metaFile, ec);
+    if (ec) {
+        // fallback to absolute
+        ec.clear();
+        absFile = fs::absolute(metaFile, ec);
+        if (ec) {
+            return std::nullopt;
+        }
+    }
+
+    for (const auto& incPath : includeList)
+    {
+        ec.clear();
+        fs::path absInc = fs::canonical(incPath, ec);
+        if (ec) {
+            ec.clear();
+            absInc = fs::absolute(incPath, ec);
+            if (ec) {
+                // skip if we fail
+                continue;
+            }
+        }
+
+        fs::path rel = fs::relative(absFile, absInc, ec);
+        if (!ec && !rel.empty() && *rel.begin() != "..") {
+            return rel; // e.g. "subdir/foo.hpp"
+        }
+    }
+    return std::nullopt;
+}
+
+// -------------------------------------------------------------------------
+// Convert EVisibility to string for code gen
+// -------------------------------------------------------------------------
 static const char* visibility2Str(lux::cxx::dref::EVisibility visibility)
 {
     using lux::cxx::dref::EVisibility;
@@ -79,20 +145,24 @@ static const char* visibility2Str(lux::cxx::dref::EVisibility visibility)
     }
 }
 
-/**
- * @brief Configuration for the meta code generator.
- *
- * This struct contains paths and file suffixes for generating static and dynamic
- * meta-information files.
- */
+// -------------------------------------------------------------------------
+// The meta code generator classes
+// (similar to your original code, omitted for brevity)...
+// ...
+// [Paste your MetaGenerator class definition here, or keep it in separate .hpp/.cpp]
+// For illustration, we keep the key points only
+// -------------------------------------------------------------------------
+
+// ========== Begin: Sample MetaGenerator Implementation ============
+
 struct GeneratorConfig
 {
-    std::filesystem::path target_dir;       ///< Directory where generated files will be placed.
-    std::string           file_name;        ///< Base name of the output file.
+    std::filesystem::path target_dir;
+    std::string           file_name;
     std::string           file_hash;
-    std::string           include_path;
-    std::string           static_meta_suffix;   ///< Suffix for static meta files (e.g. ".meta.static.hpp").
-    std::string           dynamic_meta_suffix;  ///< Suffix for dynamic meta files (e.g. ".meta.dynamic.hpp").
+    std::string           relative_include;
+    std::string           static_meta_suffix;
+    std::string           dynamic_meta_suffix;
 };
 
 /**
@@ -192,7 +262,7 @@ public:
         {
             // (4) Render dynamic meta template
             dynamic_data["file_hash"] = _config.file_hash;
-            dynamic_data["include_path"] = _config.include_path;
+            dynamic_data["include_path"] = _config.relative_include;
             try
             {
                 inja::Environment env;
@@ -356,8 +426,8 @@ private:
         using namespace lux::cxx::dref;
 
         nlohmann::json record_info = nlohmann::json::object();
-        record_info["name"]  = decl.full_qualified_name;
-		record_info["extended_name"] = lux::cxx::algorithm::replace(decl.full_qualified_name, "::", "_");
+        record_info["name"] = decl.full_qualified_name;
+        record_info["extended_name"] = lux::cxx::algorithm::replace(decl.full_qualified_name, "::", "_");
         record_info["align"] = decl.type->align;
         record_info["record_type"] =
             (decl.tag_kind == TagDecl::ETagKind::Class) ? "EMetaType::CLASS" : "EMetaType::STRUCT";
@@ -365,49 +435,49 @@ private:
 
         // Helper lambda to build function parameter JSON
         auto build_params = [](const auto& params_vector) -> nlohmann::json
-        {
-            nlohmann::json params = nlohmann::json::array();
-            size_t index = 0;
-            for (const auto& param : params_vector)
             {
-                nlohmann::json param_map;
-                param_map["type"] = param->type->name;
-                param_map["hash"] = lux::cxx::algorithm::fnv1a(param->type->name);
-                param_map["last"] = (index == params_vector.size() - 1);
-                params.push_back(param_map);
-                ++index;
-            }
-            return params;
-        };
+                nlohmann::json params = nlohmann::json::array();
+                size_t index = 0;
+                for (const auto& param : params_vector)
+                {
+                    nlohmann::json param_map;
+                    param_map["type"] = param->type->name;
+                    param_map["hash"] = lux::cxx::algorithm::fnv1a(param->type->name);
+                    param_map["last"] = (index == params_vector.size() - 1);
+                    params.push_back(param_map);
+                    ++index;
+                }
+                return params;
+            };
 
         // Helper lambda to build method name list and type info
         auto build_function_context = [&](const auto& methods) -> std::pair<nlohmann::json, nlohmann::json>
-        {
-            nlohmann::json names = nlohmann::json::array();
-            nlohmann::json types = nlohmann::json::array();
-            size_t count = 0;
-
-            for (const auto& method : methods)
             {
-                // Collect method names
-                nlohmann::json name_obj;
-                name_obj["name"] = method->spelling;
-                names.push_back(name_obj);
+                nlohmann::json names = nlohmann::json::array();
+                nlohmann::json types = nlohmann::json::array();
+                size_t count = 0;
 
-                // Collect method type info
-                nlohmann::json type_obj;
-                type_obj["return_type"] = method->result_type->name;
-                type_obj["class_name"] = decl.name;
-                type_obj["function_name"] = method->spelling;
-                type_obj["parameters"] = build_params(method->params);
-                type_obj["last"] = (count == methods.size() - 1);
-                type_obj["is_const"] = method->is_const;
+                for (const auto& method : methods)
+                {
+                    // Collect method names
+                    nlohmann::json name_obj;
+                    name_obj["name"] = method->spelling;
+                    names.push_back(name_obj);
 
-                types.push_back(type_obj);
-                ++count;
-            }
-            return std::make_pair(names, types);
-        };
+                    // Collect method type info
+                    nlohmann::json type_obj;
+                    type_obj["return_type"] = method->result_type->name;
+                    type_obj["class_name"] = decl.full_qualified_name;
+                    type_obj["function_name"] = method->spelling;
+                    type_obj["parameters"] = build_params(method->params);
+                    type_obj["last"] = (count == methods.size() - 1);
+                    type_obj["is_const"] = method->is_const;
+
+                    types.push_back(type_obj);
+                    ++count;
+                }
+                return std::make_pair(names, types);
+            };
 
         // Fields
         {
@@ -731,208 +801,54 @@ private:
     GeneratorConfig _config; ///< Internal config for file paths, suffixes, etc.
 };
 
-//=============================================================================================
-//  Main entry point
-//=============================================================================================
 
-/**
- * @brief Main function for the meta_generator tool.
- *
- * Usage:
- *   - argv[1]: The file path to parse for reflection data (e.g., a header file).
- *   - argv[2]: Include path
- *   - argv[3]: Identity
- *   - argv[4]: The output directory for generated files.
- *   - argv[5]: A source file that needs metadata (must appear in compile_commands.json).
- *   - argv[6]: The path to compile_commands.json.
- *
- * The program will parse the file using libclang, extract reflection data,
- * then produce static and dynamic metadata files under the output directory.
- */
-int main(const int argc, const char* argv[])
-{
-    if (argc < 6)
-    {
-        return 1;
-    }
+// ========== End: Sample MetaGenerator Implementation ============
 
-    // Input arguments
-    auto target_file  = argv[1];
-	auto include_path = argv[2];
-	auto identity     = argv[3];
-    auto output_path  = argv[4];
-    auto source_file  = argv[5];
-    auto compile_command_path = argv[6];
-
-    inja::Environment env;
-
-    // Basic checks for file existence
-    if (!std::filesystem::exists(target_file))
-    {
-        std::cerr << "File " << target_file << " does not exist" << std::endl;
-        return 1;
-    }
-    if (!std::filesystem::exists(source_file))
-    {
-        std::cerr << "Source file " << source_file << " does not exist" << std::endl;
-        return 1;
-    }
-    if (!std::filesystem::exists(compile_command_path))
-    {
-        std::cerr << "Compile command file " << compile_command_path << " does not exist" << std::endl;
-        return 1;
-    }
-
-    // Gather include paths from compile_commands.json
-    auto include_paths = fetchIncludePaths(compile_command_path, source_file);
-
-    // Prepare Clang compile options
-    const lux::cxx::dref::CxxParser cxx_parser;
-    std::vector<std::string> options;
-    options.emplace_back("--std=c++20");
-    for (auto& path : include_paths)
-    {
-        options.emplace_back(std::move(path));
-    }
-
-    // Parse the target file using the reflection parser
-    auto [parse_rst, data] = cxx_parser.parse(
-        target_file,
-        std::move(options),
-        "test_unit",
-        "1.0.0"
-    );
-
-    if (parse_rst != lux::cxx::dref::EParseResult::SUCCESS)
-    {
-        std::cerr << "Parsing failed!" << std::endl;
-        return 1;
-    }
-
-    // Construct output file name (remove extension)
-    auto file_name = std::filesystem::path(target_file).filename().replace_extension("").string();
-
-    // Prepare generator config
-    GeneratorConfig config{
-        .target_dir = std::filesystem::path(output_path),
-        .file_name = file_name,
-		.file_hash = identity,
-		.include_path = include_path,
-        .static_meta_suffix = ".meta.static.hpp",
-        .dynamic_meta_suffix = ".meta.dynamic.cpp"
-    };
-
-    // Instantiate and run the meta generator
-    MetaGenerator generator(config);
-    auto generate_rst = generator.generate(data);
-
-    if (generate_rst != MetaGenerator::EGenerateError::SUCCESS)
-    {
-        return 1;
-    }
-
-    return 0;
-}
-
-/**
- * @brief Helper function to split a command string into tokens.
- *
- * @param cmd A command line string (e.g. "clang++ -I/path ...").
- * @return A vector of tokens split by whitespace.
- */
-static std::vector<std::string> splitCommand(const std::string& cmd)
-{
-    std::vector<std::string> tokens;
-    std::istringstream iss(cmd);
-    std::string token;
-    while (iss >> token)
-    {
-        tokens.push_back(token);
-    }
-    return tokens;
-}
-
-/**
- * @brief Constructs an absolute path from a base directory and a relative path.
- *
- * @param baseDir The base directory (absolute path).
- * @param p The potential relative path.
- * @return An absolute path (if p is relative, it is joined with baseDir).
- */
-static std::filesystem::path makeAbsolute(const std::filesystem::path& baseDir, const std::filesystem::path& p)
-{
-    if (p.is_absolute())
-        return p;
-    return std::filesystem::absolute(baseDir / p);
-}
-
-/**
- * @brief Checks if a string conforms to the Windows standard absolute path format,
- *        e.g., "C:\\", "D:\\", etc.
- *
- * @param s The string to check.
- * @return True if it matches a pattern like "D:\\..." or "C:/...", otherwise false.
- */
-static bool isStandardAbsolute(const std::string& s)
-{
-    return (s.size() >= 3 && std::isalpha(s[0]) && s[1] == ':' && (s[2] == '\\' || s[2] == '/'));
-}
-
-/**
- * @brief Fetch include paths from compile_commands.json corresponding to a given source file.
- *
- * This function searches for an entry in compile_commands.json where "file" matches
- * @p source_file_path, then collects any arguments that begin with "-I" or "-external:I",
- * converting them into a consistent "-I" prefix for later use.
- *
- * @param compile_command_path The path to compile_commands.json.
- * @param source_file_path The source file name to look up in compile_commands.json.
- * @return A list of include paths, each prefixed with "-I".
- */
-std::vector<std::string> fetchIncludePaths(const std::filesystem::path& compile_command_path,
+// -------------------------------------------------------------------------
+//  Implementation of 'fetchIncludePaths'
+//  Reads compile_commands.json for "command" or "arguments" that match the
+//  given source_file_path. Then extracts any "-I" or "-external:I" options.
+// -------------------------------------------------------------------------
+static std::vector<std::filesystem::path> fetchIncludePaths(
+    const std::filesystem::path& compile_command_path,
     const std::filesystem::path& source_file_path)
 {
+    namespace fs = std::filesystem;
     std::ifstream ifs(compile_command_path, std::ios::binary);
-    if (!ifs)
-    {
-        std::cerr << "Failed to open " << compile_command_path << std::endl;
+    if (!ifs) {
+        std::cerr << "[fetchIncludePaths] Cannot open " << compile_command_path << std::endl;
         return {};
     }
 
     std::stringstream buffer;
     buffer << ifs.rdbuf();
-    std::string jsonContent = buffer.str();
     ifs.close();
+    std::string jsonContent = buffer.str();
 
     rapidjson::Document doc;
     doc.Parse(jsonContent.c_str());
-    if (doc.HasParseError() || !doc.IsArray())
-    {
-        std::cerr << "Failed to parse compile_commands.json or root is not an array." << std::endl;
+    if (doc.HasParseError() || !doc.IsArray()) {
+        std::cerr << "[fetchIncludePaths] Invalid compile_commands.json." << std::endl;
         return {};
     }
 
-    std::set<std::string> includePaths;
-
-    // Scan every entry in compile_commands.json
+    std::set<fs::path> includes;  // store unique filesystem paths
     for (auto& entry : doc.GetArray())
     {
-        if (!entry.IsObject())
-            continue;
+        if (!entry.IsObject()) continue;
 
+        // require "file" & "directory"
         if (!entry.HasMember("file") || !entry.HasMember("directory"))
             continue;
 
         std::string fileStr = entry["file"].GetString();
-
-        // Simple filename matching (might need path normalization for real-world usage)
-        if (std::filesystem::path(fileStr) != source_file_path)
+        if (fs::path(fileStr) != source_file_path)
             continue;
 
-        std::filesystem::path baseDir = entry["directory"].GetString();
+        fs::path baseDir = entry["directory"].GetString();
         std::vector<std::string> args;
 
-        // If "arguments" field exists, use it directly.
+        // If "arguments" exists, read them
         if (entry.HasMember("arguments") && entry["arguments"].IsArray())
         {
             for (auto& arg : entry["arguments"].GetArray())
@@ -940,70 +856,164 @@ std::vector<std::string> fetchIncludePaths(const std::filesystem::path& compile_
                 args.push_back(arg.GetString());
             }
         }
-        // Otherwise, if "command" field exists, split it into tokens.
+        // else if "command" exists, parse it
         else if (entry.HasMember("command") && entry["command"].IsString())
         {
             std::string cmdStr = entry["command"].GetString();
-            args = splitCommand(cmdStr);
+            args = splitCommand(cmdStr); // assume you already have a splitCommand(...)
         }
 
-        // Search for arguments starting with "-I" or "-external:I"
+        // gather -I or -external:I
         for (size_t i = 0; i < args.size(); ++i)
         {
-            std::string arg = args[i];
+            std::string argStr = args[i];
             std::string pathStr;
 
-            // Handle -I
-            if (arg.rfind("-I", 0) == 0)
+            // handle -I
+            if (argStr.rfind("-I", 0) == 0)
             {
-                if (arg == "-I")
-                {
-                    // -I <path>
-                    if (i + 1 < args.size())
-                    {
+                if (argStr == "-I") {
+                    if (i + 1 < args.size()) {
                         pathStr = args[++i];
                     }
                 }
-                else
-                {
-                    // -I<path>
-                    pathStr = arg.substr(2);
+                else {
+                    // e.g. "-ID:/some/path"
+                    pathStr = argStr.substr(2);
                 }
             }
-            // Handle -external:I
-            else if (arg.rfind("-external:I", 0) == 0)
+            // handle -external:I
+            else if (argStr.rfind("-external:I", 0) == 0)
             {
-                if (arg == "-external:I")
-                {
-                    if (i + 1 < args.size())
-                    {
+                if (argStr == "-external:I") {
+                    if (i + 1 < args.size()) {
                         pathStr = args[++i];
                     }
                 }
-                else
-                {
-                    pathStr = arg.substr(std::string("-external:I").length());
+                else {
+                    // e.g. "-external:ID:/some/path"
+                    pathStr = argStr.substr(std::string("-external:I").length());
                 }
-                // We still store it as "-I" + path
+                // we'll store it purely as a path, no prefix
             }
 
             if (!pathStr.empty())
             {
-                std::filesystem::path incPath;
-                // If pathStr is a standard absolute path (Windows style), use it directly
-                if (isStandardAbsolute(pathStr))
-                {
-                    incPath = std::filesystem::path(pathStr);
+                fs::path incP;
+                // if it's a windows absolute
+                if (isStandardAbsolute(pathStr)) {
+                    incP = fs::path(pathStr);
                 }
-                else
-                {
-                    // Otherwise construct an absolute path relative to baseDir
-                    incPath = makeAbsolute(baseDir, pathStr);
+                else {
+                    incP = makeAbsolute(baseDir, pathStr);
                 }
-                includePaths.insert("-I" + incPath.string());
+                includes.insert(incP); // store the raw path
             }
         }
     }
 
-    return std::vector<std::string>(includePaths.begin(), includePaths.end());
+    // convert set -> vector
+    return std::vector<fs::path>(includes.begin(), includes.end());
+}
+
+static std::vector<std::string> convertToDashI(const std::vector<std::filesystem::path>& paths)
+{
+    std::vector<std::string> result;
+    result.reserve(paths.size());
+    for (const auto& p : paths)
+    {
+        result.push_back("-I" + p.string());
+    }
+    return result;
+}
+
+// -------------------------------------------------------------------------
+// main()
+// Example usage: 
+//   meta_generator <file_to_parse> <out_dir> <source_file> <compile_commands> <hash>
+// -------------------------------------------------------------------------
+int main(int argc, char* argv[])
+{
+    if (argc < 6) {
+        std::cerr << "Usage: meta_generator <file_to_parse> <out_dir> <source_file> <compile_commands> <file_hash>\n";
+        return 1;
+    }
+
+    std::filesystem::path file_to_parse = argv[1];
+    std::filesystem::path out_dir = argv[2];
+    std::filesystem::path source_file = argv[3];
+    std::filesystem::path compile_cmds = argv[4];
+    std::string file_hash = argv[5];
+
+    if (!std::filesystem::exists(file_to_parse)) {
+        std::cerr << "[Error] file_to_parse " << file_to_parse << " does not exist.\n";
+        return 1;
+    }
+    if (!std::filesystem::exists(source_file)) {
+        std::cerr << "[Warn] source_file " << source_file << " does not exist or not matched.\n";
+        // not strictly an error, but we can't find the compile entry
+    }
+    if (!std::filesystem::exists(compile_cmds)) {
+        std::cerr << "[Error] compile_commands " << compile_cmds << " does not exist.\n";
+        return 1;
+    }
+
+    // gather additional includes from compile_commands
+    auto extra_includes = fetchIncludePaths(compile_cmds, source_file);
+	auto include_options = convertToDashI(extra_includes);
+    auto maybeRel = findRelativeIncludePath(file_to_parse, extra_includes);
+    if (!maybeRel)
+    {
+		std::cerr << "[Error] Could not find a relative include path for " << file_to_parse << "\n";
+        return 1;
+    }
+
+    // Build final clang parse options
+    // e.g. { "--std=c++20", "-I/some/path", ... }
+    std::vector<std::string> options;
+    options.push_back("--std=c++20");
+    for (const auto& inc : include_options) {
+        options.push_back(inc);  // e.g. "-ID:/some/include"
+    }
+
+    // We can also do something like printing them out for debug
+    std::cerr << "[Debug] Clang parse options:\n";
+    for (const auto& opt : options) {
+        std::cerr << "    " << opt << "\n";
+    }
+
+    // Now parse the file
+    lux::cxx::dref::CxxParser cxx_parser;
+    auto [parse_rst, data] = cxx_parser.parse(
+        file_to_parse.string(),
+        std::move(options),
+        "test_unit",
+        "1.0.0"
+    );
+
+    if (parse_rst != lux::cxx::dref::EParseResult::SUCCESS) {
+        std::cerr << "[Error] Parsing of " << file_to_parse << " failed.\n";
+        return 1;
+    }
+
+    // Construct base filename from the file to parse
+    auto base_name = file_to_parse.filename().replace_extension("").string();
+
+    // Setup generator config
+    GeneratorConfig config;
+    config.target_dir = out_dir;
+    config.file_name = base_name;
+    config.file_hash = file_hash;
+    config.relative_include = (*maybeRel).string();
+    config.static_meta_suffix = ".meta.static.hpp";
+    config.dynamic_meta_suffix = ".meta.dynamic.cpp";
+
+    // Create the meta generator
+    MetaGenerator generator(config);
+    auto gen_result = generator.generate(data);
+    if (gen_result != MetaGenerator::EGenerateError::SUCCESS) {
+        return 1;
+    }
+
+    return 0;
 }

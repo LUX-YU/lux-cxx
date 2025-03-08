@@ -143,7 +143,6 @@ namespace lux::cxx::dref{
             return "";
         }
     };
-
     {% endfor %}
 }
 )";

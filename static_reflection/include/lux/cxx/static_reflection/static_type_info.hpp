@@ -1,3 +1,4 @@
+#pragma once
 /*
  * Copyright (c) 2025 Chenhui Yu
  *
@@ -20,11 +21,9 @@
  * SOFTWARE.
  */
 
-#pragma once
 #include "lux/cxx/compile_time/ct_string.hpp"
 #include "lux/cxx/compile_time/type_info.hpp"
 #include "lux/cxx/compile_time/tuple_traits.hpp"
-#include "lux/cxx/lan_model/type.hpp"
 #include <tuple>
 
 namespace lux::cxx

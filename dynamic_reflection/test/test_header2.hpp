@@ -28,7 +28,7 @@ struct LUX_REFL(static_reflection;dynamic_reflection) TestClass
         // ...
     }
 
-    static std::string static_func2()
+    static std::string static_func2(int arg1, int arg2)
     {
         return "";
     }

@@ -1,3 +1,4 @@
+#pragma once
 /*
  * Copyright (c) 2025 Chenhui Yu
  *
@@ -20,7 +21,6 @@
  * SOFTWARE.
  */
 
-#pragma once
 
 #if defined __clang__ || defined __GNUC__
 #   define LUX_FUNCTION_NAME __PRETTY_FUNCTION__

@@ -47,7 +47,7 @@ component_add_internal_dependencies(
 
 component_add_cmake_scripts(
 	dynamic_reflection_runtime
-	${CMAKE_CURRENT_SOURCE_DIR}/cmake/add_meta.cmake
+	${CMAKE_CURRENT_SOURCE_DIR}/cmake/target_add_meta.cmake
 )
 
 # start constructing component dynamic_reflection_parser

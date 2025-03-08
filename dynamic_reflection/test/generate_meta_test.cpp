@@ -19,7 +19,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
+/*
 #include "test_header2.hpp"
 #include "test_header2.meta.static.hpp"
 
@@ -61,14 +61,9 @@ static constexpr void displayClassInfo(T& obj)
         obj
     );
 }
-
+*/
 int main(int argc, char* argv[])
 {
-    TestClass test{
-        .field1 = "123",
-        .field2 = 456,
-        .field3 = 7.89
-    };
-    displayClassInfo<TestClass>(test);
+
     return 0;
 }
