@@ -231,55 +231,52 @@ public:
         }
 
         // Prepare final data structures for the inja templates
-        static_data["classes"] = context.static_records;
-        static_data["enums"] = context.static_enums;
+        static_data["classes"]   = context.static_records;
+        static_data["class_num"] = context.static_records.size();
+        static_data["enums"]     = context.static_enums;
+		static_data["enum_num"]  = context.static_enums.size();
 
-        dynamic_data["classes"] = context.dynamic_records;
-        dynamic_data["enums"] = context.dynamic_enums;
+        dynamic_data["classes"]  = context.dynamic_records;
+		dynamic_data["class_num"]= context.dynamic_records.size();
+        dynamic_data["enums"]    = context.dynamic_enums;
+		dynamic_data["enum_num"] = context.dynamic_enums.size();
 
-        if (static_data["classes"].size() != 0 && static_data["enums"].size() != 0)
+        try
         {
-            try
-            {
-                inja::Environment env;
-                inja::Template tpl = env.parse(static_meta_template.data());
-                std::string result = env.render(tpl, static_data);
+            inja::Environment env;
+            inja::Template tpl = env.parse(static_meta_template.data());
+            std::string result = env.render(tpl, static_data);
 
-                // Write output to file
-                auto output_path = _config.target_dir / (_config.file_name + _config.static_meta_suffix);
-                std::ofstream ofs(output_path);
-                ofs << result;
-                ofs.close();
-            }
-            catch (std::exception& e)
-            {
-                std::cerr << "[MetaGenerator] Error rendering static meta: " << e.what() << std::endl;
-                return EGenerateError::FAILED;
-            }
+            // Write output to file
+            auto output_path = _config.target_dir / (_config.file_name + _config.static_meta_suffix);
+            std::ofstream ofs(output_path);
+            ofs << result;
+            ofs.close();
+        }
+        catch (std::exception& e)
+        {
+            std::cerr << "[MetaGenerator] Error rendering static meta: " << e.what() << std::endl;
+            return EGenerateError::FAILED;
         }
 
-        if (dynamic_data["classes"].size() != 0 && dynamic_data["enums"].size() != 0)
+        dynamic_data["file_hash"]    = _config.file_hash;
+        dynamic_data["include_path"] = _config.relative_include;
+        try
         {
-            // (4) Render dynamic meta template
-            dynamic_data["file_hash"] = _config.file_hash;
-            dynamic_data["include_path"] = _config.relative_include;
-            try
-            {
-                inja::Environment env;
-                inja::Template tpl = env.parse(dynamic_meta_template.data());
-                std::string result = env.render(tpl, dynamic_data);
+            inja::Environment env;
+            inja::Template tpl = env.parse(dynamic_meta_template.data());
+            std::string result = env.render(tpl, dynamic_data);
 
-                // Write output to file
-                auto output_path = _config.target_dir / (_config.file_name + _config.dynamic_meta_suffix);
-                std::ofstream ofs(output_path);
-                ofs << result;
-                ofs.close();
-            }
-            catch (std::exception& e)
-            {
-                std::cerr << "[MetaGenerator] Error rendering dynamic meta: " << e.what() << std::endl;
-                return EGenerateError::FAILED;
-            }
+            // Write output to file
+            auto output_path = _config.target_dir / (_config.file_name + _config.dynamic_meta_suffix);
+            std::ofstream ofs(output_path);
+            ofs << result;
+            ofs.close();
+        }
+        catch (std::exception& e)
+        {
+            std::cerr << "[MetaGenerator] Error rendering dynamic meta: " << e.what() << std::endl;
+            return EGenerateError::FAILED;
         }
 
         return EGenerateError::SUCCESS;
@@ -977,10 +974,10 @@ int main(int argc, char* argv[])
     }
 
     // We can also do something like printing them out for debug
-    std::cerr << "[Debug] Clang parse options:\n";
-    for (const auto& opt : options) {
-        std::cerr << "    " << opt << "\n";
-    }
+    // std::cerr << "[Debug] Clang parse options:\n";
+    // for (const auto& opt : options) {
+    //     std::cerr << "    " << opt << "\n";
+    // }
 
     // Now parse the file
     lux::cxx::dref::CxxParser cxx_parser;
@@ -1004,7 +1001,7 @@ int main(int argc, char* argv[])
     config.target_dir = out_dir;
     config.file_name = base_name;
     config.file_hash = file_hash;
-    config.relative_include = (*maybeRel).string();
+    config.relative_include = lux::cxx::algorithm::replace((*maybeRel).string(), "\\", "/");
     config.static_meta_suffix = ".meta.static.hpp";
     config.dynamic_meta_suffix = ".meta.dynamic.cpp";
 

@@ -144,32 +144,16 @@ namespace lux::cxx::dref::runtime {
         }
     };
     {% endfor -%}
-
-    // Combine all record metas into an array
-    static RecordRuntimeMeta* const s_all_records[] = {
-        {% for class in classes -%}
-        &s_meta_{{ class.extended_name }}{% if not loop.is_last %},
-        {% endif %}{% endfor %}
-    };
-
-    // Combine all enum metas into an array
-    static EnumRuntimeMeta* const s_all_enums[] = {
-        {% for enum in enums -%}
-        &s_enum_meta_{{ enum.extended_name }}{% if not loop.is_last %}, 
-        {% endif %}{% endfor %}
-    };
-
-    // Provide a unique function for registration: "registerReflections_<file_hash>"
+    
     void register_reflections_{{ file_hash }}(RuntimeRegistry& registry)
     {
-        // Register all records for this file
-        for (auto* r : s_all_records) {
-            registry.registerRecord(r);
-        }
-        // Register all enums for this file
-        for (auto* e : s_all_enums) {
-            registry.registerEnum(e);
-        }
+        {% for class in classes -%}
+        registry.registerRecord(&s_meta_{{ class.extended_name }});
+        {% endfor %}
+
+        {% for enum in enums -%}
+        registry.registerEnum(&s_enum_meta_{{ enum.extended_name }});
+        {% endfor %}
     }
 
 } // end namespace lux::cxx::dref::runtime

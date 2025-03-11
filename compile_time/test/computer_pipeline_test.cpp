@@ -56,11 +56,8 @@ int main()
         dependency_map<NodeB, 0, NodeA, 0>
     >;
 
-    // 3) Get a linear topological order
-    using SortedNodes = topological_sort<NodeList, DepList>::type;
-
     // 4) Build the pipeline
-    ComputerPipeline<SortedNodes, DepList> pipeline;
+    ComputerPipeline<NodeList, DepList> pipeline;
     pipeline.emplaceNode<NodeA>();
     pipeline.emplaceNode<NodeB>();
 

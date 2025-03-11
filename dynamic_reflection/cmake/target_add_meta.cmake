@@ -16,6 +16,7 @@ function(target_add_meta)
     #       [COMPILE_COMMANDS "path/to/compile_commands.json"]
     #       [META_GENERATOR   "path/to/lux_meta_generator"]
     #       [TARGET_OUTPUT    varNameToStoreMsg]
+    #       [ECHO]
     #   )
     #
     # For each meta_file in METAS:
@@ -43,7 +44,7 @@ function(target_add_meta)
     )
     cmake_parse_arguments(
         ARGS
-        ""
+        "ECHO"
         "${one_value_args}"
         "${multi_value_args}"
         ${ARGN}
@@ -108,6 +109,7 @@ function(target_add_meta)
     # 5) Create a custom target to hold generated meta files
     set(_meta_custom_target "${_target_name}_meta")
     set(_generated_files "")
+    set(_generated_source_files "")
 
     # For each METAS file => produce static/dynamic
     foreach(meta_file IN LISTS ARGS_METAS)
@@ -119,6 +121,11 @@ function(target_add_meta)
         set(_dynamic_file "${ARGS_META_GEN_OUT_DIR}/${_meta_filename}.meta.dynamic.cpp")
 
         list(APPEND _generated_files "${_static_file}" "${_dynamic_file}")
+        list(APPEND _generated_source_files "${_dynamic_file}")
+
+        if(ARGS_ECHO)
+            message(STATUS "[target_add_meta] Will execute: ${_meta_gen_exe} ${meta_file} ${ARGS_META_GEN_OUT_DIR} ${_main_src} ${_compile_cmds} ${_file_hash}")
+        endif()
 
         add_custom_command(
             OUTPUT  "${_static_file}" "${_dynamic_file}"
@@ -143,11 +150,14 @@ function(target_add_meta)
         DEPENDS ${_generated_files}
     )
 
-    # Attach .meta.* files to the main target for IDE listing & compilation
-    target_sources(${_target_name}
-        PRIVATE
-        ${_generated_files}
-    )
+    # Attach .meta.* files to the main target for IDE listing & compilation,
+    # only if there are generated source files.
+    if(_generated_source_files)
+        target_sources(${_target_name}
+            PRIVATE
+            ${_generated_source_files}
+        )
+    endif()
 
     # Add the out_dir to includes
     target_include_directories(${_target_name}

@@ -1,5 +1,5 @@
 # import target libclang
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang_unix.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang.cmake)
 find_package(inja      CONFIG REQUIRED)
 find_package(RapidJSON CONFIG REQUIRED)
 

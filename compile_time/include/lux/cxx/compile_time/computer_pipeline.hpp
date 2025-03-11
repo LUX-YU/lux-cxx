@@ -180,17 +180,19 @@ namespace lux::cxx
     //--------------------------------------------------------------------------
     // 4) ComputerPipeline: run in linear or layered mode, with failure-exit logic
     //--------------------------------------------------------------------------
-    template <typename SortedOrLayeredNodes, typename AllDeps>
+    template <typename NodeList, typename AllDeps>
     class ComputerPipeline
     {
     public:
+        using SortedOrLayeredNodes = typename topological_sort<NodeList, AllDeps>::type;
+
         // Build data storage from all outputs
         template <typename Tup> struct gather_nodes_outs;
         template <typename... Ns>
         struct gather_nodes_outs<std::tuple<Ns...>>
         {
             using big_pair_t = typename gather_all_outputs<Ns...>::type;
-            using data_t = typename pairs_to_data<big_pair_t>::type;
+            using data_t     = typename pairs_to_data<big_pair_t>::type;
         };
         using DataStorage = typename gather_nodes_outs<SortedOrLayeredNodes>::data_t;
 
