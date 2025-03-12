@@ -149,28 +149,6 @@ namespace lux::cxx
             }
         }
 
-		/**
-		 * @brief Accesses the value associated with a given key.
-		 * @param key The key to look up.
-		 * @return A reference to the value associated with the key.
-		 *
-		 * If the key is not in the set, it is inserted with a default-constructed value.
-		 */
-		Value& operator[](Key key)
-		{
-			ensure_sparse_size(key);
-			auto idx = sparse_[key];
-			if (idx == INVALID_INDEX) {
-				idx = dense_keys_.size();
-				dense_keys_.push_back(key);
-				dense_values_.push_back(Value{});
-				sparse_[key] = idx;
-			}
-			return dense_values_[idx];
-		}
-
-
-
         /**
          * @brief Inserts or updates an element with the specified key and value (rvalue reference).
          * @param key   The key to be inserted.
@@ -194,6 +172,27 @@ namespace lux::cxx
                 dense_values_[idx] = std::move(value);
             }
         }
+
+		/**
+		 * @brief Accesses the value associated with a given key.
+		 * @param key The key to look up.
+		 * @return A reference to the value associated with the key.
+		 *
+		 * If the key is not in the set, it is inserted with a default-constructed value.
+		 */
+		Value& operator[](Key key)
+		{
+			ensure_sparse_size(key);
+			auto idx = sparse_[key];
+			if (idx == INVALID_INDEX) {
+				idx = dense_keys_.size();
+				dense_keys_.push_back(key);
+				dense_values_.push_back(Value{});
+				sparse_[key] = idx;
+			}
+			return dense_values_[idx];
+		}
+
 
         /**
          * @brief Constructs and inserts (or updates) an element in place.
@@ -273,18 +272,19 @@ namespace lux::cxx
 		/*
 		* @brief Extracts the value associated with a given key.
         * @param key The key to look up.
-		* @throws std::out_of_range If the key is not in the set.
-		* @return The value associated with the key.
+		* @param value The value to extract.
+		* @return false if key doesn't exist.
         */
-		Value extract(Key key)
+		bool extract(Key key, Value& value)
 		{
-			if (key >= sparse_.size() || sparse_[key] == INVALID_INDEX) {
-				throw std::out_of_range("SparseSet::extract: key not found");
+			if (!contains(key))
+			{
+				return false;
 			}
 			auto idx = sparse_[key];
-			Value value = std::move(dense_values_[idx]);
+			value = std::move(dense_values_[idx]);
 			erase(key);
-			return value;
+			return true;
 		}
 
         /**
@@ -365,6 +365,281 @@ namespace lux::cxx
          * of its associated key in `dense_keys_`.
          */
         std::vector<Value>     dense_values_;
+    };
+} // namespace lux::cxx
+
+
+namespace lux::cxx
+{
+
+    /**
+     * @brief An extended SparseSet that automatically assigns keys (IDs) to inserted elements.
+     *
+     * In addition to the functionality of the base SparseSet<Key, Value>, this class:
+     *  - Maintains a list of free (previously used but now erased) IDs for reuse.
+     *  - Maintains a monotonically increasing 'next_id_' to assign new IDs when no free IDs are available.
+     *  - Provides insert/emplace methods returning the newly allocated ID, so the user does not need to provide a key.
+     *
+     * @tparam Value Type of the value objects stored in the set.
+     * @tparam Key   An integral (or enum) type for the IDs. Defaults to std::size_t.
+     */
+    template <typename Value, typename Key = std::size_t>
+    class AutoSparseSet : protected SparseSet<Key, Value>
+    {
+        static_assert(std::is_integral_v<Key>, "Key must be an integral type for AutoSparseSet.");
+
+    public:
+        using BaseType = SparseSet<Key, Value>;
+        using size_type = typename BaseType::size_type;
+
+        /**
+         * @brief Constructs an empty AutoSparseSet with zero next_id_.
+         */
+        AutoSparseSet()
+            : next_id_(0)
+        {
+        }
+
+        /**
+         * @brief Constructs an empty AutoSparseSet, reserving capacity in the dense arrays.
+         * @param initial_capacity The number of elements to reserve in the base SparseSet.
+         */
+        explicit AutoSparseSet(size_type initial_capacity)
+            : BaseType(initial_capacity)
+            , next_id_(0)
+        {
+        }
+
+        /**
+         * @brief Returns the current number of elements stored.
+         * @return The size of the set.
+         */
+        size_type size() const noexcept
+        {
+            return BaseType::size();
+        }
+
+        /**
+         * @brief Checks if the set is empty.
+         * @return True if empty, otherwise false.
+         */
+        bool empty() const noexcept
+        {
+            return BaseType::empty();
+        }
+
+        /**
+         * @brief Removes all elements from the set, clearing the free IDs as well and resetting next_id_ to zero.
+         */
+        void clear()
+        {
+            BaseType::clear();
+            free_ids_.clear();
+            next_id_ = 0;
+        }
+
+        /**
+         * @brief Reserves storage for at least @p new_capacity elements in the underlying dense arrays.
+         * @param new_capacity The capacity to reserve.
+         */
+        void reserve(size_type new_capacity)
+        {
+            BaseType::reserve(new_capacity);
+        }
+
+        /**
+         * @brief Inserts a new value and returns the automatically assigned ID (key).
+         *
+         * If free_ids_ is not empty, uses the last free ID. Otherwise uses next_id_ and increments it.
+         *
+         * @param value A constant reference to the value to insert.
+         * @return The newly assigned key (ID).
+         */
+        Key insert(const Value& value)
+        {
+            Key new_key = acquire_key();
+            BaseType::insert(new_key, value);
+            return new_key;
+        }
+
+        /**
+         * @brief Inserts a new value (rvalue reference) and returns the automatically assigned ID (key).
+         *
+         * If free_ids_ is not empty, uses the last free ID. Otherwise uses next_id_ and increments it.
+         *
+         * @param value An rvalue reference to the value to insert.
+         * @return The newly assigned key (ID).
+         */
+        Key insert(Value&& value)
+        {
+            Key new_key = acquire_key();
+            BaseType::insert(new_key, std::move(value));
+            return new_key;
+        }
+
+        /**
+         * @brief Emplaces a new value in place with a newly assigned key, returning that key.
+         *
+         * If free_ids_ is not empty, uses the last free ID. Otherwise uses next_id_ and increments it.
+         *
+         * @tparam Args Parameter pack for constructing the @p Value object in place.
+         * @param args Arguments used to construct the value.
+         * @return The newly assigned key (ID).
+         */
+        template<typename... Args>
+        Key emplace(Args&&... args)
+        {
+            Key new_key = acquire_key();
+            BaseType::emplace(new_key, std::forward<Args>(args)...);
+            return new_key;
+        }
+
+        /**
+         * @brief Erases the element associated with @p key from the set.
+         *
+         * If the key is present, returns true. Also, the key is added to the free_ids_ list for future reuse.
+         * If the key is not found, returns false.
+         *
+         * @param key The key to remove.
+         * @return True if the key was found and removed, false otherwise.
+         */
+        bool erase(Key key)
+        {
+            if (BaseType::erase(key)) // calls the base O(1) remove
+            {
+                // put key into the free list for reuse
+                free_ids_.push_back(key);
+                return true;
+            }
+            return false;
+        }
+
+        /**
+         * @brief Extracts the value associated with @p key if it exists, removing it from the set,
+         *        and returning the moved-out value.
+         *
+         * The freed key is pushed into free_ids_ for future reuse.
+         * @param key The key to extract.
+         * @param value The value to extract.
+         * @return false if key doesn't exist.
+         */
+        bool extract(Key key, Value& value)
+        {
+            if (!contains(key))
+            {
+                return false;
+            }
+            auto idx = sparse_[key];
+            value = std::move(dense_values_[idx]);
+            erase(key);
+            return true;
+        }
+
+        /**
+         * @brief Checks whether a given key exists.
+         * @param key The key to look up.
+         * @return True if it exists in the set, otherwise false.
+         */
+        bool contains(Key key) const
+        {
+            return BaseType::contains(key);
+        }
+
+        /**
+         * @brief Returns the number of free IDs currently stored for reuse (for debugging/stats).
+         */
+        size_type free_ids_count() const noexcept
+        {
+            return free_ids_.size();
+        }
+
+        /**
+         * @brief Access to the underlying base SparseSet's keys array.
+         * @return A const reference to the vector of active keys.
+         */
+        const std::vector<Key>& keys() const noexcept
+        {
+            return BaseType::keys();
+        }
+
+        /**
+         * @brief Access to the underlying base SparseSet's values array.
+         * @return A const reference to the vector of active values.
+         */
+        const std::vector<Value>& values() const noexcept
+        {
+            return BaseType::values();
+        }
+
+        /**
+         * @brief Gets the next ID that would be assigned if no free IDs are available (for debugging/stats).
+         * @return The current 'next_id_'.
+         */
+        Key next_id() const noexcept
+        {
+            return next_id_;
+        }
+
+        /**
+         * @brief Accesses or creates (default) the value for a given key (if you *manually* want to specify a key).
+         *
+         * @note Typically you won't call this in AutoSparseSet, because you rarely want to provide your own key.
+         *       But we still expose it in case you need direct base functionality.
+         *
+         * @param key The key to look up or create.
+         * @return A reference to the associated value.
+         */
+        Value& operator[](Key key)
+        {
+            return BaseType::operator[](key);
+        }
+
+        /**
+         * @brief Returns a reference to the value for a given key, or throws if not found.
+         * @param key The key to look up.
+         * @throws std::out_of_range If key is not found.
+         */
+        Value& at(Key key)
+        {
+            return BaseType::at(key);
+        }
+
+        /**
+         * @brief Returns a const reference to the value for a given key, or throws if not found.
+         * @param key The key to look up.
+         * @throws std::out_of_range If key is not found.
+         */
+        const Value& at(Key key) const
+        {
+            return BaseType::at(key);
+        }
+
+    protected:
+        /**
+         * @brief Acquires the next available key. Either reuses one from free_ids_ or increments next_id_.
+         * @return The new key (ID).
+         */
+        Key acquire_key()
+        {
+            if (!free_ids_.empty())
+            {
+                Key k = free_ids_.back();
+                free_ids_.pop_back();
+                return k;
+            }
+            return next_id_++;
+        }
+
+    private:
+        /**
+         * @brief A list of keys that were erased and can be reused for subsequent insertions.
+         */
+        std::vector<Key> free_ids_;
+
+        /**
+         * @brief A monotonically increasing counter used for assigning new IDs when free_ids_ is empty.
+         */
+        Key next_id_;
     };
 
 } // namespace lux::cxx

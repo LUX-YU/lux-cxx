@@ -121,6 +121,7 @@ target_include_directories(
 
 install(
 	TARGETS lux_meta_generator
+    RUNTIME DESTINATION bin
 )
 
 set(ENABLE_DYNAMIC_REFLECTION_TEST true BOOL "Enable dynamic reflection test")
