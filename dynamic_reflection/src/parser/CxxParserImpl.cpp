@@ -173,7 +173,10 @@ namespace lux::cxx::dref
 			default:
 				return false;
 		}
-		registerDeclaration(std::move(decl), true);
+
+		if (cursor.isFromMainFile()) {
+			registerDeclaration(std::move(decl), true);
+		}
 
 		return true;
 	}

@@ -624,6 +624,11 @@ namespace lux::cxx::dref
 			return _cursor.data[0] != nullptr;
 		}
 
+		bool isFromMainFile() const
+		{
+			return clang_Location_isFromMainFile(clang_getCursorLocation(_cursor));
+		}
+
 		bool operator==(const Cursor& other) const
 		{
 			return clang_equalCursors(_cursor, other._cursor);
