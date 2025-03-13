@@ -25,7 +25,7 @@
 
 namespace lux::cxx::algorithm
 {
-    static inline size_t fnv1a(std::string_view text) {
+    static constexpr inline size_t fnv1a(std::string_view text) {
         // 32 bit params
         // uint32_t constexpr fnv_prime = 16777619U;
         // uint32_t constexpr fnv_offset_basis = 2166136261U;

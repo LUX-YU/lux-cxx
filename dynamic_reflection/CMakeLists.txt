@@ -13,6 +13,7 @@ set(DREF_PARSER_SRCS
 # start constructing component dynamic_reflection_runtime
 set(DREF_RUNTIME_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnit.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/RuntimeMeta.cpp
 )
 
 add_component(
@@ -48,6 +49,7 @@ component_add_internal_dependencies(
 component_add_cmake_scripts(
 	dynamic_reflection_runtime
 	${CMAKE_CURRENT_SOURCE_DIR}/cmake/target_add_meta.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/reflection_header_template.hpp.in
 )
 
 # start constructing component dynamic_reflection_parser

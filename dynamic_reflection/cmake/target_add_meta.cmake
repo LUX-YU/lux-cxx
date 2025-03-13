@@ -6,7 +6,6 @@ if(_COMPONENT_META_TOOLS_INCLUDED_)
 endif()
 set(_COMPONENT_META_TOOLS_INCLUDED_ TRUE)
 
-
 function(target_add_meta)
     # Usage:
     #   target_add_meta(
@@ -17,8 +16,9 @@ function(target_add_meta)
     #       [META_GENERATOR   "path/to/lux_meta_generator"]
     #       [TARGET_OUTPUT    varNameToStoreMsg]
     #       [ECHO]
+    #       [REGISTER_FUNCTION_HEADER_NAME "${META_GEN_OUT_DIR}/generated_header.hpp"]    # New: specify the aggregated header file path
+    #       [REGISTER_FUNCTION_NAME_PREFIX "register_reflections_"]   # New: specify the function name prefix
     #   )
-    #
     # For each meta_file in METAS:
     #   1) compute a .meta.static.hpp and .meta.dynamic.cpp in META_GEN_OUT_DIR
     #   2) pick one .cpp from the target's SOURCES
@@ -38,6 +38,8 @@ function(target_add_meta)
         COMPILE_COMMANDS
         META_GENERATOR
         TARGET_OUTPUT
+        REGISTER_FUNCTION_HEADER_NAME
+        REGISTER_FUNCTION_NAME_PREFIX
     )
     set(multi_value_args
         METAS
@@ -110,6 +112,7 @@ function(target_add_meta)
     set(_meta_custom_target "${_target_name}_meta")
     set(_generated_files "")
     set(_generated_source_files "")
+    set(_reg_fn_names "")  # New: list to store register function names
 
     # For each METAS file => produce static/dynamic
     foreach(meta_file IN LISTS ARGS_METAS)
@@ -122,6 +125,15 @@ function(target_add_meta)
 
         list(APPEND _generated_files "${_static_file}" "${_dynamic_file}")
         list(APPEND _generated_source_files "${_dynamic_file}")
+
+        # Construct the register function name using the file hash and optional prefix
+        if(ARGS_REGISTER_FUNCTION_NAME_PREFIX)
+            set(_fn_prefix "${ARGS_REGISTER_FUNCTION_NAME_PREFIX}")
+        else()
+            set(_fn_prefix "register_reflections_")
+        endif()
+        set(_reg_fn_name "${_fn_prefix}${_file_hash}")
+        list(APPEND _reg_fn_names "${_reg_fn_name}")
 
         if(ARGS_ECHO)
             message(STATUS "[target_add_meta] Will execute: ${_meta_gen_exe} ${meta_file} ${ARGS_META_GEN_OUT_DIR} ${_main_src} ${_compile_cmds} ${_file_hash}")
@@ -167,6 +179,41 @@ function(target_add_meta)
 
     # Ensure main target depends on meta generation
     add_dependencies(${_target_name} "${_meta_custom_target}")
+
+    # New: Generate a header file that aggregates all reflection registration functions
+    if(NOT ARGS_REGISTER_FUNCTION_HEADER_NAME)
+        set(ARGS_REGISTER_FUNCTION_HEADER_NAME "register_all_dynamic_meta.hpp")
+    endif()
+
+    set(ARGS_REGISTER_FUNCTION_HEADER_PATH "${ARGS_META_GEN_OUT_DIR}/${ARGS_REGISTER_FUNCTION_HEADER_NAME}")
+
+    # Construct the declarations and function calls strings
+    set(_register_function_decls "")
+    set(_register_function_calls "")
+    foreach(fn IN LISTS _reg_fn_names)
+        set(_decl "extern void ${fn}(lux::cxx::dref::runtime::RuntimeRegistry& registry)\\;")
+        set(_call "    ${fn}(registry)\\;")
+        list(APPEND _register_function_decls "${_decl}")
+        list(APPEND _register_function_calls "${_call}")
+    endforeach()
+    list(JOIN _register_function_decls "\n" _register_function_decls_str)
+    list(JOIN _register_function_calls "\n" _register_function_calls_str)
+
+    # Pass the generated strings to the template via cache variables for configure_file
+    set(REGISTER_FUNCTION_DECLARATIONS "${_register_function_decls_str}")
+    set(REGISTER_FUNCTION_CALLS "${_register_function_calls_str}")
+
+    # Configure the header template file.
+    # The template file is expected to be located relative to this CMake file.
+    set(_template_file "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/reflection_header_template.hpp.in")
+    configure_file(
+        "${_template_file}"
+        "${ARGS_REGISTER_FUNCTION_HEADER_PATH}"
+        @ONLY
+    )
+
+    # Optionally output a message to the user.
+    message(STATUS "[target_add_meta] Generated aggregated header: ${ARGS_REGISTER_FUNCTION_HEADER_PATH}")
 
     # If user wants info in a variable
     if(ARGS_TARGET_OUTPUT)

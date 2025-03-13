@@ -80,6 +80,7 @@ namespace lux::cxx::dref::runtime {
     static RecordRuntimeMeta s_meta_{{ class.extended_name }} {
         // 名字
         .name = "{{ class.name }}",
+        .hash = {{ class.hash }},
         .ctor = std::vector<RecordRuntimeMeta::ConstructorFn>{
             {% if class.constructor_num > 0 %}{% for ctor in class.constructors -%}
             &{{ ctor.bridge_name }},{% endfor %}{% else %}
@@ -132,6 +133,7 @@ namespace lux::cxx::dref::runtime {
     {% for enum in enums %}
     static EnumRuntimeMeta s_enum_meta_{{ enum.extended_name }} {
         .name = "{{ enum.name }}",
+        .hash = {{ enum.hash }},
         .is_scoped = {{ enum.is_scoped }},
         .underlying_type_name = "{{ enum.underlying_type_name }}",
         .enumerators = {
@@ -148,11 +150,11 @@ namespace lux::cxx::dref::runtime {
     void register_reflections_{{ file_hash }}(RuntimeRegistry& registry)
     {
         {% for class in classes -%}
-        registry.registerRecord(&s_meta_{{ class.extended_name }});
+        registry.registerMeta(&s_meta_{{ class.extended_name }});
         {% endfor %}
 
         {% for enum in enums -%}
-        registry.registerEnum(&s_enum_meta_{{ enum.extended_name }});
+        registry.registerMeta(&s_enum_meta_{{ enum.extended_name }});
         {% endfor %}
     }
 

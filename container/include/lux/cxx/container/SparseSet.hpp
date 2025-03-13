@@ -525,14 +525,7 @@ namespace lux::cxx
          */
         bool extract(Key key, Value& value)
         {
-            if (!contains(key))
-            {
-                return false;
-            }
-            auto idx = sparse_[key];
-            value = std::move(dense_values_[idx]);
-            erase(key);
-            return true;
+			return BaseType::extract(key, value);
         }
 
         /**

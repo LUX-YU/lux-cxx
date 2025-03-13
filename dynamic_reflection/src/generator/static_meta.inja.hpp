@@ -39,6 +39,7 @@ namespace lux::cxx::dref{
         static constexpr size_t align = {{ class.align }};
         static constexpr const char* name = "{{ class.name }}";
         static constexpr EMetaType meta_type = {{ class.record_type }};
+        static constexpr size_t hash = {{ class.hash }};
 
         static constexpr std::array<FieldInfo, {{ length(class.fields) }}> fields{
             {% for field in class.fields -%}
@@ -106,6 +107,7 @@ namespace lux::cxx::dref{
         using value_type   = std::underlying_type_t<{{ enum.name }}>;
         using element_type = std::pair<const char*, std::underlying_type_t<{{ enum.name }}>>;
         static constexpr EMetaType meta_type = EMetaType::ENUMERATOR;
+        static constexpr size_t hash = {{ enum.hash }};
 
         static constexpr std::array<const char*, size> keys{
             {% for key in enum.keys -%}

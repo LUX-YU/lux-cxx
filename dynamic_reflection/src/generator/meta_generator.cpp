@@ -424,6 +424,7 @@ private:
 
         nlohmann::json record_info = nlohmann::json::object();
         record_info["name"] = decl.full_qualified_name;
+		record_info["hash"] = std::to_string(lux::cxx::algorithm::fnv1a(decl.full_qualified_name));
         record_info["extended_name"] = lux::cxx::algorithm::replace(decl.full_qualified_name, "::", "_");
         record_info["align"] = decl.type->align;
         record_info["record_type"] =
@@ -439,7 +440,7 @@ private:
                 {
                     nlohmann::json param_map;
                     param_map["type"] = param->type->name;
-                    param_map["hash"] = lux::cxx::algorithm::fnv1a(param->type->name);
+                    param_map["hash"] = std::to_string(lux::cxx::algorithm::fnv1a(param->type->name));
                     param_map["last"] = (index == params_vector.size() - 1);
                     params.push_back(param_map);
                     ++index;
@@ -548,6 +549,7 @@ private:
 
         nlohmann::json enum_info = nlohmann::json::object();
         enum_info["name"] = decl.full_qualified_name;
+		enum_info["hash"] = std::to_string(lux::cxx::algorithm::fnv1a(decl.full_qualified_name));
         enum_info["extended_name"] = lux::cxx::algorithm::replace(decl.full_qualified_name, "::", "_");
         enum_info["size"] = std::to_string(decl.enumerators.size());
 
@@ -639,6 +641,7 @@ private:
         // JSON object storing the record's dynamic info
         nlohmann::json record_info = nlohmann::json::object();
         record_info["name"] = decl.full_qualified_name; // or decl.name
+		record_info["hash"] = std::to_string(lux::cxx::algorithm::fnv1a(decl.full_qualified_name));
         std::string extended_name = lux::cxx::algorithm::replace(decl.full_qualified_name, "::", "_");
         record_info["extended_name"] = extended_name;
 
@@ -771,6 +774,7 @@ private:
 
         nlohmann::json enum_info;
         enum_info["name"] = decl.full_qualified_name; // or decl.name
+		enum_info["hash"] = lux::cxx::algorithm::fnv1a(decl.full_qualified_name);
         enum_info["extended_name"] = lux::cxx::algorithm::replace(decl.full_qualified_name, "::", "_");
 
         // Collect enumerators

@@ -19,25 +19,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-/*
 #include "test_header2.hpp"
 #include "test_header2.meta.static.hpp"
+#include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
+#include "register_all_dynamic_meta.hpp"
 
 #include <iostream>
 
 using namespace lux::cxx::dref;
-
-static const char* visibility2Str(EVisibility visibility)
-{
-    if (visibility == EVisibility::INVALID)
-        return "INVALID";
-    if (visibility == EVisibility::PUBLIC)
-        return "PUBLIC";
-    if (visibility == EVisibility::PRIVATE)
-        return "PRIVATE";
-
-    return "PROTECTED";
-}
 
 template<size_t N>
 static constexpr void displayField()
@@ -61,9 +50,14 @@ static constexpr void displayClassInfo(T& obj)
         obj
     );
 }
-*/
+
 int main(int argc, char* argv[])
 {
+    runtime::RuntimeRegistry registry;
+    runtime::registerAllMeta(registry);
 
+
+    TestClass obj;
+    displayClassInfo<TestClass>(obj);
     return 0;
 }

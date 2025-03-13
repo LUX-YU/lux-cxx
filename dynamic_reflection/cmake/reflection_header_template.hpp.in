@@ -1,0 +1,14 @@
+#pragma once
+
+namespace lux::cxx::dref::runtime
+{
+	class RuntimeRegistry;
+	
+	@REGISTER_FUNCTION_DECLARATIONS@
+
+	static inline void registerAllMeta(lux::cxx::dref::runtime::RuntimeRegistry& registry)
+	{
+		@REGISTER_FUNCTION_CALLS@
+	}
+}
+
