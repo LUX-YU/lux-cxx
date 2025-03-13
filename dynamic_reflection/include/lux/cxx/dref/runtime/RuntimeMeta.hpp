@@ -213,6 +213,12 @@ namespace lux::cxx::dref::runtime
         void registerMeta(RecordRuntimeMeta* meta);
         void registerMeta(EnumRuntimeMeta* meta);
 
+		bool hasRecordMeta(std::string_view name);
+		bool hasRecordMeta(size_t hash);
+
+		bool hasEnumMeta(std::string_view name);
+		bool hasEnumMeta(size_t hash);
+
         /**
          * @brief Finds record metadata by record name or hash.
          *

@@ -45,6 +45,24 @@ namespace lux::cxx::dref::runtime
         enum_map_[meta->hash] = meta;
     }
 
+    bool RuntimeRegistry::hasRecordMeta(std::string_view name)
+    {
+		return record_map_.find(algorithm::fnv1a(name)) != record_map_.end();
+    }
+    bool RuntimeRegistry::hasRecordMeta(size_t hash)
+    {
+		return record_map_.find(hash) != record_map_.end();
+    }
+
+    bool RuntimeRegistry::hasEnumMeta(std::string_view name)
+    {
+		return enum_map_.find(algorithm::fnv1a(name)) != enum_map_.end();
+    }
+    bool RuntimeRegistry::hasEnumMeta(size_t hash)
+    {
+		return enum_map_.find(hash) != enum_map_.end();
+    }
+
     /**
      * @brief Finds enum metadata by enum name.
      *
