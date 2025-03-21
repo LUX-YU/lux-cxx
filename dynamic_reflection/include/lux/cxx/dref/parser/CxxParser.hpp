@@ -40,20 +40,20 @@ namespace lux::cxx::dref
 
     using ParseResult = std::pair<EParseResult, MetaUnit>;
 
-    class CxxParser
+    class LUX_CXX_PUBLIC CxxParser
     {
     public:
         /**
          * @brief Construct a new CxxParser object
          * 
         */
-        LUX_CXX_PUBLIC CxxParser();
+        CxxParser();
 
         /**
 		 * @brief Destroy the CxxParser object
 		 * 
 		 */
-        LUX_CXX_PUBLIC ~CxxParser();
+        ~CxxParser();
 
         /**
 		 * @brief Parse a file and return the result
@@ -64,13 +64,13 @@ namespace lux::cxx::dref
 		 * @param version The version of the library
 		 * @return ParseResult The result of the parsing
 		 */
-        [[nodiscard]] LUX_CXX_PUBLIC ParseResult 
+        [[nodiscard]] ParseResult 
         parse(std::string_view file, std::vector<std::string> commands, std::string_view name, std::string_view version) const;
 
         /*
          * @brief Set the PCH file to use
          */
-        LUX_CXX_PUBLIC void setPCHFile(const std::string& file);
+        void setPCHFile(const std::string& file);
 
     private:
 
