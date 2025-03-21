@@ -35,7 +35,7 @@ static constexpr void displayField()
 }
 
 template<typename T, typename Meta = type_meta<T>>
-requires (Meta::meta_type == EMetaType::ClASS || Meta::meta_type == EMetaType::STRUCT)
+requires (Meta::meta_type == EMetaType::CLASS || Meta::meta_type == EMetaType::STRUCT)
 static constexpr void displayClassInfo(T& obj)
 {
     std::cout << "Class name: " << Meta::name << std::endl;
@@ -55,6 +55,75 @@ int main(int argc, char* argv[])
 {
     runtime::RuntimeRegistry registry;
     runtime::registerAllMeta(registry);
+
+	const auto& enum_list   = registry.enumMetaList();
+	const auto& record_list = registry.recordMetaList();
+	const auto& func_list   = registry.functionMetaList();
+
+	for (const auto& _enum : enum_list)
+	{
+		std::cout << "Enum: " << _enum->name << std::endl;
+		for (const auto& enumerator : _enum->enumerators)
+		{
+			std::cout << "\tEnumerator: " << enumerator.name << " Value:" << enumerator.value << std::endl;
+		}
+	}
+
+	for (const auto& record : record_list)
+	{
+		std::cout << "Record: " << record->name << std::endl;
+		for (const auto& field : record->fields)
+		{
+			std::cout << "\tField: " << field.name << " Offset:" << field.offset << std::endl;
+		}
+		for (const auto& method : record->methods)
+		{
+			std::cout << "\tMethod: " << method.name << std::endl;
+		}
+		for (const auto& static_method : record->static_methods)
+		{
+			std::cout << "\tStatic Method: " << static_method.name << std::endl;
+		}
+	}
+
+	// create object test
+	auto meta_info = registry.findMeta("lux::cxx::dref::test::TestClass");
+	if (!meta_info)
+	{
+		std::cerr << "Error: WTF! Could not find metadata for class 'lux::cxx::dref::test::TestClass'" << std::endl;
+		return 1;
+	}
+
+	if (meta_info->type != lux::cxx::dref::runtime::ERuntimeMetaType::RECORD)
+	{
+		std::cerr << "Error: WTF! Metadata for class 'lux::cxx::dref::test::TestClass' is not a record" << std::endl;
+	}
+
+	auto record_meta = registry.findRecord(meta_info->index);
+	if (!record_meta)
+	{
+		std::cerr << "Error: WTF! Could not find record metadata for class 'lux::cxx::dref::test::TestClass'" << std::endl;
+		return 1;
+	}
+
+	for (const auto& func : func_list)
+	{
+		std::cout << "Function: " << func->name << std::endl;
+	}
+
+	// create object test
+	auto test_class_obj = record_meta->ctor[0].invoker(nullptr);
+	if (!test_class_obj)
+	{
+		std::cerr << "Error: WTF! Could not create object for class 'lux::cxx::dref::test::TestClass'" << std::endl;
+	}
+	// invoke method
+	int a = 1; double b = 2.0;
+	void* args[] = { &a, &b }; double ret;
+	record_meta->methods[0].invoker(test_class_obj, args, &ret);
+	std::cout << "Method return value: " << ret << std::endl;
+	// destruct object
+	record_meta->dtor(test_class_obj);
 
 
     TestClass obj;

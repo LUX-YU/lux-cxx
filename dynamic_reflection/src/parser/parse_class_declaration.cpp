@@ -70,8 +70,7 @@ namespace lux::cxx::dref
 					decl.field_decls.push_back(field_decl.get());
 					registerDeclaration(std::move(field_decl));
 				}
-				else if (cursor_kind == CXCursor_CXXMethod ||
-					cursor_kind == CXCursor_Destructor)
+				else if (cursor_kind == CXCursor_CXXMethod)
 				{
 					auto method_decl = std::make_unique<CXXMethodDecl>();
 					method_decl->kind = EDeclKind::CXX_METHOD_DECL;
@@ -91,7 +90,7 @@ namespace lux::cxx::dref
 					auto method_decl = std::make_unique<CXXConstructorDecl>();
 					method_decl->kind = EDeclKind::CXX_CONSTRUCTOR_DECL;
 					parseCxxMethodDecl(cursor, *method_decl);
-					decl.method_decls.push_back(method_decl.get());
+					decl.constructor_decls.push_back(method_decl.get());
 					registerDeclaration(std::move(method_decl));
 				}
 				else if (cursor_kind == CXCursor_Destructor)
@@ -99,7 +98,7 @@ namespace lux::cxx::dref
 					auto method_decl = std::make_unique<CXXDestructorDecl>();
 					method_decl->kind = EDeclKind::CXX_DESTRUCTOR_DECL;
 					parseCxxMethodDecl(cursor, *method_decl);
-					decl.method_decls.push_back(method_decl.get());
+					decl.destructor_decl = method_decl.get();
 					registerDeclaration(std::move(method_decl));
 				}
 				else if (cursor_kind == CXCursor_CXXBaseSpecifier)

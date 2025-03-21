@@ -47,7 +47,8 @@ namespace lux::cxx::dref{
                 .name   = "{{ field.name }}",
                 .offset = {{ field.offset }},
                 .visibility = {{ field.visibility }},
-                .index  = {{ field.index }}
+                .index  = {{ field.index }},
+                .is_const = {{ field.is_const }}
             }{% if not loop.is_last %},
             {% endif %}{% endfor %}
         };
@@ -108,6 +109,8 @@ namespace lux::cxx::dref{
         using element_type = std::pair<const char*, std::underlying_type_t<{{ enum.name }}>>;
         static constexpr EMetaType meta_type = EMetaType::ENUMERATOR;
         static constexpr size_t hash = {{ enum.hash }};
+        static constexpr bool is_scoped = {{ enum.is_scoped }};
+        static constexpr const char* underlying_type_name = "{{ enum.underlying_type_name }}";
 
         static constexpr std::array<const char*, size> keys{
             {% for key in enum.keys -%}

@@ -104,6 +104,7 @@ namespace lux::cxx::dref {
      */
     class UnsupportedType : public Type {};
 
+    class TagDecl;
     /**
      * TagType: A base for types that are backed by a TagDecl
      * (struct, class, union, enum). This links the type to the declaration.

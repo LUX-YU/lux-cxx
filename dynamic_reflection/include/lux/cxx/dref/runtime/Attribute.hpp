@@ -37,7 +37,7 @@ namespace lux::cxx::dref
 {
     enum class EMetaType
     {
-        ClASS,
+        CLASS,
         STRUCT,
         ENUMERATOR
     };
@@ -56,6 +56,16 @@ namespace lux::cxx::dref
         size_t      offset;
         EVisibility visibility;
         size_t      index;
+		bool		is_const;
+    };
+
+    struct MethodInfo
+    {
+		const char* name;
+        EVisibility visibility;
+		size_t      index;
+		bool		is_const;
+        bool 	    is_virtual;
     };
 
     template <typename T> class type_meta;

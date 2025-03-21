@@ -1,8 +1,6 @@
 # import target libclang
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang.cmake)
 find_package(inja      CONFIG REQUIRED)
-find_package(RapidJSON CONFIG REQUIRED)
-
 set(DREF_PARSER_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParserImpl.cpp
@@ -92,7 +90,6 @@ target_compile_definitions(
 component_add_transitive_commands(
     dynamic_reflection_parser
     "find_package(Clang REQUIRED)"
-    "find_package(mstch CONFIG   REQUIRED)"
 )
 
 # start constructing component dynamic_reflection_generator
@@ -111,7 +108,6 @@ target_link_libraries(
 	lux::cxx::dynamic_reflection_runtime
 	lux::cxx::static_reflection
     pantor::inja
-    rapidjson
 )
 
 target_include_directories(

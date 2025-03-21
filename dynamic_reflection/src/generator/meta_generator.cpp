@@ -29,9 +29,6 @@
 #include <set>
 #include <array>
 
-#include <rapidjson/rapidjson.h>
-#include <rapidjson/document.h>
-
 #include <inja/inja.hpp>
 #include <nlohmann/json.hpp>
 
@@ -191,10 +188,11 @@ public:
      */
     struct GenerationContext
     {
-        nlohmann::json static_records = nlohmann::json::array();
-        nlohmann::json static_enums = nlohmann::json::array();
-        nlohmann::json dynamic_records = nlohmann::json::array();
-        nlohmann::json dynamic_enums = nlohmann::json::array();
+        nlohmann::json static_records   = nlohmann::json::array();
+        nlohmann::json static_enums     = nlohmann::json::array();
+        nlohmann::json dynamic_records  = nlohmann::json::array();
+        nlohmann::json dynamic_enums    = nlohmann::json::array();
+		nlohmann::json functions        = nlohmann::json::array();
     };
 
     /**
@@ -240,6 +238,8 @@ public:
 		dynamic_data["class_num"]= context.dynamic_records.size();
         dynamic_data["enums"]    = context.dynamic_enums;
 		dynamic_data["enum_num"] = context.dynamic_enums.size();
+		dynamic_data["free_functions"] = context.functions;
+		dynamic_data["free_function_num"] = context.functions.size();
 
         try
         {
@@ -405,6 +405,12 @@ private:
                 dynamic_cast<EnumDecl&>(*decl), context.dynamic_enums
             );
         }
+        else if (decl->kind == EDeclKind::FUNCTION_DECL)
+        {
+			return generateDynamicMeta(
+				dynamic_cast<FunctionDecl&>(*decl), context.functions
+			);
+        }
         return false;
     }
 
@@ -490,8 +496,10 @@ private:
                 field_obj["name"] = field->name;
                 // Dividing offset by 8 to represent byte offset if offset is in bits.
                 field_obj["offset"] = std::to_string(field->offset / 8);
+				field_obj["size"] = std::to_string(field->type->size);
                 field_obj["visibility"] = visibility2Str(field->visibility);
                 field_obj["index"] = std::to_string(count);
+				field_obj["is_const"] = field->type->is_const;
                 fields.push_back(field_obj);
 
                 // The field type info for the template
@@ -552,6 +560,8 @@ private:
 		enum_info["hash"] = std::to_string(lux::cxx::algorithm::fnv1a(decl.full_qualified_name));
         enum_info["extended_name"] = lux::cxx::algorithm::replace(decl.full_qualified_name, "::", "_");
         enum_info["size"] = std::to_string(decl.enumerators.size());
+		enum_info["is_scoped"] = decl.is_scoped;
+		enum_info["underlying_type_name"] = decl.underlying_type->name;
 
         // Keys (enumerator names)
         nlohmann::json keys = nlohmann::json::array();
@@ -672,6 +682,8 @@ private:
                 // Create a bridge function name for runtime invocation
                 std::string bridge_name = extended_name + "_" + method->spelling + "_invoker";
                 method_info["bridge_name"] = bridge_name;
+                method_info["qualified_name"] = truncateAtLastParen(decl.full_qualified_name);
+                method_info["mangling"] = method->mangling;
 
                 methods_json.push_back(method_info);
             }
@@ -703,6 +715,8 @@ private:
                 // Create a bridge name for static invocations
                 std::string bridge_name = extended_name + "_" + method->spelling + "_static_invoker";
                 method_info["bridge_name"] = bridge_name;
+                method_info["qualified_name"] = truncateAtLastParen(decl.full_qualified_name);
+                method_info["mangling"] = method->mangling;
 
                 static_methods_json.push_back(method_info);
             }
@@ -728,6 +742,7 @@ private:
                     params.push_back(pj);
                 }
                 ctor_info["parameters"] = params;
+                ctor_info["qualified_name"] = truncateAtLastParen(decl.full_qualified_name);
 
                 // Construct a unique bridge name for the constructor
                 std::string bridge_name = extended_name + "_ctor_" +
@@ -749,8 +764,10 @@ private:
                 f["name"] = field->name;
                 f["type_name"] = field->type->name;
                 f["offset"] = static_cast<int>(field->offset / 8);
+				f["size"] = field->type->size;
                 f["visibility"] = visibility2Str(field->visibility);
                 f["is_static"] = false; // For static member variables, you would handle them separately
+				f["is_const"] = field->type->is_const;
                 fields_json.push_back(f);
             }
             record_info["fields"] = fields_json;
@@ -758,6 +775,51 @@ private:
 
         // Add this record_info object into the array
         records.push_back(record_info);
+        return true;
+    }
+
+    static std::string truncateAtLastParen(const std::string& funcName) {
+
+        size_t pos = funcName.rfind('(');
+        if (pos != std::string::npos) {
+            return funcName.substr(0, pos);
+        }
+        return funcName;
+    }
+
+    bool generateDynamicMeta(lux::cxx::dref::FunctionDecl& decl, nlohmann::json& records)
+    {
+        using namespace lux::cxx::dref;
+        static int s_freeFuncIndex = 0;
+
+        nlohmann::json fn_info;
+
+
+        fn_info["name"]           = decl.spelling;
+        fn_info["return_type"]    = decl.result_type->name;
+        fn_info["hash"]           = std::to_string(lux::cxx::algorithm::fnv1a(decl.mangling));
+        
+        fn_info["qualified_name"] = truncateAtLastParen(decl.full_qualified_name);
+		fn_info["mangling"]       = decl.mangling;
+
+        nlohmann::json params = nlohmann::json::array();
+        for (size_t i = 0; i < decl.params.size(); ++i)
+        {
+            auto* param_decl = decl.params[i];
+            nlohmann::json pj;
+            pj["type_name"] = param_decl->type->name;
+            pj["index"] = i;
+            params.push_back(pj);
+        }
+        fn_info["parameters"] = params;
+
+        std::string bridge_name = "global_func_"
+            + decl.spelling + "_"
+            + std::to_string(s_freeFuncIndex++)
+            + "_invoker";
+        fn_info["bridge_name"] = bridge_name;
+
+        records.push_back(fn_info);
         return true;
     }
 
@@ -810,67 +872,68 @@ private:
 //  Reads compile_commands.json for "command" or "arguments" that match the
 //  given source_file_path. Then extracts any "-I" or "-external:I" options.
 // -------------------------------------------------------------------------
+
 static std::vector<std::filesystem::path> fetchIncludePaths(
     const std::filesystem::path& compile_command_path,
     const std::filesystem::path& source_file_path)
 {
     namespace fs = std::filesystem;
-    std::ifstream ifs(compile_command_path, std::ios::binary);
+
+    std::ifstream ifs(compile_command_path);
     if (!ifs) {
         std::cerr << "[fetchIncludePaths] Cannot open " << compile_command_path << std::endl;
         return {};
     }
 
-    std::stringstream buffer;
-    buffer << ifs.rdbuf();
-    ifs.close();
-    std::string jsonContent = buffer.str();
-
-    rapidjson::Document doc;
-    doc.Parse(jsonContent.c_str());
-    if (doc.HasParseError() || !doc.IsArray()) {
-        std::cerr << "[fetchIncludePaths] Invalid compile_commands.json." << std::endl;
+    nlohmann::json j;
+    try {
+        ifs >> j;
+    }
+    catch (const nlohmann::json::parse_error& e) {
+        std::cerr << "[fetchIncludePaths] JSON parsing error: " << e.what() << std::endl;
         return {};
     }
 
-    std::set<fs::path> includes;  // store unique filesystem paths
-    for (auto& entry : doc.GetArray())
-    {
-        if (!entry.IsObject()) continue;
+    if (!j.is_array()) {
+        std::cerr << "[fetchIncludePaths] Invalid compile_commands.json. Expected an array." << std::endl;
+        return {};
+    }
 
-        // require "file" & "directory"
-        if (!entry.HasMember("file") || !entry.HasMember("directory"))
+    std::set<fs::path> includes;
+    for (const auto& entry : j)
+    {
+        if (!entry.is_object())
             continue;
 
-        std::string fileStr = entry["file"].GetString();
+        if (!entry.contains("file") || !entry.contains("directory"))
+            continue;
+
+        std::string fileStr = entry["file"].get<std::string>();
         if (fs::path(fileStr) != source_file_path)
             continue;
 
-        fs::path baseDir = entry["directory"].GetString();
+        fs::path baseDir = entry["directory"].get<std::string>();
         std::vector<std::string> args;
 
-        // If "arguments" exists, read them
-        if (entry.HasMember("arguments") && entry["arguments"].IsArray())
+        if (entry.contains("arguments") && entry["arguments"].is_array())
         {
-            for (auto& arg : entry["arguments"].GetArray())
+            for (const auto& arg : entry["arguments"])
             {
-                args.push_back(arg.GetString());
+                args.push_back(arg.get<std::string>());
             }
         }
-        // else if "command" exists, parse it
-        else if (entry.HasMember("command") && entry["command"].IsString())
+
+        else if (entry.contains("command") && entry["command"].is_string())
         {
-            std::string cmdStr = entry["command"].GetString();
-            args = splitCommand(cmdStr); // assume you already have a splitCommand(...)
+            std::string cmdStr = entry["command"].get<std::string>();
+            args = splitCommand(cmdStr);
         }
 
-        // gather -I or -external:I
         for (size_t i = 0; i < args.size(); ++i)
         {
             std::string argStr = args[i];
             std::string pathStr;
 
-            // handle -I
             if (argStr.rfind("-I", 0) == 0)
             {
                 if (argStr == "-I") {
@@ -879,11 +942,9 @@ static std::vector<std::filesystem::path> fetchIncludePaths(
                     }
                 }
                 else {
-                    // e.g. "-ID:/some/path"
                     pathStr = argStr.substr(2);
                 }
             }
-            // handle -external:I
             else if (argStr.rfind("-external:I", 0) == 0)
             {
                 if (argStr == "-external:I") {
@@ -892,28 +953,23 @@ static std::vector<std::filesystem::path> fetchIncludePaths(
                     }
                 }
                 else {
-                    // e.g. "-external:ID:/some/path"
                     pathStr = argStr.substr(std::string("-external:I").length());
                 }
-                // we'll store it purely as a path, no prefix
             }
 
             if (!pathStr.empty())
             {
                 fs::path incP;
-                // if it's a windows absolute
                 if (isStandardAbsolute(pathStr)) {
                     incP = fs::path(pathStr);
                 }
                 else {
                     incP = makeAbsolute(baseDir, pathStr);
                 }
-                includes.insert(incP); // store the raw path
+                includes.insert(incP);
             }
         }
     }
-
-    // convert set -> vector
     return std::vector<fs::path>(includes.begin(), includes.end());
 }
 

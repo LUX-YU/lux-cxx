@@ -217,8 +217,9 @@ namespace lux::cxx
                 sparse_[key] = idx;
             }
             else {
+                dense_values_[idx].~Value();
                 // Reconstruct existing value.
-                dense_values_[idx] = Value(std::forward<Args>(args)...);
+                new (static_cast<void*>(&dense_values_[idx])) Value(std::forward<Args>(args)...);
             }
             return dense_values_[idx];
         }

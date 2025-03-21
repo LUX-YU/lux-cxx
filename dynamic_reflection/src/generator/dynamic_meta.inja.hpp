@@ -29,6 +29,32 @@ R"(#include <lux/cxx/dref/runtime/Declaration.hpp>
 
 namespace lux::cxx::dref::runtime {
     {% for class in classes %}
+    {% for field in class.fields %}
+    {% if not field.is_const %}
+    static void get_{{ class.extended_name }}_{{ field.name }}(void* obj, void* outVal)
+    {
+        {% if not field.is_static %}
+        auto self = static_cast<{{ class.name }}*>(obj);
+        if(!outVal) return;
+        *static_cast<{{ field.type_name }}*>(outVal) = self->{{ field.name }};
+        {% else %}
+        *static_cast<{{ field.type_name }}*>(outVal) = {{ class.name }}::{{ field.name }};
+        {% endif %}
+    }
+    
+    static void set_{{ class.extended_name }}_{{ field.name }}(void* obj, void* inVal)
+    {
+        {% if not field.is_static %}
+        auto self = static_cast<{{ class.name }}*>(obj);
+        self->{{ field.name }} = *static_cast<{{ field.type_name }}*>(inVal);
+        {% else %}
+        {{ class.name }}::{{ field.name }} = *static_cast<{{ field.type_name }}*>(inVal);
+        {% endif %}
+
+    }
+    {% endif %}
+    {% endfor %}
+
     {% for method in class.methods -%}
     static void {{ class.extended_name }}_{{ method.name }}_invoker(void* obj, void** args, void* retVal)
     {
@@ -67,24 +93,40 @@ namespace lux::cxx::dref::runtime {
         auto arg{{ p.index }} = *static_cast<{{ p.type_name }}*>(args[{{ p.index }}]);
         {% endfor %}
         return new {{ class.name }}(
-            {% for p in ctor.parameters %}
-                arg{{ p.index }}{% if not loop.is_last %}, {% endif %}
-            {% endfor %}
+            {% for p in ctor.parameters -%}
+            arg{{ p.index }}{% if not loop.is_last %}, 
+            {% endif %}{% endfor %}
         );
     }{% endfor -%}{% else %}
     static void* {{ class.extended_name }}_default_ctor(void** /*args*/)
     {
         return new {{ class.name }}();
-    }{% endif %}
+    }
+    {% endif %}
 
     static RecordRuntimeMeta s_meta_{{ class.extended_name }} {
-        // 名字
         .name = "{{ class.name }}",
         .hash = {{ class.hash }},
-        .ctor = std::vector<RecordRuntimeMeta::ConstructorFn>{
+        .ctor = std::vector<ConstructorRuntimeMeta>{
             {% if class.constructor_num > 0 %}{% for ctor in class.constructors -%}
-            &{{ ctor.bridge_name }},{% endfor %}{% else %}
-            &{{ class.extended_name }}_default_ctor{% endif %}
+            {
+                .name = "{{ ctor.ctor_name }}",
+                .qualified_name = "{{ ctor.qualified_name }}",
+                .invoker = &{{ ctor.bridge_name }},
+                .param_types = {
+                    {% for p in ctor.parameters -%}
+                    "{{ p.type_name }}"{% if not loop.is_last %},{% endif %}{% endfor %}
+                },
+                .return_type = "{{ ctor.ctor_name }}"
+            }{% if not loop.is_last %},
+            {% endif %}{% endfor %}{% else %}
+            {
+                .name           = "default_ctor",
+                .qualified_name = "{{ class.name }}::{{ class.name }}",
+                .invoker        = &{{ class.extended_name }}_default_ctor,
+                .param_types    = {},
+                .return_type    = "{{ class.name }}"
+            }{% endif %}
         },
         .dtor = [](void* ptr){ delete static_cast<{{ class.name }}*>(ptr);},
         .fields = std::vector<FieldRuntimeMeta>{
@@ -92,7 +134,12 @@ namespace lux::cxx::dref::runtime {
             {
                 .name       = "{{ field.name }}",
                 .offset     = {{ field.offset }},
-                .type_name  = "{{ field.type_name }}",
+                .size       = {{ field.size }},
+                .type_name  = "{{ field.type_name }}",{% if not field.is_const %}
+                .getter     = &get_{{ class.extended_name }}_{{ field.name }},
+                .setter     = &set_{{ class.extended_name }}_{{ field.name }},{% else %}
+                .getter     = nullptr,
+                .setter     = nullptr,{% endif %}
                 .visibility = {{ field.visibility }},
                 .is_static  = {{ field.is_static }},
             }{% if not loop.is_last %},
@@ -102,6 +149,8 @@ namespace lux::cxx::dref::runtime {
             {% for method in class.methods -%}
             {
                 .name = "{{ method.name }}",
+                .qualified_name = "{{ method.qualified_name }}",
+                .mangling       = "{{ method.mangling }}",
                 .invoker = &{{ class.extended_name }}_{{ method.name }}_invoker,
                 .param_types = {
                     {% for p in method.parameters -%}
@@ -118,6 +167,8 @@ namespace lux::cxx::dref::runtime {
             {% for sm in class.static_methods -%}
             {
                 .name = "{{ sm.name }}",
+                .qualified_name = "{{ sm.qualified_name }}",
+                .mangling       = "{{ sm.mangling }}",
                 .invoker = &{{ class.extended_name }}_{{ sm.name }}_static_invoker,
                 .param_types = {
                     {% for p in sm.parameters -%}
@@ -146,7 +197,47 @@ namespace lux::cxx::dref::runtime {
         }
     };
     {% endfor -%}
-    
+
+    {% for fn in free_functions %}
+    static void {{ fn.bridge_name }}(void** args, void* retVal)
+    {
+        {% for p in fn.parameters %}
+        auto arg{{ p.index }} = *static_cast<{{ p.type_name }}*>(args[{{ p.index }}]);
+        {% endfor %}
+
+        {% if fn.return_type == "void" %}
+        {{ fn.qualified_name }}(
+            {% for p in fn.parameters %}
+            arg{{ p.index }}{% if not loop.is_last %}, {% endif %}
+            {% endfor %}
+        );
+        {% else %}
+        auto result = {{ fn.qualified_name }}(
+            {% for p in fn.parameters %}
+            arg{{ p.index }}{% if not loop.is_last %}, {% endif %}
+            {% endfor %}
+        );
+        if(retVal) {
+            *static_cast<{{ fn.return_type }}*>(retVal) = result;
+        }
+        {% endif %}
+    }
+
+    static FunctionRuntimeMeta s_func_meta_{{ fn.bridge_name }} {
+        .name           = "{{ fn.name }}",
+        .qualified_name = "{{ fn.qualified_name }}",
+        .mangling       = "{{ fn.mangling }}",
+        .hash		    = {{ fn.hash }},
+        .invoker        = &{{ fn.bridge_name }},
+        .param_types    = {
+            {% for p in fn.parameters -%}
+            "{{ p.type_name }}"{% if not loop.is_last %}, 
+            {% endif %}{% endfor %}
+        },
+        .return_type = "{{ fn.return_type }}"
+    };
+    {% endfor %}
+
     void register_reflections_{{ file_hash }}(RuntimeRegistry& registry)
     {
         {% for class in classes -%}
@@ -156,7 +247,10 @@ namespace lux::cxx::dref::runtime {
         {% for enum in enums -%}
         registry.registerMeta(&s_enum_meta_{{ enum.extended_name }});
         {% endfor %}
-    }
 
+        {% for fn in free_functions -%}
+        registry.registerMeta(&s_func_meta_{{ fn.bridge_name }});
+        {% endfor %}
+    }
 } // end namespace lux::cxx::dref::runtime
 )";

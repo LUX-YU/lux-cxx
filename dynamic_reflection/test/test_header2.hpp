@@ -8,7 +8,21 @@ struct LUX_REFL(static_reflection;dynamic_reflection) TestClass
     int              field2;
     double           field3;
 
-    int func1(int a, double b)
+	TestClass(int a, double b)
+		: field1("Hello, World!")
+		, field2(a)
+		, field3(b)
+	{
+	}
+
+	TestClass()
+		: field1("Hello, World!")
+		, field2(42)
+		, field3(3.14)
+	{
+	}
+
+    double func1(int a, double b)
     {
         return field2 + a / b;
     }
@@ -50,7 +64,7 @@ namespace lux::cxx::dref::test
         int              field2;
         double           field3;
 
-        int func1(int a, double b)
+        double func1(int a, double b)
         {
             return field2 + a / b;
         }
@@ -76,4 +90,13 @@ namespace lux::cxx::dref::test
         }
     };
 
+    static inline int LUX_REFL(dynamic_reflection) func()
+    {
+        return 0;
+    }
+
+	static inline int LUX_REFL(dynamic_reflection) func(int a)
+	{
+		return a;
+	}
 }
