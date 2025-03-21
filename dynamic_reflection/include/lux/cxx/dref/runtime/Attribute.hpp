@@ -30,11 +30,15 @@
 #if defined __LUX_PARSE_TIME__
 #define LUX_REFL(...) __attribute__((annotate(LUX_REF_MARK_PREFIX #__VA_ARGS__)))
 #else
+// Use LUX_REFL(static_reflection) to enable static reflection
+// Use LUX_REFL(dynamic_reflection) to enable dynamic reflection
+// Use LUX_REFL(static_reflection, dynamic_reflection) to enable both
 #define LUX_REFL(...)
 #endif
 
 namespace lux::cxx::dref
 {
+	// For static reflection
     enum class EMetaType
     {
         CLASS,
@@ -42,6 +46,7 @@ namespace lux::cxx::dref
         ENUMERATOR
     };
 
+	// For static reflection and dynamic reflection
     enum class EVisibility
     {
         INVALID,
@@ -50,6 +55,7 @@ namespace lux::cxx::dref
         PRIVATE
     };
 
+	// For static reflection
     struct FieldInfo
     {
         const char* name;
@@ -59,6 +65,7 @@ namespace lux::cxx::dref
 		bool		is_const;
     };
 
+	// For static reflection
     struct MethodInfo
     {
 		const char* name;
@@ -68,5 +75,6 @@ namespace lux::cxx::dref
         bool 	    is_virtual;
     };
 
+    // For static reflection
     template <typename T> class type_meta;
 }
