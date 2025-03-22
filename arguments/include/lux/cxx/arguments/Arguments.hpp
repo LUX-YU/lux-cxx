@@ -281,14 +281,14 @@ namespace lux::cxx
 						auto iter = _short_name_map.find(key);
 						if (iter == _short_name_map.end() && !_allow_unrecognized)
 						{
-							return unexpected(EArgumentParseError::ARGUMENT_NOT_FOUND);
+							return unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);
 						}
 						key = iter->second;
 					}
 
-					if(auto iter = _arguments.find(key); iter == _arguments.end() && !_allow_unrecognized)
+					if (auto iter = _arguments.find(key); iter == _arguments.end() && !_allow_unrecognized)
 					{
-						return unexpected(EArgumentParseError::ARGUMENT_NOT_FOUND);
+						return unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);
 					}
 
 					// Support for flags without values or with multiple values
@@ -322,11 +322,11 @@ namespace lux::cxx
 						arg._convert_and_assign(parsed_args[key], arg._value);
 					}
 					catch (const std::exception& e) {
-						return unexpected(EArgumentParseError::ARGUMENT_TYPE_MISMATCH);
+						return unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_TYPE_MISMATCH);
 					}
 				}
 				else if (arg._required) {
-					return unexpected(EArgumentParseError::ARGUMENT_NOT_FOUND);
+					return unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);
 				}
 			}
 
