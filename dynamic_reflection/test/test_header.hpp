@@ -20,7 +20,7 @@ using FuncType = void(int, double);
 class UnexposedClass;
 typedef int myint;
 
-LUX_REFL(static_reflection) void TestFunction(
+void LUX_REFL(static_reflection) TestFunction(
     LUX_REFL(parameter) myint z,
     size_t&& c,
     const double& d,
