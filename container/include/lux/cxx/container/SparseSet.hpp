@@ -1,80 +1,89 @@
 #pragma once
-/*
+/**
+ * @file OffsetSparseSet.hpp
+ * @brief Provides two sparse-set data structures with a compile-time offset for keys:
+ *        OffsetSparseSet and OffsetAutoSparseSet.
+ *
+ * @copyright
  * Copyright (c) 2025 Chenhui Yu
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the "Software"), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify,
+ * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to the following
+ * conditions:
  *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR
+ * A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+ * CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+ * OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include <vector>
 #include <limits>
-#include <cassert>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace lux::cxx
 {
     /**
-     * @brief A sparse set data structure that associates a unique key with a value,
-     *        optimized for O(1) average insertion, lookup, and removal.
+     * @class OffsetSparseSet
+     * @brief A sparse set data structure allowing keys to start from a compile-time offset.
      *
-     * This implementation stores a range of possible keys (0 to max_key),
-     * maintaining:
-     * - a sparse array (`sparse_`) that maps from a key to an index in the dense arrays,
-     * - two dense arrays (`dense_keys_` and `dense_values_`), which hold the actual (key, value) pairs.
+     * This implementation provides:
+     * - A sparse array (`sparse_`) indexed by `key - Offset`,
+     * - Two dense arrays (`dense_keys_` and `dense_values_`) storing the actual (key, value) pairs.
      *
-     * @tparam Key   The key type. Must be an integral or enum type that can be used as an index.
-     * @tparam Value The type of values stored in the set.
+     * All operations (insert, erase, contains, etc.) work in O(1) on average. The offset
+     * ensures that memory is not allocated for all key indices below `Offset`.
+     *
+     * @tparam Key    The integral type of the key.
+     * @tparam Value  The type of the stored value.
+     * @tparam Offset A compile-time constant indicating the minimum valid key.
      */
-    template<typename Key, typename Value>
-    class SparseSet
+    template <typename Key, typename Value, Key Offset = 0>
+    class OffsetSparseSet
     {
+        static_assert(std::is_integral_v<Key>,
+            "OffsetSparseSet: Key must be an integral type.");
+
     public:
         /**
-         * @brief A type used for sizes and indices.
+         * @brief Type definition for size and index values.
          */
         using size_type = std::size_t;
 
         /**
-         * @brief Constant indicating an invalid index in the sparse array.
+         * @brief Constant representing an invalid index within the sparse array.
          */
-        static constexpr size_type INVALID_INDEX = (std::numeric_limits<size_type>::max)();
+        static constexpr size_type INVALID_INDEX =
+            (std::numeric_limits<size_type>::max)();
 
         /**
-         * @brief Constructs an empty SparseSet.
+         * @brief Default constructor; does not allocate any storage.
          */
-        SparseSet() = default;
+        OffsetSparseSet() = default;
 
         /**
-         * @brief Constructs an empty SparseSet with a reserved capacity.
-         * @param initial_capacity The number of elements to reserve in the dense arrays.
-         *
-         * This does not resize the `sparse_` vector. Instead, it just ensures the
-         * dense arrays can hold at least @p initial_capacity elements without reallocation.
+         * @brief Constructor with initial capacity for the dense arrays.
+         *        The sparse array grows automatically based on the maximum key seen.
+         * @param initial_capacity The initial capacity to reserve in the dense arrays.
          */
-        explicit SparseSet(size_type initial_capacity)
+        explicit OffsetSparseSet(size_type initial_capacity)
         {
             reserve(initial_capacity);
         }
 
         /**
-         * @brief Returns the number of elements currently stored in the set.
-         * @return The size of the SparseSet.
+         * @brief Returns the number of stored elements.
+         * @return Number of elements in the set.
          */
         size_type size() const noexcept
         {
@@ -83,7 +92,7 @@ namespace lux::cxx
 
         /**
          * @brief Checks if the set is empty.
-         * @return True if there are no elements in the set, false otherwise.
+         * @return True if empty, false otherwise.
          */
         bool empty() const noexcept
         {
@@ -92,10 +101,7 @@ namespace lux::cxx
 
         /**
          * @brief Reserves storage for at least @p new_capacity elements in the dense arrays.
-         * @param new_capacity The number of elements to reserve in the dense arrays.
-         *
-         * This can help reduce reallocation overhead if you know you will be inserting many elements.
-         * It does not resize the sparse array. The sparse array will grow automatically based on the maximum key seen.
+         * @param new_capacity The capacity to reserve for the dense arrays.
          */
         void reserve(size_type new_capacity)
         {
@@ -104,9 +110,7 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Removes all elements from the set.
-         *
-         * After clearing, the set will be empty, and the sparse array will also be cleared.git 
+         * @brief Removes all elements from the set, clearing both the sparse and dense arrays.
          */
         void clear()
         {
@@ -116,199 +120,184 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Checks whether a given key is present in the set.
-         * @param key The key to look up.
-         * @return True if @p key is in the set, false otherwise.
+         * @brief Checks if a given key is in the set.
+         * @param key The key to check.
+         * @return True if the key exists, false otherwise.
          */
         bool contains(Key key) const
         {
-            return (key < sparse_.size()) && (sparse_[key] != INVALID_INDEX);
+            if (key < Offset) {
+                return false;
+            }
+            size_type idx = toIndex(key);
+            return (idx < sparse_.size()) && (sparse_[idx] != INVALID_INDEX);
         }
 
         /**
-         * @brief Inserts or updates an element with the specified key and value (lvalue reference).
-         * @param key   The key to be inserted.
+         * @brief Inserts or updates a (key, value) pair by lvalue reference.
+         * @param key   The key to insert or update.
          * @param value The value to associate with the key.
          *
-         * If the key already exists, its value is replaced. Otherwise, a new element is inserted.
+         * If the key already exists, its value is overwritten.
+         * Otherwise, a new pair is inserted.
          */
         void insert(Key key, const Value& value)
         {
             ensure_sparse_size(key);
-            auto idx = sparse_[key];
+            size_type idx = sparse_[toIndex(key)];
             if (idx == INVALID_INDEX) {
-                // Key does not exist yet; insert new.
                 idx = dense_keys_.size();
                 dense_keys_.push_back(key);
                 dense_values_.push_back(value);
-                sparse_[key] = idx;
+                sparse_[toIndex(key)] = idx;
             }
             else {
-                // Key exists; update value.
                 dense_values_[idx] = value;
             }
         }
 
         /**
-         * @brief Inserts or updates an element with the specified key and value (rvalue reference).
-         * @param key   The key to be inserted.
+         * @brief Inserts or updates a (key, value) pair by rvalue reference.
+         * @param key   The key to insert or update.
          * @param value The value to associate with the key (rvalue reference).
          *
-         * If the key already exists, its value is replaced. Otherwise, a new element is inserted.
+         * If the key already exists, its value is overwritten.
+         * Otherwise, a new pair is inserted.
          */
         void insert(Key key, Value&& value)
         {
             ensure_sparse_size(key);
-            auto idx = sparse_[key];
+            size_type idx = sparse_[toIndex(key)];
             if (idx == INVALID_INDEX) {
-                // Key does not exist yet; insert new.
                 idx = dense_keys_.size();
                 dense_keys_.push_back(key);
                 dense_values_.push_back(std::move(value));
-                sparse_[key] = idx;
+                sparse_[toIndex(key)] = idx;
             }
             else {
-                // Key exists; update value.
                 dense_values_[idx] = std::move(value);
             }
         }
 
-		/**
-		 * @brief Accesses the value associated with a given key.
-		 * @param key The key to look up.
-		 * @return A reference to the value associated with the key.
-		 *
-		 * If the key is not in the set, it is inserted with a default-constructed value.
-		 */
-		Value& operator[](Key key)
-		{
-			ensure_sparse_size(key);
-			auto idx = sparse_[key];
-			if (idx == INVALID_INDEX) {
-				idx = dense_keys_.size();
-				dense_keys_.push_back(key);
-				dense_values_.push_back(Value{});
-				sparse_[key] = idx;
-			}
-			return dense_values_[idx];
-		}
-
-
         /**
-         * @brief Constructs and inserts (or updates) an element in place.
-         * @tparam Args Parameter pack for constructing the @p Value object.
-         * @param key  The key to be inserted.
-         * @param args Arguments used to construct the value in place.
-         * @return A reference to the newly emplaced or updated value.
-         *
-         * If the key already exists, the existing value is reinitialized via a constructor call with @p args.
-         * Otherwise, a new element is inserted.
+         * @brief Inserts a default-constructed value if key does not exist,
+         *        otherwise returns a reference to the existing value.
+         * @param key The key to insert or retrieve.
+         * @return A reference to the associated value.
          */
-        template<typename... Args>
-        Value& emplace(Key key, Args&&... args)
+        Value& operator[](Key key)
         {
             ensure_sparse_size(key);
-            auto idx = sparse_[key];
+            size_type idx = sparse_[toIndex(key)];
             if (idx == INVALID_INDEX) {
-                // Insert new element.
                 idx = dense_keys_.size();
                 dense_keys_.push_back(key);
-                dense_values_.emplace_back(std::forward<Args>(args)...);
-                sparse_[key] = idx;
-            }
-            else {
-                dense_values_[idx].~Value();
-                // Reconstruct existing value.
-                new (static_cast<void*>(&dense_values_[idx])) Value(std::forward<Args>(args)...);
+                dense_values_.push_back(Value{});
+                sparse_[toIndex(key)] = idx;
             }
             return dense_values_[idx];
         }
 
         /**
-         * @brief Removes the specified key from the set.
-         * @param key The key to remove.
-         * @return True if the key was removed, or false if it was not found.
+         * @brief Constructs and inserts (or updates) a value in-place for the given key.
          *
-         * The removal algorithm uses "swap with the last element" in the dense arrays to maintain
-         * correct ordering in O(1) time (amortized).
+         * If the key already exists, the existing value is destructed and re-constructed.
+         * Otherwise, a new (key, value) pair is inserted.
+         *
+         * @tparam Args Parameter pack to forward to Value's constructor.
+         * @param key The key to insert or update.
+         * @param args Arguments for constructing the value in-place.
+         * @return A reference to the newly constructed value.
+         */
+        template <typename... Args>
+        Value& emplace(Key key, Args&&... args)
+        {
+            ensure_sparse_size(key);
+            size_type idx = sparse_[toIndex(key)];
+            if (idx == INVALID_INDEX) {
+                idx = dense_keys_.size();
+                dense_keys_.push_back(key);
+                dense_values_.emplace_back(std::forward<Args>(args)...);
+                sparse_[toIndex(key)] = idx;
+            }
+            else {
+                dense_values_[idx].~Value();
+                new (&dense_values_[idx]) Value(std::forward<Args>(args)...);
+            }
+            return dense_values_[idx];
+        }
+
+        /**
+         * @brief Removes the specified key from the set if it exists.
+         * @param key The key to remove.
+         * @return True if the key was removed, false if it was not found.
+         *
+         * This uses a "swap with last" approach in the dense arrays for O(1) removal.
          */
         bool erase(Key key)
         {
             if (!contains(key)) {
                 return false;
             }
-            auto idx_sparse = sparse_[key];
-            auto last_idx = dense_keys_.size() - 1;
+            size_type i = sparse_[toIndex(key)];
+            size_type last = dense_keys_.size() - 1;
 
-            // If the element to remove is not the last one in dense storage,
-            // move the last element to its position.
-            if (idx_sparse != last_idx) {
-                auto last_key = dense_keys_[last_idx];
-                dense_keys_[idx_sparse] = last_key;
-                dense_values_[idx_sparse] = std::move(dense_values_[last_idx]);
-                sparse_[last_key] = idx_sparse;
+            if (i != last) {
+                Key last_key = dense_keys_[last];
+                dense_keys_[i] = last_key;
+                dense_values_[i] = std::move(dense_values_[last]);
+                sparse_[toIndex(last_key)] = i;
             }
-            // Erase the last element from the dense arrays.
             dense_keys_.pop_back();
             dense_values_.pop_back();
-            // Mark the key as invalid in the sparse array.
-            sparse_[key] = INVALID_INDEX;
+            sparse_[toIndex(key)] = INVALID_INDEX;
             return true;
         }
 
         /**
-         * @brief Returns a reference to the value associated with a given key.
+         * @brief Extracts (moves out) the value associated with a key, then erases the key.
+         * @param key   The key to extract.
+         * @param value An output reference where the value is moved.
+         * @return False if the key is not found, true otherwise.
+         */
+        bool extract(Key key, Value& value)
+        {
+            if (!contains(key)) {
+                return false;
+            }
+            size_type idx = sparse_[toIndex(key)];
+            value = std::move(dense_values_[idx]);
+            erase(key);
+            return true;
+        }
+
+        /**
+         * @brief Returns a reference to the value associated with a key.
          * @param key The key to look up.
-         * @throws std::out_of_range If the key is not in the set.
+         * @throws std::out_of_range if the key is not found.
          * @return A reference to the associated value.
          */
         Value& at(Key key)
         {
-            if (key >= sparse_.size() || sparse_[key] == INVALID_INDEX) {
-                throw std::out_of_range("SparseSet::at: key not found");
-            }
-            return dense_values_[sparse_[key]];
+            checkKeyValid(key);
+            return dense_values_.at(sparse_.at(toIndex(key)));
         }
 
-		/*
-		* @brief Extracts the value associated with a given key.
-        * @param key The key to look up.
-		* @param value The value to extract.
-		* @return false if key doesn't exist.
-        */
-		bool extract(Key key, Value& value)
-		{
-			if (!contains(key))
-			{
-				return false;
-			}
-			auto idx = sparse_[key];
-			value = std::move(dense_values_[idx]);
-			erase(key);
-			return true;
-		}
-
         /**
-         * @brief Returns a const reference to the value associated with a given key.
+         * @brief Returns a const reference to the value associated with a key.
          * @param key The key to look up.
-         * @throws std::out_of_range If the key is not in the set.
+         * @throws std::out_of_range if the key is not found.
          * @return A const reference to the associated value.
          */
         const Value& at(Key key) const
         {
-            if (key >= sparse_.size() || sparse_[key] == INVALID_INDEX) {
-                throw std::out_of_range("SparseSet::at: key not found");
-            }
-            return dense_values_[sparse_[key]];
+            checkKeyValid(key);
+            return dense_values_.at(sparse_.at(toIndex(key)));
         }
 
         /**
-         * @brief Returns a read-only reference to the dense array of keys.
-         *
-         * These keys reflect the actual stored (active) elements. The order of
-         * keys in this array corresponds to the order of values in `values()`.
-         *
-         * @return A constant reference to the internal vector of keys.
+         * @brief Returns a const reference to the vector of keys in dense storage.
+         * @return A const reference to dense_keys_.
          */
         const std::vector<Key>& keys() const noexcept
         {
@@ -316,12 +305,8 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Returns a read-only reference to the dense array of values.
-         *
-         * The order of values in this array corresponds to the order of
-         * keys in `keys()`.
-         *
-         * @return A constant reference to the internal vector of values.
+         * @brief Returns a const reference to the vector of values in dense storage.
+         * @return A const reference to dense_values_.
          */
         const std::vector<Value>& values() const noexcept
         {
@@ -330,90 +315,103 @@ namespace lux::cxx
 
     private:
         /**
-         * @brief Ensures that the sparse array has enough capacity for the given key.
-         * @param key The key that needs to fit into `sparse_`.
-         *
-         * If `sparse_` is too small to index this @p key, it is resized to (`key + 1`)
-         * and any new elements are initialized to `INVALID_INDEX`.
+         * @brief Converts a key to an index in the sparse array by subtracting the Offset.
+         * @param key The key to convert.
+         * @return The index in the sparse array.
+         */
+        static constexpr size_type toIndex(Key key)
+        {
+            return static_cast<size_type>(key - Offset);
+        }
+
+        /**
+         * @brief Ensures the sparse array is large enough to index a given key.
+         * @param key The key to check.
+         * @throws std::out_of_range if key < Offset.
          */
         void ensure_sparse_size(Key key)
         {
-            if (static_cast<size_type>(key) >= sparse_.size()) {
-                sparse_.resize(key + 1, INVALID_INDEX);
+            checkKeyValid(key);
+            const size_type idx = toIndex(key);
+            if (idx >= sparse_.size()) {
+                sparse_.resize(idx + 1, INVALID_INDEX);
+            }
+        }
+
+        /**
+         * @brief Checks if a key is valid (key >= Offset). Throws if not.
+         * @param key The key to check.
+         * @throws std::out_of_range if key < Offset.
+         */
+        static void checkKeyValid(Key key)
+        {
+            if (key < Offset) {
+                throw std::out_of_range("OffsetSparseSet: key < Offset.");
             }
         }
 
     private:
         /**
-         * @brief Sparse array mapping from Key -> index in the dense arrays.
-         *
-         * If `sparse_[k] == INVALID_INDEX`, it means key k is not in the set.
+         * @brief The sparse array where sparse_[key - Offset] stores the index of (key, value)
+         *        in the dense arrays. INVALID_INDEX indicates an absent key.
          */
         std::vector<size_type> sparse_;
 
         /**
-         * @brief Dense array of keys corresponding to stored elements.
-         *
-         * The position of a key in this array is the same as the position
-         * of its associated value in `dense_values_`.
+         * @brief Dense array of keys.
          */
         std::vector<Key>       dense_keys_;
 
         /**
-         * @brief Dense array of values corresponding to stored elements.
-         *
-         * The position of a value in this array is the same as the position
-         * of its associated key in `dense_keys_`.
+         * @brief Dense array of values.
          */
         std::vector<Value>     dense_values_;
     };
-} // namespace lux::cxx
-
-
-namespace lux::cxx
-{
 
     /**
-     * @brief An extended SparseSet that automatically assigns keys (IDs) to inserted elements.
+     * @class OffsetAutoSparseSet
+     * @brief A sparse set that automatically assigns new IDs (keys) with a compile-time offset.
      *
-     * In addition to the functionality of the base SparseSet<Key, Value>, this class:
-     *  - Maintains a list of free (previously used but now erased) IDs for reuse.
-     *  - Maintains a monotonically increasing 'next_id_' to assign new IDs when no free IDs are available.
-     *  - Provides insert/emplace methods returning the newly allocated ID, so the user does not need to provide a key.
+     * This class inherits OffsetSparseSet but manages key allocations:
+     * - If there are free IDs from previously erased elements, reuse them.
+     * - Otherwise, allocate keys from @p next_id_, starting at Offset.
      *
-     * @tparam Value Type of the value objects stored in the set.
-     * @tparam Key   An integral (or enum) type for the IDs. Defaults to std::size_t.
+     * @tparam Value  The type of values to store.
+     * @tparam Key    The integral type for the key.
+     * @tparam Offset A compile-time offset from which to start allocating new keys.
      */
-    template <typename Value, typename Key = std::size_t>
-    class AutoSparseSet : protected SparseSet<Key, Value>
+    template <typename Key, typename Value, Key Offset = 0>
+    class OffsetAutoSparseSet : protected OffsetSparseSet<Key, Value, Offset>
     {
-        static_assert(std::is_integral_v<Key>, "Key must be an integral type for AutoSparseSet.");
+        static_assert(std::is_integral_v<Key>,
+            "OffsetAutoSparseSet: Key must be an integral type.");
 
     public:
-        using BaseType = SparseSet<Key, Value>;
+        using BaseType = OffsetSparseSet<Key, Value, Offset>;
         using size_type = typename BaseType::size_type;
 
         /**
-         * @brief Constructs an empty AutoSparseSet with zero next_id_.
+         * @brief Default constructor. next_id_ is initialized to Offset.
          */
-        AutoSparseSet()
-            : next_id_(0)
+        OffsetAutoSparseSet()
+            : BaseType()
+            , next_id_(Offset)
         {
         }
 
         /**
-         * @brief Constructs an empty AutoSparseSet, reserving capacity in the dense arrays.
-         * @param initial_capacity The number of elements to reserve in the base SparseSet.
+         * @brief Constructor with initial capacity. next_id_ is initialized to Offset.
+         * @param initial_capacity The capacity to reserve in the dense arrays.
          */
-        explicit AutoSparseSet(size_type initial_capacity)
+        explicit OffsetAutoSparseSet(size_type initial_capacity)
             : BaseType(initial_capacity)
-            , next_id_(0)
+            , next_id_(Offset)
         {
         }
 
         /**
-         * @brief Returns the current number of elements stored.
-         * @return The size of the set.
+         * @brief Returns the number of stored elements.
+         * @return Number of elements in the container.
          */
         size_type size() const noexcept
         {
@@ -422,7 +420,7 @@ namespace lux::cxx
 
         /**
          * @brief Checks if the set is empty.
-         * @return True if empty, otherwise false.
+         * @return True if empty, false otherwise.
          */
         bool empty() const noexcept
         {
@@ -430,18 +428,18 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Removes all elements from the set, clearing the free IDs as well and resetting next_id_ to zero.
+         * @brief Clears the container, including free_ids_, and resets next_id_ to Offset.
          */
         void clear()
         {
             BaseType::clear();
             free_ids_.clear();
-            next_id_ = 0;
+            next_id_ = Offset;
         }
 
         /**
-         * @brief Reserves storage for at least @p new_capacity elements in the underlying dense arrays.
-         * @param new_capacity The capacity to reserve.
+         * @brief Reserves storage for at least @p new_capacity elements in the dense arrays.
+         * @param new_capacity The desired capacity in the dense arrays.
          */
         void reserve(size_type new_capacity)
         {
@@ -449,12 +447,9 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Inserts a new value and returns the automatically assigned ID (key).
-         *
-         * If free_ids_ is not empty, uses the last free ID. Otherwise uses next_id_ and increments it.
-         *
-         * @param value A constant reference to the value to insert.
-         * @return The newly assigned key (ID).
+         * @brief Inserts a new value by lvalue reference with an automatically assigned key.
+         * @param value The value to insert.
+         * @return The newly allocated key.
          */
         Key insert(const Value& value)
         {
@@ -464,12 +459,9 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Inserts a new value (rvalue reference) and returns the automatically assigned ID (key).
-         *
-         * If free_ids_ is not empty, uses the last free ID. Otherwise uses next_id_ and increments it.
-         *
-         * @param value An rvalue reference to the value to insert.
-         * @return The newly assigned key (ID).
+         * @brief Inserts a new value by rvalue reference with an automatically assigned key.
+         * @param value The value to insert (rvalue reference).
+         * @return The newly allocated key.
          */
         Key insert(Value&& value)
         {
@@ -479,15 +471,12 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Emplaces a new value in place with a newly assigned key, returning that key.
-         *
-         * If free_ids_ is not empty, uses the last free ID. Otherwise uses next_id_ and increments it.
-         *
-         * @tparam Args Parameter pack for constructing the @p Value object in place.
-         * @param args Arguments used to construct the value.
-         * @return The newly assigned key (ID).
+         * @brief Constructs a new value in-place, assigning a new key automatically.
+         * @tparam Args Parameter pack for Value's constructor.
+         * @param args Arguments used to construct the Value in-place.
+         * @return The newly allocated key.
          */
-        template<typename... Args>
+        template <typename... Args>
         Key emplace(Args&&... args)
         {
             Key new_key = acquire_key();
@@ -496,19 +485,15 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Erases the element associated with @p key from the set.
-         *
-         * If the key is present, returns true. Also, the key is added to the free_ids_ list for future reuse.
-         * If the key is not found, returns false.
-         *
+         * @brief Erases the element associated with @p key if it exists.
          * @param key The key to remove.
          * @return True if the key was found and removed, false otherwise.
+         *
+         * The erased key is added to free_ids_ for future reuse.
          */
         bool erase(Key key)
         {
-            if (BaseType::erase(key)) // calls the base O(1) remove
-            {
-                // put key into the free list for reuse
+            if (BaseType::erase(key)) {
                 free_ids_.push_back(key);
                 return true;
             }
@@ -516,23 +501,26 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Extracts the value associated with @p key if it exists, removing it from the set,
-         *        and returning the moved-out value.
+         * @brief Extracts the value associated with @p key if it exists, removing it from the set.
+         * @param key   The key to extract.
+         * @param value An output reference receiving the moved value.
+         * @return True if the key existed, false otherwise.
          *
-         * The freed key is pushed into free_ids_ for future reuse.
-         * @param key The key to extract.
-         * @param value The value to extract.
-         * @return false if key doesn't exist.
+         * If extraction is successful, the key is reclaimed for future reuse.
          */
         bool extract(Key key, Value& value)
         {
-			return BaseType::extract(key, value);
+            if (BaseType::extract(key, value)) {
+                free_ids_.push_back(key);
+                return true;
+            }
+            return false;
         }
 
         /**
-         * @brief Checks whether a given key exists.
-         * @param key The key to look up.
-         * @return True if it exists in the set, otherwise false.
+         * @brief Checks if a given key is in the set.
+         * @param key The key to check.
+         * @return True if it exists, false otherwise.
          */
         bool contains(Key key) const
         {
@@ -540,7 +528,8 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Returns the number of free IDs currently stored for reuse (for debugging/stats).
+         * @brief Returns the count of free IDs currently stored.
+         * @return The number of available free IDs.
          */
         size_type free_ids_count() const noexcept
         {
@@ -548,8 +537,8 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Access to the underlying base SparseSet's keys array.
-         * @return A const reference to the vector of active keys.
+         * @brief Returns a const reference to the dense array of keys in the base class.
+         * @return A const reference to the keys.
          */
         const std::vector<Key>& keys() const noexcept
         {
@@ -557,8 +546,8 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Access to the underlying base SparseSet's values array.
-         * @return A const reference to the vector of active values.
+         * @brief Returns a const reference to the dense array of values in the base class.
+         * @return A const reference to the values.
          */
         const std::vector<Value>& values() const noexcept
         {
@@ -566,8 +555,8 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Gets the next ID that would be assigned if no free IDs are available (for debugging/stats).
-         * @return The current 'next_id_'.
+         * @brief Returns the next ID that would be allocated if free_ids_ is empty.
+         * @return The current value of next_id_.
          */
         Key next_id() const noexcept
         {
@@ -575,13 +564,9 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Accesses or creates (default) the value for a given key (if you *manually* want to specify a key).
-         *
-         * @note Typically you won't call this in AutoSparseSet, because you rarely want to provide your own key.
-         *       But we still expose it in case you need direct base functionality.
-         *
-         * @param key The key to look up or create.
-         * @return A reference to the associated value.
+         * @brief Allows manual insertion by key if desired, returning a reference to the value.
+         * @param key The user-specified key.
+         * @return A reference to the value, default-constructed if the key did not exist.
          */
         Value& operator[](Key key)
         {
@@ -589,9 +574,10 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Returns a reference to the value for a given key, or throws if not found.
+         * @brief Provides access to the value for the given key, throwing std::out_of_range if not found.
          * @param key The key to look up.
-         * @throws std::out_of_range If key is not found.
+         * @throws std::out_of_range if the key does not exist.
+         * @return A reference to the associated value.
          */
         Value& at(Key key)
         {
@@ -599,9 +585,10 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Returns a const reference to the value for a given key, or throws if not found.
+         * @brief Provides const access to the value for the given key, throwing std::out_of_range if not found.
          * @param key The key to look up.
-         * @throws std::out_of_range If key is not found.
+         * @throws std::out_of_range if the key does not exist.
+         * @return A const reference to the associated value.
          */
         const Value& at(Key key) const
         {
@@ -610,13 +597,13 @@ namespace lux::cxx
 
     protected:
         /**
-         * @brief Acquires the next available key. Either reuses one from free_ids_ or increments next_id_.
-         * @return The new key (ID).
+         * @brief Acquires the next available key: reuses one from free_ids_ if possible,
+         *        otherwise increments next_id_.
+         * @return The newly acquired key.
          */
         Key acquire_key()
         {
-            if (!free_ids_.empty())
-            {
+            if (!free_ids_.empty()) {
                 Key k = free_ids_.back();
                 free_ids_.pop_back();
                 return k;
@@ -626,14 +613,17 @@ namespace lux::cxx
 
     private:
         /**
-         * @brief A list of keys that were erased and can be reused for subsequent insertions.
+         * @brief A list of keys that were removed and can be reused.
          */
         std::vector<Key> free_ids_;
 
         /**
-         * @brief A monotonically increasing counter used for assigning new IDs when free_ids_ is empty.
+         * @brief A monotonically increasing key used for allocation if no free IDs are available.
          */
         Key next_id_;
     };
+
+	template<typename Key, typename Value, Key offset = 0> using SparseSet     = OffsetSparseSet<Key, Value, offset>;
+	template<typename Value, size_t offset = 0> using AutoSparseSet = OffsetAutoSparseSet<size_t, Value, offset>;
 
 } // namespace lux::cxx
