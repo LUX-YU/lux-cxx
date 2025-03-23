@@ -72,7 +72,7 @@ double measureInsert_OffsetAutoSparseSet(std::size_t N, int num_repeats) {
  * @brief Measure average time (in nanoseconds) for inserting N items into std::unordered_map.
  */
 double measureInsert_UnorderedMap(std::size_t N, int num_repeats) {
-    // Generate the same random keys as for OffsetSparseSet
+    // Generate random keys
     auto keys = generateRandomKeys(N, kOffset, 2 * kOffset + 1000000);
 
     double total_time_ns = 0.0;
@@ -119,7 +119,7 @@ double measureFind_OffsetAutoSparseSet(std::size_t N, int num_repeats) {
             }
         }
         auto end = std::chrono::high_resolution_clock::now();
-        (void)found_count;
+        (void)found_count; // avoid unused warning
 
         auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
         total_time_ns += static_cast<double>(duration);
@@ -212,35 +212,111 @@ double measureErase_UnorderedMap(std::size_t N, int num_repeats) {
     return total_time_ns / static_cast<double>(num_repeats);
 }
 
+/**
+ * @brief Measure average time for iterating over all values in OffsetAutoSparseSet.
+ *        We do: insert(N items), then iterate over autoSet.values().
+ */
+double measureIterate_OffsetAutoSparseSet(std::size_t N, int num_repeats) {
+    double total_time_ns = 0.0;
+    for (int r = 0; r < num_repeats; ++r) {
+        MyOffsetAutoSparseSet autoSet;
+        autoSet.reserve(N);
+
+        // Insert
+        for (std::size_t i = 0; i < N; ++i) {
+            autoSet.insert(i);
+        }
+
+        // Measure iteration
+        auto start = std::chrono::high_resolution_clock::now();
+        std::size_t sum = 0;
+        for (auto& val : autoSet.values()) {
+            sum += val; // accumulate to avoid optimization
+        }
+        auto end = std::chrono::high_resolution_clock::now();
+
+        // Optional usage of sum to avoid compiler removing it
+        if (sum == static_cast<std::size_t>(-1)) {
+            std::cout << sum << "\n";
+        }
+
+        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+        total_time_ns += static_cast<double>(duration);
+    }
+    return total_time_ns / static_cast<double>(num_repeats);
+}
+
+/**
+ * @brief Measure average time for iterating over all elements in std::unordered_map.
+ *        We do: insert(N items), then iterate over the map.
+ */
+double measureIterate_UnorderedMap(std::size_t N, int num_repeats) {
+    double total_time_ns = 0.0;
+    for (int r = 0; r < num_repeats; ++r) {
+        // Insert
+        auto keys = generateRandomKeys(N, kOffset, 2 * kOffset + 1000000);
+        std::unordered_map<MyKey, MyValue> umap;
+        umap.reserve(N);
+        for (std::size_t i = 0; i < N; ++i) {
+            umap.emplace(keys[i], i);
+        }
+
+        // Measure iteration
+        auto start = std::chrono::high_resolution_clock::now();
+        std::size_t sum = 0;
+        for (auto& kv : umap) {
+            sum += kv.second;
+        }
+        auto end = std::chrono::high_resolution_clock::now();
+
+        if (sum == static_cast<std::size_t>(-1)) {
+            std::cout << sum << "\n";
+        }
+
+        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+        total_time_ns += static_cast<double>(duration);
+    }
+    return total_time_ns / static_cast<double>(num_repeats);
+}
 
 int main() {
-    // We will test for N in [2^10, 2^20]
-    // And repeat each measurement multiple times to get an average
+    // We will test for N in [2^10, 2^20], repeated multiple times for an average
     const int num_repeats = 5;
-    std::cout << "Performance test for OffsetSparseSet, OffsetAutoSparseSet, and std::unordered_map.\n";
+    std::cout << "Performance test for OffsetAutoSparseSet and std::unordered_map.\n";
     std::cout << "All times shown are average nanoseconds for the entire operation batch (not per element).\n";
     std::cout << "(Repeats per test: " << num_repeats << ")\n\n";
 
-    std::cout << "N, Container, Insert(ns), Find(ns), Erase(ns)\n";
+    // Print header with new column "Iterate(ns)"
+    std::cout << "N, Container, Insert(ns), Find(ns), Erase(ns), Iterate(ns)\n";
 
     for (std::size_t N = (1 << 10); N <= (1 << 20); N <<= 1) {
+        // ---------------------------------------------------------------------
         // OffsetAutoSparseSet
+        // ---------------------------------------------------------------------
         double t_insert_aset = measureInsert_OffsetAutoSparseSet(N, num_repeats);
         double t_find_aset = measureFind_OffsetAutoSparseSet(N, num_repeats);
         double t_erase_aset = measureErase_OffsetAutoSparseSet(N, num_repeats);
+        double t_iter_aset = measureIterate_OffsetAutoSparseSet(N, num_repeats);
+
         std::cout << N << ", OffsetAutoSparseSet, "
             << t_insert_aset << ", "
             << t_find_aset << ", "
-            << t_erase_aset << "\n";
+            << t_erase_aset << ", "
+            << t_iter_aset << "\n";
 
+        // ---------------------------------------------------------------------
         // std::unordered_map
+        // ---------------------------------------------------------------------
         double t_insert_map = measureInsert_UnorderedMap(N, num_repeats);
         double t_find_map = measureFind_UnorderedMap(N, num_repeats);
         double t_erase_map = measureErase_UnorderedMap(N, num_repeats);
+        double t_iter_map = measureIterate_UnorderedMap(N, num_repeats);
+
         std::cout << N << ", std::unordered_map, "
             << t_insert_map << ", "
             << t_find_map << ", "
-            << t_erase_map << "\n";
+            << t_erase_map << ", "
+            << t_iter_map << "\n";
     }
 
     return 0;
