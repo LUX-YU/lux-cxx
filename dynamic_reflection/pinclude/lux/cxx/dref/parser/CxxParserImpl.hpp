@@ -25,9 +25,9 @@
 
 #include "libclang.hpp"
 #include <lux/cxx/dref/parser/CxxParser.hpp>
-#include <lux/cxx/dref/runtime/MetaUnitImpl.hpp>
-#include <lux/cxx/dref/runtime/Declaration.hpp>
-#include <lux/cxx/dref/runtime/Type.hpp>
+#include <lux/cxx/dref/parser/MetaUnitImpl.hpp>
+#include <lux/cxx/dref/parser/Declaration.hpp>
+#include <lux/cxx/dref/parser/Type.hpp>
 #include <memory>
 
 namespace lux::cxx::dref
@@ -128,6 +128,7 @@ namespace lux::cxx::dref
         {
             decl.result_type = createOrFindType(cursor.cursorResultType());
             decl.mangling    = cursor.mangling().to_std();
+			decl.is_variadic = cursor.isVariadic();
         	if(decl.kind != EDeclKind::CXX_CONSTRUCTOR_DECL &&
         		decl.kind != EDeclKind::CXX_CONVERSION_DECL &&
         		decl.kind != EDeclKind::CXX_DESTRUCTOR_DECL)

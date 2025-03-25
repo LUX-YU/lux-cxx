@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-#include <lux/cxx/dref/runtime/MetaType.hpp>
+#include <lux/cxx/dref/parser/MetaType.hpp>
 #include <lux/cxx/dref/runtime/Method.hpp>
 #include <lux/cxx/dref/runtime/Instance.hpp>
 #include <iostream>

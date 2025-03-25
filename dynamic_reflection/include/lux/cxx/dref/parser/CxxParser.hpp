@@ -25,7 +25,7 @@
 #include <optional>
 #include <vector>
 #include <lux/cxx/visibility.h>
-#include <lux/cxx/dref/runtime/MetaUnit.hpp>
+#include <lux/cxx/dref/parser/MetaUnit.hpp>
 
 namespace lux::cxx::dref
 {

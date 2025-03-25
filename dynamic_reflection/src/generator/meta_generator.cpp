@@ -33,8 +33,8 @@
 
 #include <lux/cxx/dref/parser/CxxParser.hpp>
 #include <lux/cxx/dref/parser/libclang.hpp>
-#include <lux/cxx/dref/runtime/Declaration.hpp>
-#include <lux/cxx/dref/runtime/Type.hpp>
+#include <lux/cxx/dref/parser/Declaration.hpp>
+#include <lux/cxx/dref/parser/Type.hpp>
 #include <lux/cxx/algotithm/hash.hpp>
 #include <lux/cxx/algotithm/string_operations.hpp>
 
@@ -140,7 +140,7 @@ int main(int argc, char* argv[])
     }
 
 
-
+    /*
     // Setup generator config
     GeneratorConfig config;
     config.target_dir = out_dir;
@@ -156,6 +156,7 @@ int main(int argc, char* argv[])
     if (gen_result != MetaGenerator::EGenerateError::SUCCESS) {
         return 1;
     }
+    */
 
     return 0;
 }

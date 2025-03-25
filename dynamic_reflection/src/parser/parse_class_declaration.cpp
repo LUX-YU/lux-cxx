@@ -21,7 +21,7 @@
  */
 
 #include <lux/cxx/dref/parser/CxxParserImpl.hpp>
-#include <lux/cxx/dref/runtime/Declaration.hpp>
+#include <lux/cxx/dref/parser/Declaration.hpp>
 
 namespace lux::cxx::dref
 {
@@ -219,33 +219,6 @@ namespace lux::cxx::dref
         auto record_type = dynamic_cast<RecordType*>(decl.type);
         // Ensure the record type is valid and link it back to the declaration
         assert(record_type != nullptr);
-        // Register base classes in the record type
-        for (auto base : decl.bases)
-        {
-            record_type->bases.push_back(dynamic_cast<RecordType*>(base->type));
-        }
-        // Register non-static methods in the record type
-        for (auto method : decl.method_decls)
-        {
-            record_type->method_decls.push_back(dynamic_cast<FunctionType*>(method->type));
-        }
-        // Register static methods in the record type
-        for (auto method : decl.static_method_decls)
-        {
-            record_type->static_method_decls.push_back(dynamic_cast<FunctionType*>(method->type));
-        }
-        // Register constructors in the record type
-        for (auto method : decl.constructor_decls)
-        {
-            record_type->constructor_decls.push_back(dynamic_cast<FunctionType*>(method->type));
-        }
-        // Register the destructor in the record type
-        record_type->destructor_decl = dynamic_cast<FunctionType*>(decl.destructor_decl->type);
-        // Register field declarations in the record type
-        for (auto field : decl.field_decls)
-        {
-            record_type->field_decls.push_back(field->type);
-        }
         record_type->decl = &decl;
     }
 }

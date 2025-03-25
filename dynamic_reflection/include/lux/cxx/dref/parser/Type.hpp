@@ -47,6 +47,7 @@ namespace lux::cxx::dref {
      * Forward declarations for specific type classes so we can reference them
      * inside the TypeVisitor before defining them.
      */
+    class Type;
     class BuiltinType;
     class PointerType;
     class LValueReferenceType;
@@ -54,6 +55,7 @@ namespace lux::cxx::dref {
     class RecordType;
     class EnumType;
     class FunctionType;
+    class UnsupportedType;
 
     /**
      * Interface for visiting different concrete Type classes.
@@ -62,7 +64,7 @@ namespace lux::cxx::dref {
     class TypeVisitor
     {
     public:
-        virtual void visit(class Type*) = 0;
+		// virtual void visit(Type*) = 0;
         virtual void visit(BuiltinType*) = 0;
         virtual void visit(PointerType*) = 0;
         virtual void visit(LValueReferenceType*) = 0;
@@ -70,6 +72,8 @@ namespace lux::cxx::dref {
         virtual void visit(RecordType*) = 0;
         virtual void visit(EnumType*) = 0;
         virtual void visit(FunctionType*) = 0;
+
+		virtual void visit(UnsupportedType*) = 0;
     };
 
     /**
@@ -84,25 +88,28 @@ namespace lux::cxx::dref {
         std::string name; ///< A descriptive name, used for debugging or display.
         std::string id;   ///< A unique identifier for internal referencing.
         ETypeKind   kind; ///< The classification of this type (e.g. BUILTIN, POINTER).
-        bool is_const{ false };    ///< True if the type is marked as const.
-        bool is_volatile{ false }; ///< True if the type is marked as volatile.
-        int  size;  ///< Size in bytes (if known), otherwise could be set to -1 or 0 if unknown.
-        int  align; ///< Alignment requirement in bytes (if known).
+        bool        is_const{ false };    ///< True if the type is marked as const.
+        bool        is_volatile{ false }; ///< True if the type is marked as volatile.
+        int         size;  ///< Size in bytes (if known), otherwise could be set to -1 or 0 if unknown.
+        int         align; ///< Alignment requirement in bytes (if known).
 
         /**
          * Accepts a type visitor to allow external operations on this object
          * based on its concrete dynamic type.
          */
-        virtual void accept(TypeVisitor* visitor) {
-            visitor->visit(this);
-        }
+        virtual void accept(TypeVisitor* visitor) = 0;
     };
 
     /**
      * Represents a type that is unsupported by this reflection system.
      * This can serve as a fallback for types we have not (yet) implemented.
      */
-    class UnsupportedType : public Type {};
+    class UnsupportedType : public Type {
+    public:
+        void accept(TypeVisitor* visitor) override {
+            visitor->visit(this);
+        }
+    };
 
     class TagDecl;
     /**
@@ -260,6 +267,10 @@ namespace lux::cxx::dref {
         }
 
         EBuiltinKind builtin_type;
+
+        void accept(TypeVisitor* visitor) override {
+            visitor->visit(this);
+        }
     };
 
     //==================================================================
@@ -276,6 +287,10 @@ namespace lux::cxx::dref {
 
         Type* pointee = nullptr;   ///< The type being pointed to.
         bool  is_pointer_to_member{ false }; ///< True if it's a pointer-to-member type (C++ feature).
+
+        void accept(TypeVisitor* visitor) override {
+            visitor->visit(this);
+        }
     };
 
     //==================================================================
@@ -299,6 +314,10 @@ namespace lux::cxx::dref {
     {
     public:
         static constexpr auto static_kind = ETypeKind::LVALUE_REFERENCE;
+
+        void accept(TypeVisitor* visitor) override {
+            visitor->visit(this);
+        }
     };
 
     /**
@@ -308,6 +327,10 @@ namespace lux::cxx::dref {
     {
     public:
         static constexpr auto static_kind = ETypeKind::RVALUE_REFERENCE;
+
+        void accept(TypeVisitor* visitor) override {
+            visitor->visit(this);
+        }
     };
 
     //==================================================================
@@ -323,18 +346,9 @@ namespace lux::cxx::dref {
     public:
         static constexpr auto static_kind = ETypeKind::RECORD;
 
-        /// List of direct base classes (C++ inheritance).
-        std::vector<RecordType*> bases;
-
-        /**
-         * Declarations for constructors, destructor, normal (non-static) methods,
-         * static methods, and fields in this class.
-         */
-        std::vector<FunctionType*>      constructor_decls;
-        FunctionType*                   destructor_decl{nullptr};
-        std::vector<FunctionType*>      method_decls;
-        std::vector<FunctionType*>      static_method_decls;
-        std::vector<Type*>              field_decls;
+        void accept(TypeVisitor* visitor) override {
+            visitor->visit(this);
+        }
     };
 
     //==================================================================
@@ -349,13 +363,14 @@ namespace lux::cxx::dref {
     public:
         static constexpr auto static_kind = ETypeKind::ENUM;
 
-        BuiltinType* underlying_type = nullptr; ///< The underlying integer type of the enum.
+        void accept(TypeVisitor* visitor) override {
+            visitor->visit(this);
+        }
     };
 
     //==================================================================
     // 6) FunctionType
     //==================================================================
-
     /**
      * FunctionType: Represents a function type, including the return type
      * and parameter types. Also indicates if it's variadic (...).
@@ -368,5 +383,9 @@ namespace lux::cxx::dref {
         Type* result_type = nullptr;         ///< The function's return type.
         std::vector<Type*> param_types;      ///< The list of parameter types.
         bool is_variadic = false;            ///< True if this function accepts variadic arguments.
+
+		void accept(TypeVisitor* visitor) override {
+			visitor->visit(this);
+		}
     };
 } // namespace lux::cxx::dref

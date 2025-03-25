@@ -20,57 +20,48 @@
  * SOFTWARE.
  */
 
-#include <lux/cxx/dref/runtime/MetaUnit.hpp>
-#include <lux/cxx/dref/runtime/MetaUnitImpl.hpp>
+#pragma once
+#include <lux/cxx/dref/parser/Declaration.hpp>
+#include <lux/cxx/dref/parser/Type.hpp>
+#include <lux/cxx/algotithm/hash.hpp>
+
+#include <unordered_map>
+#include <memory>
 
 namespace lux::cxx::dref
 {
-	size_t MetaUnit::calculateTypeMetaId(std::string_view name)
+	struct MetaUnitData
 	{
-		return lux::cxx::algorithm::fnv1a(name);
-	}
-	MetaUnit::MetaUnit()
-		:_impl(nullptr)
-	{
-		
-	}
+		// All declaration and types
+		std::vector<std::unique_ptr<Decl>> declarations;
+		std::vector<std::unique_ptr<Type>> types;
 
-	MetaUnit::MetaUnit(MetaUnit&& other) noexcept
-	{
-		_impl = std::move(other._impl);
-	}
+		std::unordered_map<std::string, Decl*>  declaration_map;
+		std::unordered_map<std::string, Type*>  type_map;
 
-	MetaUnit& MetaUnit::operator=(MetaUnit&& other) noexcept
-	{
-		_impl = std::move(other._impl);
-		return *this;
-	}
+		// Marked declarations
+		std::vector<Decl*>				   marked_declarations;
+		std::vector<Type*>				   marked_types;
+	};
 
-	MetaUnit::MetaUnit(std::unique_ptr<MetaUnitImpl> impl)
+	class MetaUnitImpl
 	{
-		_impl = std::move(impl);
-	}
+	public:
+		friend class MetaUnit; // parse time 
 
-	MetaUnit::~MetaUnit() = default;
+		MetaUnitImpl(std::unique_ptr<MetaUnitData> data, std::string unit_name, std::string unit_version)
+			: _data(std::move(data)), _name(std::move(unit_name)), _version(std::move(unit_version))
+		{
+			const std::string id_str = _name + _version;
+			_id = algorithm::fnv1a(id_str);
+		}
 
-	size_t MetaUnit::id() const
-	{
-		return _impl->_id;
-	}
+		~MetaUnitImpl() = default;
 
-	const std::string& MetaUnit::name() const
-	{
-		return _impl->_name;
-	}
-
-	const std::string& MetaUnit::version() const
-	{
-		return _impl->_version;
-	}
-
-	const std::vector<Decl*>&
-	MetaUnit::markedDeclarations() const
-	{
-		return _impl->_data->marked_declarations;
-	}
+	private:
+		size_t		 _id;
+		std::unique_ptr<MetaUnitData> _data;
+		std::string	 _name;
+		std::string	 _version;
+	};
 }

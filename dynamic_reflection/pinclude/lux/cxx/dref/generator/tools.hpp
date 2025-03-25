@@ -8,6 +8,8 @@
 #include <lux/cxx/algotithm/string_operations.hpp>
 #include <lux/cxx/algotithm/hash.hpp>
 
+#include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
+
 
 // -------------------------------------------------------------------------
 // Attempt to see if a file is inside one of the 'includeList' directories
@@ -38,7 +40,7 @@ std::filesystem::path makeAbsolute(
 // ------------------------------------------------------
 bool isStandardAbsolute(const std::string& s);
 
-std::string visibility2Str(lux::cxx::dref::EVisibility visibility);
+std::string visibility2Str(lux::cxx::dref::runtime::EVisibility visibility);
 
 std::string truncateAtLastParen(const std::string& funcName);
 

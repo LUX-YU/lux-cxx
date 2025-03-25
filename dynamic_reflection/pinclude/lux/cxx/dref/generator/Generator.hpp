@@ -2,22 +2,22 @@
 
 #include <inja/inja.hpp>
 
-#include <lux/cxx/dref/runtime/MetaUnit.hpp>
+#include <lux/cxx/dref/parser/MetaUnit.hpp>
+#include "DynamicRefTemplate.inja.hpp"
 #include "tools.hpp"
 
-class MetaGenerator
-{
-public:
-	MetaGenerator(const GeneratorConfig& config);
-	void generate();
-};
+#include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
+#include <lux/cxx/dref/parser/Type.hpp>
+#include <lux/cxx/dref/parser/Declaration.hpp>
 
-class DynamicMetaGenerator : public lux::cxx::dref::DeclVisitor
+class DynamicMetaGenerator : 
+	public lux::cxx::dref::DeclVisitor, 
+	public lux::cxx::dref::TypeVisitor
 {
 public:
 	DynamicMetaGenerator();
 	
-	virtual ~DynamicMetaGenerator() {};
+	virtual ~DynamicMetaGenerator();
 
 	void visit(lux::cxx::dref::EnumDecl*) override;
 	void visit(lux::cxx::dref::RecordDecl*) override;
@@ -27,12 +27,37 @@ public:
 	void visit(lux::cxx::dref::CXXMethodDecl*) override;
 	void visit(lux::cxx::dref::ParmVarDecl*) override;
 
+	void visit(lux::cxx::dref::BuiltinType*) override;
+	void visit(lux::cxx::dref::PointerType*) override;
+	void visit(lux::cxx::dref::LValueReferenceType*) override;
+	void visit(lux::cxx::dref::RValueReferenceType*) override;
+	void visit(lux::cxx::dref::RecordType*) override;
+	void visit(lux::cxx::dref::EnumType*) override;
+	void visit(lux::cxx::dref::FunctionType*) override;
+
+	void toJsonFile(nlohmann::json& json);
+
 	void setConfig(Config& config);
 
 private:
-	nlohmann::json records_			= nlohmann::json::array();
-	nlohmann::json enums_			= nlohmann::json::array();
-	nlohmann::json free_functions_	= nlohmann::json::array();
+	nlohmann::json records_			 = nlohmann::json::array();
+	nlohmann::json enums_			 = nlohmann::json::array();
+	nlohmann::json free_functions_	 = nlohmann::json::array();
+
+	nlohmann::json fundamental_		 = nlohmann::json::array();
+	nlohmann::json ptr_				 = nlohmann::json::array();
+	nlohmann::json ptr_to_memb_data_ = nlohmann::json::array();
+	nlohmann::json ptr_to_memb_func_ = nlohmann::json::array();
+	nlohmann::json ref_				 = nlohmann::json::array();
+	nlohmann::json array_			 = nlohmann::json::array();
+	nlohmann::json function_		 = nlohmann::json::array();
+	
+	// related to record
+	nlohmann::json method_			 = nlohmann::json::array();
+	nlohmann::json field_			 = nlohmann::json::array();
+	nlohmann::json static_method_	 = nlohmann::json::array();
+	nlohmann::json ctor_			 = nlohmann::json::array();
+	nlohmann::json dtor_			 = nlohmann::json::array();
 };
 
 class StaticMetaGenerator : public lux::cxx::dref::DeclVisitor

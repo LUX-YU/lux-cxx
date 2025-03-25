@@ -1,7 +1,7 @@
 #include "lux/cxx/dref/generator/Generator.hpp"
 #include "lux/cxx/dref/generator/tools.hpp"
-#include "lux/cxx/dref/runtime/Type.hpp"
-#include "lux/cxx/dref/runtime/Declaration.hpp"
+#include "lux/cxx/dref/parser/Type.hpp"
+#include "lux/cxx/dref/parser/Declaration.hpp"
 #include "lux/cxx/algotithm/hash.hpp"
 #include <iostream>
 #include <sstream>
@@ -33,9 +33,8 @@ void StaticMetaGenerator::visit(EnumDecl* decl)
 	enum_info["extended_name"] = lux::cxx::algorithm::replace(decl->full_qualified_name, "::", "_");
 	enum_info["size"] = std::to_string(decl->enumerators.size());
 	enum_info["is_scoped"] = decl->is_scoped;
-	auto enum_type = dynamic_cast<EnumType*>(decl->type);
-	if (enum_type->underlying_type) {
-		enum_info["underlying_type_name"] = enum_type->underlying_type->name;
+	if (decl->underlying_type) {
+		enum_info["underlying_type_name"] = decl->underlying_type->name;
 	}
 	else {
 		enum_info["underlying_type_name"] = "int"; // fallback

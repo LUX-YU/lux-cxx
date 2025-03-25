@@ -1,4 +1,3 @@
-#pragma once
 /*
  * Copyright (c) 2025 Chenhui Yu
  *
@@ -20,29 +19,58 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-static inline std::string_view dynamic_enum_template =
-R"(#include <lux/cxx/dref/runtime/Declaration.hpp>
-#include <lux/cxx/dref/runtime/Type.hpp>
-#include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
-#include <array>
-#include "{{ include_path }}"
 
-namespace lux::cxx::dref::runtime {
-    {% for enum in enums %}
-    static EnumRuntimeMeta s_enum_meta_{{ enum.extended_name }} {
-        .name = "{{ enum.name }}",
-        .hash = {{ enum.hash }},
-        .is_scoped = {{ enum.is_scoped }},
-        .underlying_type_name = "{{ enum.underlying_type_name }}",
-        .enumerators = {
-            {% for enumerator in enum.enumerators -%}
-            EnumRuntimeMeta::Enumerator{
-                .name = "{{ enumerator.name }}",
-                .value = {{ enumerator.value }}
-            }{% if not loop.is_last %},
-            {% endif %}{% endfor %}
-        }
-    };
-    {% endfor -%}
-};
-)";
+#include <lux/cxx/dref/parser/MetaUnit.hpp>
+#include <lux/cxx/dref/parser/MetaUnitImpl.hpp>
+
+namespace lux::cxx::dref
+{
+	size_t MetaUnit::calculateTypeMetaId(std::string_view name)
+	{
+		return lux::cxx::algorithm::fnv1a(name);
+	}
+	MetaUnit::MetaUnit()
+		:_impl(nullptr)
+	{
+		
+	}
+
+	MetaUnit::MetaUnit(MetaUnit&& other) noexcept
+	{
+		_impl = std::move(other._impl);
+	}
+
+	MetaUnit& MetaUnit::operator=(MetaUnit&& other) noexcept
+	{
+		_impl = std::move(other._impl);
+		return *this;
+	}
+
+	MetaUnit::MetaUnit(std::unique_ptr<MetaUnitImpl> impl)
+	{
+		_impl = std::move(impl);
+	}
+
+	MetaUnit::~MetaUnit() = default;
+
+	size_t MetaUnit::id() const
+	{
+		return _impl->_id;
+	}
+
+	const std::string& MetaUnit::name() const
+	{
+		return _impl->_name;
+	}
+
+	const std::string& MetaUnit::version() const
+	{
+		return _impl->_version;
+	}
+
+	const std::vector<Decl*>&
+	MetaUnit::markedDeclarations() const
+	{
+		return _impl->_data->marked_declarations;
+	}
+}

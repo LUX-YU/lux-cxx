@@ -4,13 +4,13 @@ find_package(inja      CONFIG REQUIRED)
 set(DREF_PARSER_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParserImpl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/MetaUnit.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_class_declaration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_enumeration_declaration.cpp
 )
 
 # start constructing component dynamic_reflection_runtime
 set(DREF_RUNTIME_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnit.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/RuntimeMeta.cpp
 )
 

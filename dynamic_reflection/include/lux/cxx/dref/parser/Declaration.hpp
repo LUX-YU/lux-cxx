@@ -23,9 +23,17 @@
 #include <string>
 #include <vector>
 #include <cstddef>
-#include "Attribute.hpp"
+// #include <lux/cxx/dref/runtime/Attribute.hpp>
 
 namespace lux::cxx::dref {
+
+    enum class EVisibility
+    {
+        INVALID,
+        PUBLIC,
+        PROTECTED,
+        PRIVATE
+    };
 
     /**
      * Forward declarations to allow referencing these classes below.
@@ -195,6 +203,7 @@ namespace lux::cxx::dref {
     {
     public:
         bool is_scoped = false;            ///< True if this enum is declared as 'enum class'.
+        BuiltinType* underlying_type = nullptr; ///< The underlying integer type of the enum.
         std::vector<Enumerator> enumerators;    ///< The list of enumerators in this enum.
 
         ~EnumDecl() override = default;
@@ -290,6 +299,8 @@ namespace lux::cxx::dref {
         std::vector<class ParmVarDecl*> params; ///< The parameter list of the function.
 
         std::string mangling; ///< The mangled name, if relevant for linkage.
+
+		bool is_variadic = false; ///< True if this function accepts variadic arguments.
 
         void accept(DeclVisitor* visitor) override
         {

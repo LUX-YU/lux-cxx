@@ -38,43 +38,6 @@
 
 namespace lux::cxx::dref
 {
-	// For static reflection
-    enum class EMetaType
-    {
-        CLASS,
-        STRUCT,
-        ENUMERATOR
-    };
-
-	// For static reflection and dynamic reflection
-    enum class EVisibility
-    {
-        INVALID,
-        PUBLIC,
-        PROTECTED,
-        PRIVATE
-    };
-
-	// For static reflection
-    struct FieldInfo
-    {
-        const char* name;
-        size_t      offset;
-        EVisibility visibility;
-        size_t      index;
-		bool		is_const;
-    };
-
-	// For static reflection
-    struct MethodInfo
-    {
-		const char* name;
-        EVisibility visibility;
-		size_t      index;
-		bool		is_const;
-        bool 	    is_virtual;
-    };
-
     // For static reflection
     template <typename T> class type_meta;
 }
