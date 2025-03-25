@@ -37,20 +37,26 @@ if(GENERATOR)
 		${CMAKE_CURRENT_SOURCE_DIR}
 	)
 
-	target_add_meta(
-		TARGET
-		generate_meta_test
-		METAS
-			${CMAKE_CURRENT_SOURCE_DIR}/test_header2.hpp
-		META_GEN_OUT_DIR
-			${CMAKE_BINARY_DIR}/metagen
-		META_GENERATOR
-			${GENERATOR}
+	add_meta(
+		NAME test_meta
+		META_GEN_OUT_DIR     ${CMAKE_BINARY_DIR}/metagen
+		META_GENERATOR       ${GENERATOR}
+		TARGET_FILES
+		    ${CMAKE_CURRENT_SOURCE_DIR}/test_header2.hpp
+		ECHO
 	)
 
-	add_dependencies(
-		generate_meta_test_meta
-		lux_meta_generator
+	meta_add_files(
+		test_meta
+		TARGET_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_header.hpp
+	)
+
+	target_add_meta(
+		TARGET  generate_meta_test
+		NAME    test_meta
+		ALWAYS_REGENERATE
+		ECHO
 	)
 endif()
 

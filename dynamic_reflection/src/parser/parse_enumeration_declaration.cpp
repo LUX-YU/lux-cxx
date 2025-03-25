@@ -26,11 +26,7 @@ namespace lux::cxx::dref
 {
 	void CxxParserImpl::parseEnumDecl(const Cursor& cursor, EnumDecl& decl)
 	{
-		decl.is_scoped		 = cursor.isEnumDeclScoped();
-		auto underlying_type = createOrFindType(cursor.enumDeclIntegerType());
-		assert(underlying_type->kind == ETypeKind::BUILTIN);
-		decl.underlying_type = static_cast<BuiltinType*>(underlying_type);
-
+		decl.is_scoped = cursor.isEnumDeclScoped();
 		cursor.visitChildren(
 			[this, &decl](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
 			{
@@ -50,6 +46,10 @@ namespace lux::cxx::dref
 		decl.kind	  = EDeclKind::ENUM_DECL;
 		parseNamedDecl(cursor, decl);
 		auto enum_type = dynamic_cast<EnumType*>(decl.type);
+
+		auto underlying_type = createOrFindType(cursor.enumDeclIntegerType());
+		assert(underlying_type->kind == ETypeKind::BUILTIN);
+		enum_type->underlying_type = dynamic_cast<BuiltinType*>(underlying_type);
 		assert(enum_type != nullptr);
 		enum_type->decl = &decl;
 	}

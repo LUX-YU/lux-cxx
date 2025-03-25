@@ -46,7 +46,7 @@ component_add_internal_dependencies(
 
 component_add_cmake_scripts(
 	dynamic_reflection_runtime
-	${CMAKE_CURRENT_SOURCE_DIR}/cmake/target_add_meta.cmake
+	${CMAKE_CURRENT_SOURCE_DIR}/cmake/meta.cmake
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/reflection_header_template.hpp.in
 )
 
@@ -99,6 +99,9 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 add_executable(
 	lux_meta_generator
 	${CMAKE_CURRENT_SOURCE_DIR}/src/generator/meta_generator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/DynamicMetaGenerator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/StaticMataGenerator.cpp    
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/tools.cpp
 )
 
 target_link_libraries(

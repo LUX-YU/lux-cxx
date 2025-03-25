@@ -52,6 +52,7 @@ namespace lux::cxx::dref
 		[[nodiscard]] const std::string& version() const;
 
 		[[nodiscard]] const std::vector<Decl*>& markedDeclarations() const;
+		[[nodiscard]] const std::vector<Type*>& markedType() const;
 
 	private:
 		std::unique_ptr<MetaUnitImpl> _impl;

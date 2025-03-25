@@ -89,6 +89,10 @@ namespace lux::cxx::dref
             if (is_marked)
             {
                 _meta_unit_data->marked_declarations.push_back(raw_ptr);
+				if (auto* named_decl = dynamic_cast<NamedDecl*>(raw_ptr); named_decl != nullptr)
+				{
+					_meta_unit_data->marked_types.push_back(named_decl->type);
+				}
             }
             return raw_ptr;
         }

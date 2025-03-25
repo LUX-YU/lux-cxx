@@ -20,7 +20,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-static inline std::string_view dynamic_meta_template =
+static inline std::string_view dynamic_func_template =
 R"(#include <lux/cxx/dref/runtime/Declaration.hpp>
 #include <lux/cxx/dref/runtime/Type.hpp>
 #include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
@@ -67,20 +67,5 @@ namespace lux::cxx::dref::runtime {
         .return_type = "{{ fn.return_type }}"
     };
     {% endfor %}
-
-    void register_reflections_{{ file_hash }}(RuntimeRegistry& registry)
-    {
-        {% for class in classes -%}
-        registry.registerMeta(&s_meta_{{ class.extended_name }});
-        {% endfor %}
-
-        {% for enum in enums -%}
-        registry.registerMeta(&s_enum_meta_{{ enum.extended_name }});
-        {% endfor %}
-
-        {% for fn in free_functions -%}
-        registry.registerMeta(&s_func_meta_{{ fn.bridge_name }});
-        {% endfor %}
-    }
-} // end namespace lux::cxx::dref::runtime
+};
 )";

@@ -195,7 +195,6 @@ namespace lux::cxx::dref {
     {
     public:
         bool is_scoped = false;            ///< True if this enum is declared as 'enum class'.
-        BuiltinType* underlying_type = nullptr; ///< The underlying integer type of the enum, if specified.
         std::vector<Enumerator> enumerators;    ///< The list of enumerators in this enum.
 
         ~EnumDecl() override = default;
@@ -238,7 +237,7 @@ namespace lux::cxx::dref {
          * static methods, and fields in this class.
          */
         std::vector<CXXConstructorDecl*> constructor_decls;
-        CXXDestructorDecl* destructor_decl = nullptr;
+        CXXDestructorDecl*               destructor_decl = nullptr;
         std::vector<CXXMethodDecl*>      method_decls;
         std::vector<CXXMethodDecl*>      static_method_decls;
         std::vector<class FieldDecl*>    field_decls;
