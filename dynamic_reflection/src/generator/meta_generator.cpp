@@ -39,8 +39,8 @@
 #include <lux/cxx/algotithm/string_operations.hpp>
 
 // The text of your Inja templates:
-#include "static_meta.inja.hpp"
-#include "dynamic_meta.inja.hpp"
+#include "lux/cxx/dref/generator/static_meta.inja.hpp"
+#include "lux/cxx/dref/generator/dynamic_meta.inja.hpp"
 #include <lux/cxx/dref/generator/tools.hpp>
 
 struct GeneratorConfig
@@ -70,7 +70,7 @@ int main(int argc, char* argv[])
         loadConfig(argv[1], config);
     }
     catch (std::exception& e){
-		std::cerr << e.what() << std::endl;
+		std::cerr << "Parse config file failed!\n" << e.what() << std::endl;
         return 1;
     }
 
@@ -92,7 +92,7 @@ int main(int argc, char* argv[])
     }
 
     // gather additional includes from compile_commands
-    auto extra_includes = fetchIncludePaths(config.compile_commands, config.source_file);
+    auto extra_includes  = fetchIncludePaths(config.compile_commands, config.source_file);
 	auto include_options = convertToDashI(extra_includes);
 
 	auto dynamic_meta_generator = std::make_unique<DynamicMetaGenerator>();
@@ -104,6 +104,21 @@ int main(int argc, char* argv[])
     for (const auto& inc : include_options) {
         options.push_back(inc);  // e.g. "-ID:/some/include"
     }
+    options.push_back("-D__LUX_PARSE_TIME__=1");
+
+    inja::Environment static_env;
+	inja::Environment dynamic_env;
+	inja::Template    static_template;
+	inja::Template    dynamic_template;
+
+    try {
+        static_template  = static_env.parse(static_meta_template.data());
+        dynamic_template = dynamic_env.parse(dynamic_meta_template.data());
+	}
+	catch (const std::exception& e) {
+		std::cerr << "[Error] Parsing of template failed.\n" << e.what() << std::endl;
+		return 1;
+	}
 
     for (const auto& file : config.target_files)
     {
@@ -119,7 +134,7 @@ int main(int argc, char* argv[])
         lux::cxx::dref::CxxParser cxx_parser;
         auto [parse_rst, data] = cxx_parser.parse(
             file_path.string(),
-            std::move(options),
+            options,
             "test_unit",
             "1.0.0"
         );
@@ -137,26 +152,25 @@ int main(int argc, char* argv[])
 			decl->accept(static_meta_generator.get());
 			decl->accept(dynamic_meta_generator.get());
         }
+
+		nlohmann::json json;
+
+		dynamic_meta_generator->toJsonFile(json);
+		json["include_path"] = (*maybeRel).string();
+		json["file_hash"] = lux::cxx::algorithm::fnv1a(file_path.string());
+        
+		// static_env.render(static_template, json);
+        try {
+            auto dynamic_render_rst = dynamic_env.render(dynamic_template, json);
+            auto output_path = std::filesystem::path(config.out_dir) / (base_name + ".meta.dynamic.cpp");
+			std::ofstream output(output_path, std::ios::binary);
+			output << dynamic_render_rst;
+			output.close();
+		}
+		catch (std::exception& e) {
+			std::cerr << "[Error] Rendering of template failed.\n" << e.what() << std::endl;
+			return 1;
+		}
     }
-
-
-    /*
-    // Setup generator config
-    GeneratorConfig config;
-    config.target_dir = out_dir;
-    config.file_name = base_name;
-    config.file_hash = file_hash;
-    config.relative_include = lux::cxx::algorithm::replace((*maybeRel).string(), "\\", "/");
-    config.static_meta_suffix = ".meta.static.hpp";
-    config.dynamic_meta_suffix = ".meta.dynamic.cpp";
-
-    // Create the meta generator
-    MetaGenerator generator(config);
-    auto gen_result = generator.generate(data);
-    if (gen_result != MetaGenerator::EGenerateError::SUCCESS) {
-        return 1;
-    }
-    */
-
     return 0;
 }

@@ -2,10 +2,16 @@
 #include "RuntimeMeta.hpp"
 #include <lux/cxx/visibility.h>
 
-namespace lux::cxx::dref
+namespace lux::cxx::dref::runtime
 {
+    struct MetaPtr
+    {
+        ETypeKinds kind;
+        void* meta_ptr;
+    };
+
     /**
-     * @class RuntimeRegistry
+     * @class RuntimeMetaRegistry
      * @brief Global registry for runtime metadata.
      *
      * This singleton-like class provides an interface for registering and retrieving metadata for
@@ -13,7 +19,7 @@ namespace lux::cxx::dref
      * (`meta_map_`) keyed by a hash (usually generated from the name or mangling) and also keeps
      * separate lists (e.g., `record_meta_list_`) for easy indexing of specific metadata types.
      */
-    class LUX_CXX_PUBLIC RuntimeRegistry
+    class LUX_CXX_PUBLIC RuntimeMetaRegistry
     {
         /**
          * @struct IdentityHash
@@ -31,101 +37,88 @@ namespace lux::cxx::dref
         };
 
         /// @brief Template alias for a metadata hash map (keyed by size_t).
-        template<typename T>
-        using MetaHashMap = std::unordered_map<size_t, T, IdentityHash>;
+        using MetaMap = std::unordered_map<size_t, MetaPtr, IdentityHash>;
 
     public:
-        // register all built-in types
-        RuntimeRegistry();
+        RuntimeMetaRegistry() = default;
 
-        /**
-         * @brief Registers a record metadata.
-         * @param meta Pointer to the RecordRuntimeMeta to be registered.
-         *
-         * The hash of the record is used as the key. The record is also appended
-         * to `record_meta_list_`.
-         */
+        //=====================
+        // Register functions
+        //=====================
+
+        void registerMeta(FundamentalRuntimeMeta* meta);
+        void registerMeta(PointerRuntimeMeta* meta);
+        void registerMeta(ReferenceRuntimeMeta* meta);
+        void registerMeta(PointerToDataMemberRuntimeMeta* meta);
+        void registerMeta(PointerToMethodRuntimeMeta* meta);
+        void registerMeta(ArrayRuntimeMeta* meta);
+        void registerMeta(FunctionRuntimeMeta* meta);
+        void registerMeta(MethodRuntimeMeta* meta);
+        void registerMeta(FieldRuntimeMeta* meta);
         void registerMeta(RecordRuntimeMeta* meta);
-
-        /**
-         * @brief Registers an enum metadata.
-         * @param meta Pointer to the EnumRuntimeMeta to be registered.
-         *
-         * The hash of the enum is used as the key. The enum is also appended
-         * to `enum_meta_list_`.
-         */
         void registerMeta(EnumRuntimeMeta* meta);
 
-        /**
-         * @brief Registers a function metadata.
-         * @param meta Pointer to the FunctionRuntimeMeta to be registered.
-         *
-         * The hash of the function (often from its mangled name) is used as the key.
-         * The function is also appended to `function_meta_list_`.
-         */
-        void registerMeta(FunctionRuntimeMeta* meta);
+        //=====================
+        // Has / Find
+        //=====================
+        bool hasMeta(std::string_view name) const;
+        bool hasMeta(size_t hash) const;
+        const MetaPtr* findMeta(std::string_view name) const;
+        const MetaPtr* findMeta(size_t hash) const;
 
-        /**
-         * @brief Checks if metadata exists by name or mangling.
-         * @param name The name (record/enum) or mangling (function).
-         * @return True if the metadata exists; false otherwise.
-         */
-        bool hasMeta(std::string_view name);
-        bool hasMeta(size_t hash);
+        //=====================
+        // findXxx by index
+        //=====================
+        // 这些接口用于按照“注册顺序”获取具体类型的指针
+        const FundamentalRuntimeMeta* findFundamental(size_t index) const;
+        const PointerRuntimeMeta* findPointer(size_t index) const;
+        const ReferenceRuntimeMeta* findReference(size_t index) const;
+        const PointerToDataMemberRuntimeMeta* findPointerToDataMember(size_t index) const;
+        const PointerToMethodRuntimeMeta* findPointerToMethod(size_t index) const;
+        const ArrayRuntimeMeta* findArray(size_t index) const;
+        const FunctionRuntimeMeta* findFunction(size_t index) const;
+        const MethodRuntimeMeta* findMethod(size_t index) const;
+        const FieldRuntimeMeta* findField(size_t index) const;
+        const RecordRuntimeMeta* findRecord(size_t index) const;
+        const EnumRuntimeMeta* findEnum(size_t index) const;
 
-        /**
-         * @brief Finds metadata by name or mangling.
-         * @param name The name (record/enum) or mangling (function).
-         * @return Pointer to the corresponding MetaInfo if found; nullptr otherwise.
-         */
-        const MetaInfo* findMeta(std::string_view name);
-
-        /**
-         * @brief Finds metadata by hash.
-         * @param hash The unique hash associated with the metadata.
-         * @return Pointer to the corresponding MetaInfo if found; nullptr otherwise.
-         */
-        const MetaInfo* findMeta(size_t hash);
-
-        /**
-         * @brief Retrieves record metadata by its index in the internal list.
-         * @param index Index within `record_meta_list_`.
-         * @return Pointer to RecordRuntimeMeta if valid; nullptr otherwise.
-         */
-        RecordRuntimeMeta* findRecord(size_t index);
-
-        /**
-         * @brief Retrieves enum metadata by its index in the internal list.
-         * @param index Index within `enum_meta_list_`.
-         * @return Pointer to EnumRuntimeMeta if valid; nullptr otherwise.
-         */
-        EnumRuntimeMeta* findEnum(size_t index);
-
-        /**
-         * @brief Retrieves function metadata by its index in the internal list.
-         * @param index Index within `function_meta_list_`.
-         * @return Pointer to FunctionRuntimeMeta if valid; nullptr otherwise.
-         */
-        FunctionRuntimeMeta* findFunction(size_t index);
-
-        /// @brief Returns the list of all registered `RecordRuntimeMeta*`.
-        const std::vector<RecordRuntimeMeta*>& recordMetaList()   const { return record_meta_list_; }
-        /// @brief Returns the list of all registered `EnumRuntimeMeta*`.
-        const std::vector<EnumRuntimeMeta*>& enumMetaList()     const { return enum_meta_list_; }
-        /// @brief Returns the list of all registered `FunctionRuntimeMeta*`.
-        const std::vector<FunctionRuntimeMeta*>& functionMetaList() const { return function_meta_list_; }
+        //=====================
+        // Access Lists
+        //=====================
+        const std::vector<FundamentalRuntimeMeta*>& fundamentals() const { return fundamental_metas_; }
+        const std::vector<PointerRuntimeMeta*>& pointers() const { return pointer_metas_; }
+        const std::vector<ReferenceRuntimeMeta*>& references() const { return reference_metas_; }
+        const std::vector<PointerToDataMemberRuntimeMeta*>& pointersToDataMembers() const { return ptr_to_data_member_metas_; }
+        const std::vector<PointerToMethodRuntimeMeta*>& pointersToMethods() const { return ptr_to_method_metas_; }
+        const std::vector<ArrayRuntimeMeta*>& arrays() const { return array_metas_; }
+        const std::vector<FunctionRuntimeMeta*>& functions() const { return function_metas_; }
+        const std::vector<MethodRuntimeMeta*>& methods() const { return method_metas_; }
+        const std::vector<FieldRuntimeMeta*>& fields() const { return field_metas_; }
+        const std::vector<RecordRuntimeMeta*>& records() const { return record_metas_; }
+        const std::vector<EnumRuntimeMeta*>& enums() const { return enum_metas_; }
 
     private:
-        void registerMeta(BuiltinTypeRuntimeMeta* meta);
+        template<typename T>
+        size_t getHashFromMeta(const T* meta) const {
+            // 假设 T 里都有个 meta->basic_info.hash
+            // 如果你的 struct 命名不一样，需要根据实际字段改写
+            return meta->basic_info.hash;
+        }
 
-        /// @brief List of pointers to all registered record metadata objects.
-        std::vector<RecordRuntimeMeta*>         record_meta_list_;
-        /// @brief List of pointers to all registered enum metadata objects.
-        std::vector<EnumRuntimeMeta*>           enum_meta_list_;
-        /// @brief List of pointers to all registered function metadata objects.
-        std::vector<FunctionRuntimeMeta*>       function_meta_list_;
-        std::vector<BuiltinTypeRuntimeMeta*>    builtin_meta_list_;
-        /// @brief A unified map for all metadata, keyed by their unique hashes.
-        MetaHashMap<MetaInfo>                   meta_map_;
+        // 统一存放到 meta_map_ 里（hash -> MetaPtr）
+        MetaMap meta_map_;
+
+        // 分类型保存：注册顺序查询
+        std::vector<FundamentalRuntimeMeta*>           fundamental_metas_;
+        std::vector<PointerRuntimeMeta*>               pointer_metas_;
+        std::vector<ReferenceRuntimeMeta*>             reference_metas_;
+        std::vector<PointerToDataMemberRuntimeMeta*>   ptr_to_data_member_metas_;
+        std::vector<PointerToMethodRuntimeMeta*>       ptr_to_method_metas_;
+        std::vector<ArrayRuntimeMeta*>                 array_metas_;
+        std::vector<FunctionRuntimeMeta*>              function_metas_;
+        std::vector<MethodRuntimeMeta*>                method_metas_;
+        std::vector<FieldRuntimeMeta*>                 field_metas_;
+        std::vector<RecordRuntimeMeta*>                record_metas_;
+        std::vector<EnumRuntimeMeta*>                  enum_metas_;
     };
 }

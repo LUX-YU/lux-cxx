@@ -49,7 +49,7 @@ void StaticMetaGenerator::visit(EnumDecl* decl)
 
 	// 收集values
 	nlohmann::json values = nlohmann::json::array();
-	if (enum_type->underlying_type && enum_type->underlying_type->isSignedInteger()) {
+	if (decl->underlying_type && decl->underlying_type->isSignedInteger()) {
 		for (auto& enumerator : decl->enumerators) {
 			values.push_back(std::to_string(enumerator.signed_value));
 		}
@@ -63,7 +63,7 @@ void StaticMetaGenerator::visit(EnumDecl* decl)
 
 	// 收集 elements
 	nlohmann::json elements = nlohmann::json::array();
-	if (enum_type->underlying_type && enum_type->underlying_type->isSignedInteger()) {
+	if (decl->underlying_type && decl->underlying_type->isSignedInteger()) {
 		for (auto& enumerator : decl->enumerators) {
 			nlohmann::json e;
 			e["key"] = enumerator.name;

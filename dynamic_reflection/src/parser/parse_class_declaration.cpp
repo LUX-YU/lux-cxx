@@ -35,20 +35,20 @@ namespace lux::cxx::dref
      * @param specifier Clang's CX_CXXAccessSpecifier value.
      * @return EVisibility corresponding to the provided specifier.
      */
-    static EVisibility visibilityFromClangVisibility(const CX_CXXAccessSpecifier specifier)
+    static runtime::EVisibility visibilityFromClangVisibility(const CX_CXXAccessSpecifier specifier)
     {
         switch (specifier)
         {
         case CX_CXXInvalidAccessSpecifier:
-            return EVisibility::INVALID;
+            return runtime::EVisibility::INVALID;
         case CX_CXXPublic:
-            return EVisibility::PUBLIC;
+            return runtime::EVisibility::PUBLIC;
         case CX_CXXProtected:
-            return EVisibility::PROTECTED;
+            return runtime::EVisibility::PROTECTED;
         case CX_CXXPrivate:
-            return EVisibility::PRIVATE;
+            return runtime::EVisibility::PRIVATE;
         }
-        return EVisibility::INVALID; // Fallback for any unhandled cases
+        return runtime::EVisibility::INVALID; // Fallback for any unhandled cases
     }
 
     /**
@@ -67,9 +67,10 @@ namespace lux::cxx::dref
         // Set the visibility based on the Clang access specifier
         decl.visibility = visibilityFromClangVisibility(cursor.accessSpecifier());
         // Determine if the method is virtual, static or const-qualified
-        decl.is_virtual = cursor.isMethodVirtual();
-        decl.is_static = cursor.isMethodStatic();
-        decl.is_const = cursor.isMethodConst();
+        decl.is_virtual     = cursor.isMethodVirtual();
+        decl.is_static      = cursor.isMethodStatic();
+        decl.is_const       = cursor.isMethodConst();
+		decl.is_volatile    = cursor.cursorType().isVolatileQualifiedType();
         // Delegate to the generic function declaration parser for additional parsing
         parseFunctionDecl(cursor, decl);
     }

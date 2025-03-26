@@ -79,9 +79,9 @@ std::string visibility2Str(lux::cxx::dref::runtime::EVisibility visibility)
 {
     switch (visibility)
     {
-    case lux::cxx::dref::runtime::EVisibility::Public:    return "EVisibility::PUBLIC";
-    case lux::cxx::dref::runtime::EVisibility::Private:   return "EVisibility::PRIVATE";
-    case lux::cxx::dref::runtime::EVisibility::Protected: return "EVisibility::PROTECTED";
+    case lux::cxx::dref::runtime::EVisibility::PUBLIC:    return "EVisibility::PUBLIC";
+    case lux::cxx::dref::runtime::EVisibility::PRIVATE:   return "EVisibility::PRIVATE";
+    case lux::cxx::dref::runtime::EVisibility::PROTECTED: return "EVisibility::PROTECTED";
     default:
         return "EVisibility::INVALID";
     }

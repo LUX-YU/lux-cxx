@@ -41,7 +41,7 @@ namespace lux::cxx::dref
 
         ~CxxParserImpl();
 
-        ParseResult parse(std::string_view file, std::vector<std::string> commands, std::string_view name, std::string_view version);
+        ParseResult parse(std::string_view file, const std::vector<std::string>& commands, std::string_view name, std::string_view version);
 
         static size_t                       type_meta_id(std::string_view name);
 
@@ -51,7 +51,7 @@ namespace lux::cxx::dref
         static std::vector<std::string>     parseAnnotations(const Cursor&);
     private:
 
-        [[nodiscard]] TranslationUnit       translate(std::string_view file, std::vector<std::string> commands) const;
+        [[nodiscard]] TranslationUnit       translate(std::string_view file, const std::vector<std::string>& commands) const;
 
         [[nodiscard]] std::vector<Cursor>   findMarkedCursors(const Cursor& root_cursor) const;
         bool                                parseMarkedDeclaration(const Cursor& cursor);
@@ -143,7 +143,12 @@ namespace lux::cxx::dref
             	decl.params.push_back(param_decl.get());
                 registerDeclaration(std::move(param_decl));
             }
-            parseNamedDecl(cursor, decl);
+			parseNamedDecl(cursor, decl); // type is set here
+
+            if (auto type = dynamic_cast<FunctionType*>(decl.type))
+            {
+				type->decl = &decl;
+            }
         }
 
         void parseCxxMethodDecl(const Cursor& cursor,    CXXMethodDecl& decl);

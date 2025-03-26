@@ -23,18 +23,9 @@
 #include <string>
 #include <vector>
 #include <cstddef>
-// #include <lux/cxx/dref/runtime/Attribute.hpp>
+#include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
 
 namespace lux::cxx::dref {
-
-    enum class EVisibility
-    {
-        INVALID,
-        PUBLIC,
-        PROTECTED,
-        PRIVATE
-    };
-
     /**
      * Forward declarations to allow referencing these classes below.
      * They will be defined later in this header.
@@ -280,7 +271,7 @@ namespace lux::cxx::dref {
     class FieldDecl final : public DeclaratorDecl
     {
     public:
-        EVisibility visibility = EVisibility::INVALID; ///< e.g., public, protected, private (if relevant).
+        runtime::EVisibility visibility = runtime::EVisibility::INVALID; ///< e.g., public, protected, private (if relevant).
         std::size_t offset = 0; ///< The field offset in bytes (or bits, depending on usage).
 
         void accept(DeclVisitor* visitor) override
@@ -315,11 +306,12 @@ namespace lux::cxx::dref {
     class CXXMethodDecl : public FunctionDecl
     {
     public:
-        EVisibility visibility = EVisibility::INVALID; ///< Visibility (public, protected, private).
+        runtime::EVisibility visibility = runtime::EVisibility::INVALID; ///< Visibility (public, protected, private).
 
         bool is_static = false; ///< True if this is a static method.
         bool is_virtual = false; ///< True if this method is declared virtual.
         bool is_const = false; ///< True if this method is declared const.
+		bool is_volatile = false; ///< True if this method is declared volatile.
 
         void accept(DeclVisitor* visitor) override
         {

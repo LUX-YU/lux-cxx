@@ -41,49 +41,6 @@ enum class LUX_REFL(static_reflection) TestEnum
     THIRD_ENUMERATOR = 4,
 };
 
-namespace lux::cxx::dref{
-template<>
-class type_meta<TestEnum>
-{
-public:
-    static constexpr size_t size = 3;
-    using value_type   = std::underlying_type_t<TestEnum>;
-    using element_type = std::pair<const char*, std::underlying_type_t<TestEnum>>;
-
-    static constexpr std::array<const char*, size> keys{
-        "FIRST_ENUMERATOR",
-        "SECOND_ENUMERATOR",
-        "THIRD_ENUMERATOR",
-    };
-
-    static constexpr std::array<value_type, size> values{
-        100,
-        200,
-        4,
-    };
-
-    static constexpr std::array<element_type, size> elements{
-        element_type{"FIRST_ENUMERATOR", 100},
-        element_type{"SECOND_ENUMERATOR", 200},
-        element_type{"THIRD_ENUMERATOR", 4},
-    };
-
-    static constexpr const char* toString(TestEnum value)
-    {
-        switch (value)
-        {
-        case TestEnum::FIRST_ENUMERATOR:
-            return "FIRST_ENUMERATOR";
-        case TestEnum::SECOND_ENUMERATOR:
-            return "SECOND_ENUMERATOR";
-        case TestEnum::THIRD_ENUMERATOR:
-            return "THIRD_ENUMERATOR";
-        }
-        return "";
-    }
-};
-}
-
 int main(int argc, char* argv[])
 {
     // 需要解析的文件路径

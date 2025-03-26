@@ -23,6 +23,8 @@
 
 #include <string>
 #include <vector>
+#include <clang-c/Index.h>
+
 
 namespace lux::cxx::dref {
 
@@ -136,45 +138,45 @@ namespace lux::cxx::dref {
          * The mapping uses CXType_* values for direct correlation.
          */
         enum class EBuiltinKind {
-            VOID,
-            BOOL,
-            CHAR_U,
-            UCHAR,
-            CHAR16_T,
-            CHAR32_T,
-            UNSIGNED_SHORT_INT,
-            UNSIGNED_INT,
-            UNSIGNED_LONG_INT,
-            UNSIGNED_LONG_LONG_INT,
-            EXTENDED_UNSIGNED,
-            SIGNED_CHAR_S,
-            SIGNED_SIGNED_CHAR,
-            WCHAR_T,
-            SHORT_INT,
-            INT,
-            LONG_INT,
-            LONG_LONG_INT,
-            EXTENDED_SIGNED,
-            FLOAT,
-            DOUBLE,
-            LONG_DOUBLE,
-            NULLPTR,
-            OVERLOAD,
-            DEPENDENT,
-            OBJC_IDENTIFIER,
-            OBJC_CLASS,
-            OBJC_SEL,
-            FLOAT_128,
-            HALF,
-            FLOAT16,
-            SHORT_ACCUM,
-            ACCUM,
-            LONG_ACCUM,
-            UNSIGNED_SHORT_ACCUM,
-            UNSIGNED_ACCUM,
-            UNSIGNED_LONG_ACCUM,
-            BFLOAT16,
-            IMB_128
+            VOID = CXType_Void,
+            BOOL = CXType_Bool,
+            CHAR_U = CXType_Char_U,
+            UCHAR = CXType_UChar,
+            CHAR16_T = CXType_Char16,
+            CHAR32_T = CXType_Char32,
+            UNSIGNED_SHORT_INT = CXType_UShort,
+            UNSIGNED_INT = CXType_UInt,
+            UNSIGNED_LONG_INT = CXType_ULong,
+            UNSIGNED_LONG_LONG_INT = CXType_ULongLong,
+            EXTENDED_UNSIGNED = CXType_UInt128,
+            SIGNED_CHAR_S = CXType_Char_S,
+            SIGNED_SIGNED_CHAR = CXType_SChar,
+            WCHAR_T = CXType_WChar,
+            SHORT_INT = CXType_Short,
+            INT = CXType_Int,
+            LONG_INT = CXType_Long,
+            LONG_LONG_INT = CXType_LongLong,
+            EXTENDED_SIGNED = CXType_Int128,
+            FLOAT = CXType_Float,
+            DOUBLE = CXType_Double,
+            LONG_DOUBLE = CXType_LongDouble,
+            NULLPTR = CXType_NullPtr,
+            OVERLOAD = CXType_Overload,
+            DEPENDENT = CXType_Dependent,
+            OBJC_IDENTIFIER = CXType_ObjCId,
+            OBJC_CLASS = CXType_ObjCClass,
+            OBJC_SEL = CXType_ObjCSel,
+            FLOAT_128 = CXType_Float128,
+            HALF = CXType_Half,
+            FLOAT16 = CXType_Float16,
+            SHORT_ACCUM = CXType_ShortAccum,
+            ACCUM = CXType_Accum,
+            LONG_ACCUM = CXType_LongAccum,
+            UNSIGNED_SHORT_ACCUM = CXType_UShortAccum,
+            UNSIGNED_ACCUM = CXType_UAccum,
+            UNSIGNED_LONG_ACCUM = CXType_UShortAccum,
+            BFLOAT16 = CXType_BFloat16,
+            IMB_128 = CXType_Ibm128,
         };
 
         /**
@@ -375,6 +377,7 @@ namespace lux::cxx::dref {
      * FunctionType: Represents a function type, including the return type
      * and parameter types. Also indicates if it's variadic (...).
      */
+    class FunctionDecl;
     class FunctionType final : public Type
     {
     public:
@@ -383,6 +386,7 @@ namespace lux::cxx::dref {
         Type* result_type = nullptr;         ///< The function's return type.
         std::vector<Type*> param_types;      ///< The list of parameter types.
         bool is_variadic = false;            ///< True if this function accepts variadic arguments.
+        FunctionDecl* decl = nullptr;        ///< Reference to the corresponding FunctionDecl node.
 
 		void accept(TypeVisitor* visitor) override {
 			visitor->visit(this);

@@ -11,7 +11,7 @@ set(DREF_PARSER_SRCS
 
 # start constructing component dynamic_reflection_runtime
 set(DREF_RUNTIME_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/RuntimeMeta.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaRegistry.cpp
 )
 
 add_component(

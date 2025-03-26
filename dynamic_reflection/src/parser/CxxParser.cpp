@@ -32,9 +32,9 @@ namespace lux::cxx::dref
 
     CxxParser::~CxxParser() = default;
 
-    ParseResult CxxParser::parse(const std::string_view file, std::vector<std::string> commands, std::string_view name, std::string_view version) const
+    ParseResult CxxParser::parse(const std::string_view file, const std::vector<std::string>& commands, std::string_view name, std::string_view version) const
     {
-        return _impl->parse(file, std::move(commands), name, version);
+        return _impl->parse(file, commands, name, version);
     }
 
     void CxxParser::setPCHFile(const std::string& file)

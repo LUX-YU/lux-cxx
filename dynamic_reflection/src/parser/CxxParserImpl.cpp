@@ -110,9 +110,9 @@ namespace lux::cxx::dref
 		clang_disposeIndex(_clang_index);
 	}
 
-	ParseResult CxxParserImpl::parse(std::string_view file, std::vector<std::string> commands, std::string_view name, std::string_view version)
+	ParseResult CxxParserImpl::parse(std::string_view file, const std::vector<std::string>& commands, std::string_view name, std::string_view version)
 	{
-		auto translate_unit = translate(file, std::move(commands));
+		auto translate_unit = translate(file, commands);
 		auto error_list = translate_unit.diagnostics();
 		for (auto& str : error_list)
 		{
@@ -227,10 +227,9 @@ namespace lux::cxx::dref
 
 	TranslationUnit CxxParserImpl::translate(
 		std::string_view file_path,
-		std::vector<std::string> commands) const
+		const std::vector<std::string>& commands) const
 	{
 		CXTranslationUnit translation_unit;
-		commands.emplace_back("-D__LUX_PARSE_TIME__=1");
 
 		const int commands_size = static_cast<int>(commands.size());
 		// +1 for add definition

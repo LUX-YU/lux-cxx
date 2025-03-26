@@ -131,12 +131,11 @@ namespace lux::cxx::dref::runtime
         }
     }
 
-
 	enum class EVisibility {
-		Public,
-		Protected,
-		Private,
-		Invalid
+        INVALID = 0,
+        PUBLIC,
+        PROTECTED,
+        PRIVATE
 	};
 
 	struct CVQualifier
