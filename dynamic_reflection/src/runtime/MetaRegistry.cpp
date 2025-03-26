@@ -4,7 +4,7 @@
 namespace lux::cxx::dref::runtime
 {
     void RuntimeMetaRegistry::registerMeta(FundamentalRuntimeMeta* meta) {
-		if (hasMeta(meta->basic_info.name)) {
+		if (hasMeta(meta->basic_info.hash)) {
 			return;
 		}
         fundamental_metas_.push_back(meta);
@@ -13,7 +13,7 @@ namespace lux::cxx::dref::runtime
     }
 
     void RuntimeMetaRegistry::registerMeta(PointerRuntimeMeta* meta) {
-        if (hasMeta(meta->basic_info.name)) {
+        if (hasMeta(meta->basic_info.hash)) {
             return;
         }
         pointer_metas_.push_back(meta);
@@ -22,7 +22,7 @@ namespace lux::cxx::dref::runtime
     }
 
     void RuntimeMetaRegistry::registerMeta(ReferenceRuntimeMeta* meta) {
-        if (hasMeta(meta->basic_info.name)) {
+        if (hasMeta(meta->basic_info.hash)) {
             return;
         }
         reference_metas_.push_back(meta);
@@ -31,7 +31,7 @@ namespace lux::cxx::dref::runtime
     }
 
     void RuntimeMetaRegistry::registerMeta(PointerToDataMemberRuntimeMeta* meta) {
-        if (hasMeta(meta->basic_info.name)) {
+        if (hasMeta(meta->basic_info.hash)) {
             return;
         }
         ptr_to_data_member_metas_.push_back(meta);
@@ -40,7 +40,7 @@ namespace lux::cxx::dref::runtime
     }
 
     void RuntimeMetaRegistry::registerMeta(PointerToMethodRuntimeMeta* meta) {
-        if (hasMeta(meta->basic_info.name)) {
+        if (hasMeta(meta->basic_info.hash)) {
             return;
         }
         ptr_to_method_metas_.push_back(meta);
@@ -49,7 +49,7 @@ namespace lux::cxx::dref::runtime
     }
 
     void RuntimeMetaRegistry::registerMeta(ArrayRuntimeMeta* meta) {
-        if (hasMeta(meta->basic_info.name)) {
+        if (hasMeta(meta->basic_info.hash)) {
             return;
         }
         array_metas_.push_back(meta);
@@ -58,7 +58,7 @@ namespace lux::cxx::dref::runtime
     }
 
     void RuntimeMetaRegistry::registerMeta(FunctionRuntimeMeta* meta) {
-        if (hasMeta(meta->basic_info.name)) {
+        if (hasMeta(meta->basic_info.hash)) {
             return;
         }
         function_metas_.push_back(meta);
@@ -67,7 +67,7 @@ namespace lux::cxx::dref::runtime
     }
 
     void RuntimeMetaRegistry::registerMeta(MethodRuntimeMeta* meta) {
-        if (hasMeta(meta->basic_info.name)) {
+        if (hasMeta(meta->basic_info.hash)) {
             return;
         }
         method_metas_.push_back(meta);
@@ -76,7 +76,7 @@ namespace lux::cxx::dref::runtime
     }
 
     void RuntimeMetaRegistry::registerMeta(FieldRuntimeMeta* meta) {
-        if (hasMeta(meta->basic_info.name)) {
+        if (hasMeta(meta->basic_info.hash)) {
             return;
         }
         field_metas_.push_back(meta);
@@ -85,7 +85,7 @@ namespace lux::cxx::dref::runtime
     }
 
     void RuntimeMetaRegistry::registerMeta(RecordRuntimeMeta* meta) {
-        if (hasMeta(meta->basic_info.name)) {
+        if (hasMeta(meta->basic_info.hash)) {
             return;
         }
         record_metas_.push_back(meta);
@@ -94,7 +94,7 @@ namespace lux::cxx::dref::runtime
     }
 
     void RuntimeMetaRegistry::registerMeta(EnumRuntimeMeta* meta) {
-        if (hasMeta(meta->basic_info.name)) {
+        if (hasMeta(meta->basic_info.hash)) {
             return;
         }
         enum_metas_.push_back(meta);
