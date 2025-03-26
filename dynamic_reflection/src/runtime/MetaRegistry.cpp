@@ -4,66 +4,99 @@
 namespace lux::cxx::dref::runtime
 {
     void RuntimeMetaRegistry::registerMeta(FundamentalRuntimeMeta* meta) {
+		if (hasMeta(meta->basic_info.name)) {
+			return;
+		}
         fundamental_metas_.push_back(meta);
         MetaPtr mp{ meta->basic_info.kind, meta };
         meta_map_[getHashFromMeta(meta)] = mp;
     }
 
     void RuntimeMetaRegistry::registerMeta(PointerRuntimeMeta* meta) {
+        if (hasMeta(meta->basic_info.name)) {
+            return;
+        }
         pointer_metas_.push_back(meta);
         MetaPtr mp{ meta->basic_info.kind, meta };
         meta_map_[getHashFromMeta(meta)] = mp;
     }
 
     void RuntimeMetaRegistry::registerMeta(ReferenceRuntimeMeta* meta) {
+        if (hasMeta(meta->basic_info.name)) {
+            return;
+        }
         reference_metas_.push_back(meta);
         MetaPtr mp{ meta->basic_info.kind, meta };
         meta_map_[getHashFromMeta(meta)] = mp;
     }
 
     void RuntimeMetaRegistry::registerMeta(PointerToDataMemberRuntimeMeta* meta) {
+        if (hasMeta(meta->basic_info.name)) {
+            return;
+        }
         ptr_to_data_member_metas_.push_back(meta);
         MetaPtr mp{ meta->basic_info.kind, meta };
         meta_map_[getHashFromMeta(meta)] = mp;
     }
 
     void RuntimeMetaRegistry::registerMeta(PointerToMethodRuntimeMeta* meta) {
+        if (hasMeta(meta->basic_info.name)) {
+            return;
+        }
         ptr_to_method_metas_.push_back(meta);
         MetaPtr mp{ meta->basic_info.kind, meta };
         meta_map_[getHashFromMeta(meta)] = mp;
     }
 
     void RuntimeMetaRegistry::registerMeta(ArrayRuntimeMeta* meta) {
+        if (hasMeta(meta->basic_info.name)) {
+            return;
+        }
         array_metas_.push_back(meta);
         MetaPtr mp{ meta->basic_info.kind, meta };
         meta_map_[getHashFromMeta(meta)] = mp;
     }
 
     void RuntimeMetaRegistry::registerMeta(FunctionRuntimeMeta* meta) {
+        if (hasMeta(meta->basic_info.name)) {
+            return;
+        }
         function_metas_.push_back(meta);
         MetaPtr mp{ meta->basic_info.kind, meta };
         meta_map_[getHashFromMeta(meta)] = mp;
     }
 
     void RuntimeMetaRegistry::registerMeta(MethodRuntimeMeta* meta) {
+        if (hasMeta(meta->basic_info.name)) {
+            return;
+        }
         method_metas_.push_back(meta);
         MetaPtr mp{ meta->basic_info.kind, meta };
         meta_map_[getHashFromMeta(meta)] = mp;
     }
 
     void RuntimeMetaRegistry::registerMeta(FieldRuntimeMeta* meta) {
+        if (hasMeta(meta->basic_info.name)) {
+            return;
+        }
         field_metas_.push_back(meta);
         MetaPtr mp{ meta->basic_info.kind, meta };
         meta_map_[getHashFromMeta(meta)] = mp;
     }
 
     void RuntimeMetaRegistry::registerMeta(RecordRuntimeMeta* meta) {
+        if (hasMeta(meta->basic_info.name)) {
+            return;
+        }
         record_metas_.push_back(meta);
         MetaPtr mp{ meta->basic_info.kind, meta };
         meta_map_[getHashFromMeta(meta)] = mp;
     }
 
     void RuntimeMetaRegistry::registerMeta(EnumRuntimeMeta* meta) {
+        if (hasMeta(meta->basic_info.name)) {
+            return;
+        }
         enum_metas_.push_back(meta);
         MetaPtr mp{ meta->basic_info.kind, meta };
         meta_map_[getHashFromMeta(meta)] = mp;
