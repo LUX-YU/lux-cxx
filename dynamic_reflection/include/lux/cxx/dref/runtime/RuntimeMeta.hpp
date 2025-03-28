@@ -37,6 +37,7 @@
 #include <vector>
 #include <string>
 #include <cstring>
+#include <variant>
 #include <unordered_map>
 #include <cstddef>
 
@@ -166,14 +167,24 @@ namespace lux::cxx::dref::runtime
 
     struct InvokableTypeMeta
     {
-        using invokable_func_t = void(*)(void** args, void* retVal);
+        using function_t     = void(*)(void** args, void* retVal);
+        using method_t       = void(*)(void* obj, void** args, void* retVal);
+        using ctor_t         = void* (*)(void** args);
+        using dtor           = void(*)(void* obj);
+        
+        using invokable_func_t = std::variant<
+            function_t,
+            method_t,
+            ctor_t,
+            dtor
+        >;
         
 		std::string_view            mangling;
         size_t                      return_type_hash;
 		std::vector<size_t>         param_type_hashs;
         bool						is_variadic;
 
-        invokable_func_t invoker = nullptr;
+        invokable_func_t invoker;
     };
 
     // 1
@@ -237,35 +248,34 @@ namespace lux::cxx::dref::runtime
     // 5
     struct MethodRuntimeMeta
     {
-        using invokable_func_t = void(*)(void* obj, void** args, void* retVal);
+        BasicTypeMeta           basic_info;
+		InvokableTypeMeta       invokable_info; // invoker in invokable_info is disabled, which will be nullptrs
+		CVQualifier		        cv_qualifier;
 
-        BasicTypeMeta       basic_info;
-		InvokableTypeMeta   invokable_info; // invoker in invokable_info is disabled, which will be nullptrs
-		CVQualifier		    cv_qualifier;
-
-		EVisibility         visibility;
-		bool				is_virtual;
-
-		invokable_func_t    invoker = nullptr;
+		EVisibility             visibility;
+		bool				    is_virtual;
     };
 
     // 6
     struct FieldRuntimeMeta
     {
+        using get_field_func_t = void(*)(void* obj, void** field);
+        using set_field_func_t = void(*)(void* obj, const void* inVal);
+
 		BasicTypeMeta        basic_info;
 		ObjectTypeMeta	     object_info;
         CVQualifier	         cv_qualifier;
 
         std::ptrdiff_t       offset;
         EVisibility          visibility;
+
+		get_field_func_t     getter = nullptr;
+		set_field_func_t     setter = nullptr;
     };
 
     // 7
     struct RecordRuntimeMeta
     {
-		using get_field_func_t = void(*)(void* obj, size_t, void** field);
-		using set_field_func_t = void(*)(void* obj, size_t, const void* inVal);
-
         BasicTypeMeta         basic_info;
         ObjectTypeMeta	      object_info;
 
@@ -275,8 +285,6 @@ namespace lux::cxx::dref::runtime
         std::vector<size_t>   field_meta_hashs;
         std::vector<size_t>   method_meta_hashs;
         std::vector<size_t>   static_method_metax_hashs;
-
-		get_field_func_t      get_field_func;
     };
 
     // 8

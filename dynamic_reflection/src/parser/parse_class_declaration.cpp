@@ -131,6 +131,7 @@ namespace lux::cxx::dref
                     auto method_decl = std::make_unique<CXXMethodDecl>();
                     method_decl->kind = EDeclKind::CXX_METHOD_DECL;
                     parseCxxMethodDecl(cursor, *method_decl);
+					method_decl->parent_class = &decl;
                     // Distinguish between static and non-static methods
                     if (method_decl->is_static)
                     {
@@ -149,6 +150,7 @@ namespace lux::cxx::dref
                     auto method_decl = std::make_unique<CXXConstructorDecl>();
                     method_decl->kind = EDeclKind::CXX_CONSTRUCTOR_DECL;
                     parseCxxMethodDecl(cursor, *method_decl);
+                    method_decl->parent_class = &decl;
                     // Add the constructor to the record's constructor list
                     decl.constructor_decls.push_back(method_decl.get());
                     // Register the declaration
@@ -160,6 +162,7 @@ namespace lux::cxx::dref
                     auto method_decl = std::make_unique<CXXDestructorDecl>();
                     method_decl->kind = EDeclKind::CXX_DESTRUCTOR_DECL;
                     parseCxxMethodDecl(cursor, *method_decl);
+                    method_decl->parent_class = &decl;
                     // Store the destructor declaration (assuming one destructor per record)
                     decl.destructor_decl = method_decl.get();
                     // Register the destructor declaration
@@ -214,6 +217,7 @@ namespace lux::cxx::dref
         parseNamedDecl(cursor, decl);
         // Set the declaration kind for the record
         decl.kind = EDeclKind::CXX_RECORD_DECL;
+		decl.is_abstract = cursor.isAbstract();
 
         // Update the record type associated with the declaration.
         // It is assumed that decl.type is already a pointer to a RecordType.

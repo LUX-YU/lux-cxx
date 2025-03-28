@@ -29,7 +29,7 @@ function(add_meta)
         COMPILE_COMMANDS
         META_GENERATOR
         REGISTER_FUNCTION_HEADER_NAME
-        REGISTER_FUNCTION_NAME_PREFIX
+        REGISTER_FUNCTION_NAME
     )
     # 注意：这里改成了 TARGET_FILES
     set(multi_value_args
@@ -69,8 +69,8 @@ function(add_meta)
     if(NOT ARGS_REGISTER_FUNCTION_HEADER_NAME)
         set(ARGS_REGISTER_FUNCTION_HEADER_NAME "register_all_dynamic_meta.hpp")
     endif()
-    if(NOT ARGS_REGISTER_FUNCTION_NAME_PREFIX)
-        set(ARGS_REGISTER_FUNCTION_NAME_PREFIX "register_reflections_")
+    if(NOT ARGS_REGISTER_FUNCTION_NAME)
+        set(ARGS_REGISTER_FUNCTION_NAME "register_reflections")
     endif()
 
     # 把配置信息存到目标属性
@@ -79,7 +79,7 @@ function(add_meta)
         META_COMPILE_COMMANDS              "${ARGS_COMPILE_COMMANDS}"
         META_GENERATOR                     "${ARGS_META_GENERATOR}" 
         META_REGISTER_FUNCTION_HEADER_NAME "${ARGS_REGISTER_FUNCTION_HEADER_NAME}"
-        META_REGISTER_FUNCTION_NAME_PREFIX "${ARGS_REGISTER_FUNCTION_NAME_PREFIX}"
+        META_REGISTER_FUNCTION_NAME_PREFIX "${ARGS_REGISTER_FUNCTION_NAME}"
         META_ECHO                          "${ARGS_ECHO}"
     )
 
@@ -166,10 +166,10 @@ function(target_add_meta)
     )
 
     if(NOT ARGS_NAME)
-        message(FATAL_ERROR "[target_add_meta] 必须提供 NAME=<MetaObjectName>")
+        message(FATAL_ERROR "[target_add_meta] No NAME=<MetaObjectName>")
     endif()
     if(NOT ARGS_TARGET)
-        message(FATAL_ERROR "[target_add_meta] 必须提供 TARGET=<YourTarget>")
+        message(FATAL_ERROR "[target_add_meta] No TARGET=<YourTarget>")
     endif()
 
     set(_meta_name   "${ARGS_NAME}")
@@ -180,7 +180,7 @@ function(target_add_meta)
     get_target_property(_meta_cc_json  ${_meta_name} META_COMPILE_COMMANDS)
     get_target_property(_meta_gen_exe  ${_meta_name} META_GENERATOR)
     get_target_property(_meta_header   ${_meta_name} META_REGISTER_FUNCTION_HEADER_NAME)
-    get_target_property(_meta_prefix   ${_meta_name} META_REGISTER_FUNCTION_NAME_PREFIX)
+    get_target_property(register_function_name   ${_meta_name} META_REGISTER_FUNCTION_NAME_PREFIX)
     get_target_property(_meta_echo     ${_meta_name} META_ECHO)
     # 这里是最关键的：读 TARGET_FILES
     get_target_property(_meta_files    ${_meta_name} TARGET_FILES)
@@ -195,15 +195,15 @@ function(target_add_meta)
     if(NOT _meta_header)
         set(_meta_header "register_all_dynamic_meta.hpp")
     endif()
-    if(NOT _meta_prefix)
-        set(_meta_prefix "register_reflections_")
+    if(NOT register_function_name)
+        set(register_function_name "register_metas")
     endif()
 
     if(NOT _meta_gen_exe)
         find_program(_meta_gen_exe lux_meta_generator)
     endif()
     if(NOT _meta_gen_exe)
-        message(FATAL_ERROR "[target_add_meta] 无法找到 lux_meta_generator")
+        message(FATAL_ERROR "[target_add_meta] Can't find lux_meta_generator")
     endif()
 
     if(NOT EXISTS "${_meta_out_dir}")
@@ -261,15 +261,15 @@ function(target_add_meta)
 
     # 注册信息
     file(APPEND "${_config_file}" "  \"register_header_name\": \"${_meta_header}\",\n")
-    file(APPEND "${_config_file}" "  \"register_function_prefix\": \"${_meta_prefix}\"\n")
+    file(APPEND "${_config_file}" "  \"register_function_name\": \"${register_function_name}\"\n")
     file(APPEND "${_config_file}" "}\n")
 
     # 计算所有输出文件：对每个输入 .hpp -> 2 个 .hpp
     set(_all_generated_files "")
     foreach(_mf IN LISTS _meta_files)
         get_filename_component(_base "${_mf}" NAME_WE)
-        set(_dyn_file "${_meta_out_dir}/${_base}_dynamic_meta.cpp")
-        set(_static_file  "${_meta_out_dir}/${_base}_static_meta.hpp")
+        set(_dyn_file "${_meta_out_dir}/${_base}.meta.dynamic.cpp")
+        set(_static_file  "${_meta_out_dir}/${_base}.meta.static.hpp")
         list(APPEND _all_generated_files "${_dyn_file}" "${_static_file}")
     endforeach()
 
@@ -278,8 +278,11 @@ function(target_add_meta)
         message(STATUS "                 COMPILE_COMMANDS=${_meta_cc_json}")
         message(STATUS "                 META_GENERATOR=${_meta_gen_exe}")
         message(STATUS "                 REGISTER_FUNCTION_HEADER_NAME=${_meta_header}")
-        message(STATUS "                 REGISTER_FUNCTION_NAME_PREFIX=${_meta_prefix}")
-        message(STATUS "                 FILES_WAITING_FOR_GENERATING=${_all_generated_files}")
+        message(STATUS "                 REGISTER_FUNCTION_NAME_PREFIX=${register_function_name}")
+        message(STATUS "                 FILES_WAITING_FOR_GENERATING=")
+        foreach(generate_meta_test IN LISTS _all_generated_files)
+            message(STATUS "                 -> ${generate_meta_test}")
+        endforeach()
     endif()
 
     # 只调用一次 generator

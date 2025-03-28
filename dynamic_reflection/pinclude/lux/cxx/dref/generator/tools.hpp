@@ -52,12 +52,12 @@ std::vector<std::filesystem::path> fetchIncludePaths(
 std::vector<std::string> convertToDashI(const std::vector<std::filesystem::path>& paths);
 
 struct Config {
-    std::string                 out_dir;
-    std::string                 compile_commands;
-    std::vector<std::string>    target_files;
-    std::string                 register_header_name;
-    std::string                 register_function_prefix;
-    std::string                 source_file;
+    std::string              out_dir;
+    std::string              compile_commands;
+    std::vector<std::string> target_files;
+    std::string              register_header_name;
+    std::string              register_function_name;
+    std::string              source_file;
 };
 
 void loadConfig(const std::string& filename, Config& config);

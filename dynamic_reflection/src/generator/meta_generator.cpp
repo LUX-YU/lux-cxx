@@ -28,6 +28,7 @@
 #include <optional>
 #include <set>
 #include <array>
+#include <sstream>
 
 #include <lux/cxx/dref/generator/Generator.hpp>
 
@@ -43,15 +44,17 @@
 #include "lux/cxx/dref/generator/dynamic_meta.inja.hpp"
 #include <lux/cxx/dref/generator/tools.hpp>
 
-struct GeneratorConfig
+using inja_template_array = std::array<inja::Template, dynamic_meta_template_strs.size()>;
+
+static std::string generateDynamicReflectionCode(inja::Environment& env, inja_template_array& dynamic_meta_template, nlohmann::json& data)
 {
-    std::filesystem::path target_dir;
-    std::string           file_name;
-    std::string           file_hash;
-    std::string           relative_include;
-    std::string           static_meta_suffix;
-    std::string           dynamic_meta_suffix;
-};
+    std::stringstream ss;
+	for (auto& meta_template : dynamic_meta_template)
+	{
+        ss << env.render(meta_template, data);
+	}
+	return ss.str();
+}
 
 // -------------------------------------------------------------------------
 // meta_generator()
@@ -95,9 +98,6 @@ int main(int argc, char* argv[])
     auto extra_includes  = fetchIncludePaths(config.compile_commands, config.source_file);
 	auto include_options = convertToDashI(extra_includes);
 
-	auto dynamic_meta_generator = std::make_unique<DynamicMetaGenerator>();
-	auto static_meta_generator  = std::make_unique<StaticMetaGenerator>();
-
     // Build final clang parse options
     std::vector<std::string> options;
     options.push_back("--std=c++20");
@@ -106,22 +106,33 @@ int main(int argc, char* argv[])
     }
     options.push_back("-D__LUX_PARSE_TIME__=1");
 
-    inja::Environment static_env;
-	inja::Environment dynamic_env;
-	inja::Template    static_template;
-	inja::Template    dynamic_template;
+    inja::Environment   static_env;
+	inja::Environment   dynamic_env;
+    inja::Environment   register_file_env;
+	inja::Template      static_meta_template;
+    inja_template_array dynamic_meta_templates;
+    inja::Template      register_file_template;
 
     try {
-        static_template  = static_env.parse(static_meta_template.data());
-        dynamic_template = dynamic_env.parse(dynamic_meta_template.data());
+        static_meta_template  = static_env.parse(static_meta_template_str.data());
+		for (size_t i = 0; i < dynamic_meta_templates.size(); i++)
+		{
+            dynamic_meta_templates[i] = dynamic_env.parse(dynamic_meta_template_strs[i].data());
+		}
+		register_file_template = register_file_env.parse(register_file_header.data());
 	}
 	catch (const std::exception& e) {
 		std::cerr << "[Error] Parsing of template failed.\n" << e.what() << std::endl;
 		return 1;
 	}
 
+    std::vector<std::string> file_hashs;
+
     for (const auto& file : config.target_files)
     {
+        auto dynamic_meta_generator = std::make_unique<DynamicMetaGenerator>();
+        auto static_meta_generator  = std::make_unique<StaticMetaGenerator>();
+
 		std::filesystem::path file_path = file;
         auto maybeRel = findRelativeIncludePath(file_path, extra_includes);
         if (!maybeRel)
@@ -154,14 +165,16 @@ int main(int argc, char* argv[])
         }
 
 		nlohmann::json json;
+        auto file_hash = std::to_string(lux::cxx::algorithm::fnv1a(file_path.string()));
+        file_hashs.push_back(std::move(file_hash));
 
 		dynamic_meta_generator->toJsonFile(json);
 		json["include_path"] = (*maybeRel).string();
-		json["file_hash"] = lux::cxx::algorithm::fnv1a(file_path.string());
+		json["file_hash"]    = file_hashs.back();
         
-		// static_env.render(static_template, json);
+		// static_env.render(static_meta_template, json);
         try {
-            auto dynamic_render_rst = dynamic_env.render(dynamic_template, json);
+			auto dynamic_render_rst = generateDynamicReflectionCode(dynamic_env, dynamic_meta_templates, json);
             auto output_path = std::filesystem::path(config.out_dir) / (base_name + ".meta.dynamic.cpp");
 			std::ofstream output(output_path, std::ios::binary);
 			output << dynamic_render_rst;
@@ -172,5 +185,21 @@ int main(int argc, char* argv[])
 			return 1;
 		}
     }
+
+    try {
+        nlohmann::json register_file_json;
+        register_file_json["file_hashs"] = file_hashs;
+        register_file_json["register_function_name"] = config.register_function_name;
+        std::string rst = register_file_env.render(register_file_template, register_file_json);
+
+        std::ofstream output_register_file(config.out_dir + "/" + config.register_header_name, std::ios::binary);
+        output_register_file << rst;
+        output_register_file.close();
+	}
+	catch (std::exception& e) {
+		std::cerr << "[Error] Rendering of register file template failed.\n" << e.what() << std::endl;
+		return 1;
+	}
+
     return 0;
 }

@@ -669,6 +669,11 @@ namespace lux::cxx::dref
 			return Cursor{ clang_Cursor_getArgument(_cursor, i) };
 		}
 
+		[[nodiscard]] bool isAbstract() const
+		{
+			return clang_CXXRecord_isAbstract(_cursor);
+		}
+
 		/**
 		* Describe the visibility of the entity referred to by a cursor.
 		*

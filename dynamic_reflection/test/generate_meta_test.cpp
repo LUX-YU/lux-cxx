@@ -22,17 +22,15 @@
 #include "test_header2.hpp"
 #include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
 #include <lux/cxx/dref/runtime/MetaRegistry.hpp>
-
+#include <register_all_dynamic_meta.hpp>
 #include <iostream>
-
+ 
 using namespace lux::cxx::dref;
-
 
 int main(int argc, char* argv[])
 {
 	runtime::RuntimeMetaRegistry registry;
-
-
+	runtime::register_reflections(registry);
 
     return 0;
 }

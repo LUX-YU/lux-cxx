@@ -204,16 +204,15 @@ std::vector<std::string> convertToDashI(const std::vector<std::filesystem::path>
     return result;
 }
 
-
 void loadConfig(const std::string& filename, Config& config)
 {
     std::ifstream ifs(filename);
 
     nlohmann::json j; ifs >> j;
-    config.out_dir = j.at("out_dir").get<std::string>();
-    config.compile_commands = j.at("compile_commands").get<std::string>();
-    config.target_files = j.at("target_files").get<std::vector<std::string>>();
-    config.register_header_name = j.at("register_header_name").get<std::string>();
-    config.register_function_prefix = j.at("register_function_prefix").get<std::string>();
-    config.source_file = j.at("source_file").get<std::string>();
+    config.out_dir                = j.at("out_dir").get<std::string>();
+    config.compile_commands       = j.at("compile_commands").get<std::string>();
+    config.target_files           = j.at("target_files").get<std::vector<std::string>>();
+    config.register_header_name   = j.at("register_header_name").get<std::string>();
+    config.register_function_name = j.at("register_function_name").get<std::string>();
+    config.source_file            = j.at("source_file").get<std::string>();
 }

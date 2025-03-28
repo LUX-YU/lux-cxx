@@ -58,6 +58,11 @@ if(GENERATOR)
 		ALWAYS_REGENERATE
 		ECHO
 	)
+
+	add_dependencies(
+		test_meta_gen
+		lux_meta_generator
+	)
 endif()
 
 # macro definition

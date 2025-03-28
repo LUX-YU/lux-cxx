@@ -241,6 +241,7 @@ namespace lux::cxx::dref {
         std::vector<CXXMethodDecl*>      method_decls;
         std::vector<CXXMethodDecl*>      static_method_decls;
         std::vector<class FieldDecl*>    field_decls;
+		bool is_abstract = false; ///< True if this class is abstract (has pure virtual methods).
 
         void accept(DeclVisitor* visitor) override
         {
@@ -312,6 +313,8 @@ namespace lux::cxx::dref {
         bool is_virtual = false; ///< True if this method is declared virtual.
         bool is_const = false; ///< True if this method is declared const.
 		bool is_volatile = false; ///< True if this method is declared volatile.
+
+		CXXRecordDecl* parent_class = nullptr; ///< The class where this method is declared.
 
         void accept(DeclVisitor* visitor) override
         {

@@ -197,6 +197,21 @@ runtime::ETypeKinds getETypeKinds(const Type* type)
 	}
 }
 
+static inline std::string typeRemoveRef(Type* type)
+{
+	if (type->kind == ETypeKind::LVALUE_REFERENCE || type->kind == ETypeKind::RVALUE_REFERENCE)
+	{
+		auto ref_type = dynamic_cast<ReferenceType*>(type);
+		if (!ref_type)
+			throw std::runtime_error("Type marked as reference is not a ReferenceType");
+		return typeRemoveRef(ref_type->referred_type);
+	}
+	else
+	{
+		return type->name;
+	}
+}
+
 DynamicMetaGenerator::DynamicMetaGenerator()
 {
 }
@@ -263,10 +278,11 @@ void DynamicMetaGenerator::visit(CXXRecordDecl* decl)
 
 	record_json["basic_info"] = record_json_basic_info;
 
-	record_json_object_info["size"] = decl->type->size;
-	record_json_object_info["alignment"] = decl->type->align;
+	record_json_object_info["size"]		 = decl->type->size > 0 ? decl->type->size : 0;
+	record_json_object_info["alignment"] = decl->type->align > 0 ? decl->type->align : 0;
 
 	record_json["object_info"] = record_json_object_info;
+	record_json["is_abstract"] = decl->is_abstract;
 
 	record_json["base_hashs"] = nlohmann::json::array();
 	for (auto& base : decl->bases)
@@ -322,8 +338,8 @@ void DynamicMetaGenerator::visit(FieldDecl* decl)
 	field_json_basic_info["hash"] = std::to_string(fnv1a(decl->full_qualified_name));
 	field_json_basic_info["kind"] = typeKind2StrExtra(getETypeKinds(decl->type));
 
-	field_json_object_info["size"] = decl->type->size;
-	field_json_object_info["alignment"] = decl->type->align;
+	field_json_object_info["size"]		= decl->type->size > 0 ? decl->type->size : 0;
+	field_json_object_info["alignment"] = decl->type->align > 0 ? decl->type->align : 0;
 
 	field_json_cv_qualifier["is_const"] = decl->type->is_const;
 	field_json_cv_qualifier["is_volatile"] = decl->type->is_volatile;
@@ -370,6 +386,8 @@ void DynamicMetaGenerator::visit(FunctionDecl* decl)
 		function_json_invokable_info["param_type_hashs"].push_back(std::to_string(fnv1a(param->type->id)));
 		json parameter;
 		parameter["type_name"] = param->type->name;
+		parameter["type_name_remove_ref"] = typeRemoveRef(param->type);
+		parameter["is_rvalue_ref"] = param->type->kind == ETypeKind::RVALUE_REFERENCE;
 		parameter["index"] = i++;
 		function_json_invokable_info["parameters"].push_back(parameter);
 		visit(param);
@@ -378,10 +396,6 @@ void DynamicMetaGenerator::visit(FunctionDecl* decl)
 
 	function_json["basic_info"] = function_json_basic_info;
 	function_json["invokable_info"] = function_json_invokable_info;
-	std::string extended_name = lux::cxx::algorithm::replace(decl->full_qualified_name, "::", "_");
-	std::string bridge_name = extended_name + "_" + decl->spelling + "_invoker";
-	function_json["extended_name"] = extended_name;
-	function_json["bridge_name"] = bridge_name;
 
 	function_.push_back(function_json);
 }
@@ -400,12 +414,12 @@ void DynamicMetaGenerator::visit(CXXMethodDecl* decl)
 	method_json_basic_info["name"] = decl->name;
 	method_json_basic_info["qualified_name"] = decl->full_qualified_name;
 	method_json_basic_info["hash"] = std::to_string(fnv1a(decl->mangling));
-	method_json_basic_info["kind"] = runtime::ETypeKinds::Function;
+	method_json_basic_info["kind"] = typeKind2StrExtra(runtime::ETypeKinds::Function);
 
 	method_json_invokable_info["mangling"] = decl->mangling;
 	method_json_invokable_info["return_type_hash"] = std::to_string(fnv1a(decl->result_type->id));
 	method_json_invokable_info["return_type"] = decl->result_type->name;
-	method_json_invokable_info["invokable_name"] = truncateAtLastParen(decl->full_qualified_name);
+	method_json_invokable_info["invokable_name"] = truncateAtLastParen(decl->spelling);
 	method_json_invokable_info["parameters"] = nlohmann::json::array();
 	method_json_invokable_info["param_type_hashs"] = nlohmann::json::array();
 	method_json_invokable_info["is_variadic"] = decl->is_variadic;
@@ -415,7 +429,9 @@ void DynamicMetaGenerator::visit(CXXMethodDecl* decl)
 		method_json_invokable_info["param_type_hashs"].push_back(std::to_string(fnv1a(param->type->id)));
 		json parameter;
 		parameter["type_name"] = param->type->name;
-		parameter["index"]     = i++;
+		parameter["type_name_remove_ref"] = typeRemoveRef(param->type);
+		parameter["is_rvalue_ref"] = param->type->kind == ETypeKind::RVALUE_REFERENCE;
+		parameter["index"] = i++;
 		method_json_invokable_info["parameters"].push_back(parameter);
 		visit(param);
 	}
@@ -427,13 +443,13 @@ void DynamicMetaGenerator::visit(CXXMethodDecl* decl)
 	method_json["basic_info"] = method_json_basic_info;
 	method_json["invokable_info"] = method_json_invokable_info;
 	method_json["cv_qualifier"] = method_json_cv_qualifier;
-
-	std::string extended_name = lux::cxx::algorithm::replace(decl->full_qualified_name, "::", "_");
-	std::string bridge_name   = extended_name + "_" + decl->spelling + "_invoker";
-	method_json["extended_name"] = extended_name;
-	method_json["bridge_name"] = bridge_name;
 	method_json["visibility"] = visibility2Str(decl->visibility);
 	method_json["is_virtual"] = decl->is_virtual;
+	method_json["class_qualified_name"] = decl->parent_class->full_qualified_name;
+	method_json["class_is_abstract"] = decl->parent_class->is_abstract;
+	method_json["is_constructor"] = decl->kind == EDeclKind::CXX_CONSTRUCTOR_DECL;
+	method_json["is_destructor"]  = decl->kind == EDeclKind::CXX_DESTRUCTOR_DECL;
+	method_json["is_public"]      = decl->visibility == runtime::EVisibility::PUBLIC;
 
 	method_.push_back(method_json);
 }
@@ -466,8 +482,8 @@ void DynamicMetaGenerator::visit(BuiltinType* type)
 
 	fundamental_json["basic_info"] = fundamental_json_basic_info;
 
-	fundamental_json_object_info["size"] = type->size;
-	fundamental_json_object_info["alignment"] = type->align;
+	fundamental_json_object_info["size"]      = type->size > 0 ? type->size : 0 ;
+	fundamental_json_object_info["alignment"] = type->align > 0 ? type->align : 0;
 
 	fundamental_json["object_info"] = fundamental_json_object_info;
 

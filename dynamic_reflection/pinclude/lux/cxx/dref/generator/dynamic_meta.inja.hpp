@@ -1,197 +1,257 @@
 #pragma once
-static inline std::string_view dynamic_meta_template =
-R"(
-#include <lux/cxx/dref/runtime/Declaration.hpp>
-#include <lux/cxx/dref/runtime/Type.hpp>
-#include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
+#include <string_view>
 #include <array>
+
+/**
+ * @file dynamic_meta_template.hpp
+ * @brief Templated code for generating runtime reflection metadata.
+ *
+ * This file is only a string_view template, used by the reflection generator.
+ */
+
+static constexpr inline std::string_view dynamic_meta_template_header = 
+R"(#include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
+#include <lux/cxx/dref/runtime/MetaRegistry.hpp>
 #include "{{ include_path }}"
 
 namespace lux::cxx::dref::runtime {
+static void default_object_setter_{{ file_hash }}(void* dst, const void* src, size_t size)
+{
+    std::memcpy(dst, src, size);
+}
 
-//---------------------------------------------------------------------
-//  1. 基础类型 (FundamentalRuntimeMeta)
-//---------------------------------------------------------------------
+static void default_object_mover_{{ file_hash }}(void* dst, void* src, size_t size)
+{
+    std::memcpy(dst, src, size);
+    std::memset(src, 0, size);
+}
+
+static void default_method_invoker_{{ file_hash }}(void* obj, void** args, void* retVal)
+{
+    // auto self = static_cast<YourClass*>(obj);
+    // auto arg0 = *static_cast<ArgType0*>(args[0]);
+    // ...
+    // auto result = self->Method(...);
+    // if(retVal) *static_cast<RetType*>(retVal) = result;
+}
+
+static void default_field_getter_{{ file_hash }}(void* obj, void* outVal, std::ptrdiff_t offset, size_t size)
+{
+    auto* fieldAddr = static_cast<unsigned char*>(obj) + offset;
+    std::memcpy(outVal, fieldAddr, size);
+}
+
+static void default_field_setter_{{ file_hash }}(void* obj, const void* inVal, std::ptrdiff_t offset, size_t size)
+{
+    auto* fieldAddr = static_cast<unsigned char*>(obj) + offset;
+    std::memcpy(fieldAddr, inVal, size);
+}
+)";
+
+static constexpr inline std::string_view dynamic_meta_template_fundamentals = R"(
 {% for fundamental in fundamentals %}
+static void setter_{{ fundamental.basic_info.hash }}(void* dst, const void* src)
+{
+    default_object_setter_{{ file_hash }}(dst, src, {{ fundamental.object_info.size }});
+}
+static void mover_{{ fundamental.basic_info.hash }}(void* dst, void* src)
+{
+    default_object_mover_{{ file_hash }}(dst, src, {{ fundamental.object_info.size }});
+}
+
 static FundamentalRuntimeMeta s_fundamental_meta_{{ fundamental.basic_info.hash }} 
 {
     // BasicTypeMeta
-    {
+    .basic_info = {
         .name           = "{{ fundamental.basic_info.name }}",
         .qualified_name = "{{ fundamental.basic_info.qualified_name }}",
         .hash           = {{ fundamental.basic_info.hash }},
         .kind           = {{ fundamental.basic_info.kind }}
     },
     // ObjectTypeMeta
-    {
+    .object_info = {
         .size      = {{ fundamental.object_info.size }},
-        .alignment = {{ fundamental.object_info.alignment }}
+        .alignment = {{ fundamental.object_info.alignment }},
+        .setter    = &setter_{{ fundamental.basic_info.hash }},
+        .mover     = &mover_{{ fundamental.basic_info.hash }}
     },
     // CVQualifier
-    {
+    .cv_qualifier = {
         .is_const    = {{ fundamental.cv_qualifier.is_const }},
         .is_volatile = {{ fundamental.cv_qualifier.is_volatile }}
     }
 };
 {% endfor %}
+)";
 
-
-//---------------------------------------------------------------------
-//  2. 指针 (PointerRuntimeMeta)
-//---------------------------------------------------------------------
+static constexpr inline std::string_view dynamic_meta_template_ptr_ref = R"(
 {% for pointer in pointers %}
+static void setter_{{ pointer.basic_info.hash }}(void* dst, const void* src)
+{
+    default_object_setter_{{ file_hash }}(dst, src, {{ pointer.object_info.size }});
+}
+static void mover_{{ pointer.basic_info.hash }}(void* dst, void* src)
+{
+    default_object_mover_{{ file_hash }}(dst, src, {{ pointer.object_info.size }});
+}
+
 static PointerRuntimeMeta s_pointer_meta_{{ pointer.basic_info.hash }} 
 {
-    // BasicTypeMeta
-    {
+    .basic_info = {
         .name           = "{{ pointer.basic_info.name }}",
         .qualified_name = "{{ pointer.basic_info.qualified_name }}",
         .hash           = {{ pointer.basic_info.hash }},
         .kind           = {{ pointer.basic_info.kind }}
     },
-    // ObjectTypeMeta
-    {
+    .object_info = {
         .size      = {{ pointer.object_info.size }},
-        .alignment = {{ pointer.object_info.alignment }}
+        .alignment = {{ pointer.object_info.alignment }},
+        .setter    = &setter_{{ pointer.basic_info.hash }},
+        .mover     = &mover_{{ pointer.basic_info.hash }}
     },
-    // CVQualifier
-    {
+    .cv_qualifier = {
         .is_const    = {{ pointer.cv_qualifier.is_const }},
         .is_volatile = {{ pointer.cv_qualifier.is_volatile }}
     },
-    // pointee_hash
-    {{ pointer.pointee_hash }}
+    .pointee_hash = {{ pointer.pointee_hash }}
 };
 {% endfor %}
 
-
-//---------------------------------------------------------------------
-//  3. 引用 (ReferenceRuntimeMeta) - LValue / RValue
-//---------------------------------------------------------------------
 {% for reference in references %}
 static ReferenceRuntimeMeta s_reference_meta_{{ reference.basic_info.hash }}
 {
-    // BasicTypeMeta
-    {
+    .basic_info = {
         .name           = "{{ reference.basic_info.name }}",
         .qualified_name = "{{ reference.basic_info.qualified_name }}",
         .hash           = {{ reference.basic_info.hash }},
         .kind           = {{ reference.basic_info.kind }}
     },
-    // pointee_hash
-    {{ reference.pointee_hash }}
+    .pointee_hash = {{ reference.pointee_hash }}
 };
 {% endfor %}
 
-
-//---------------------------------------------------------------------
-//  4. 指向数据成员的指针 (PointerToDataMemberRuntimeMeta)
-//---------------------------------------------------------------------
 {% for ptm_data in pointer_to_data_members %}
+static void setter_{{ ptm_data.basic_info.hash }}(void* dst, const void* src)
+{
+    default_object_setter_{{ file_hash }}(dst, src, {{ ptm_data.object_info.size }});
+}
+static void mover_{{ ptm_data.basic_info.hash }}(void* dst, void* src)
+{
+    default_object_mover_{{ file_hash }}(dst, src, {{ ptm_data.object_info.size }});
+}
+
 static PointerToDataMemberRuntimeMeta s_ptm_data_meta_{{ ptm_data.basic_info.hash }}
 {
-    // BasicTypeMeta
-    {
+    .basic_info = {
         .name           = "{{ ptm_data.basic_info.name }}",
         .qualified_name = "{{ ptm_data.basic_info.qualified_name }}",
         .hash           = {{ ptm_data.basic_info.hash }},
         .kind           = {{ ptm_data.basic_info.kind }}
     },
-    // ObjectTypeMeta
-    {
+    .object_info = {
         .size      = {{ ptm_data.object_info.size }},
-        .alignment = {{ ptm_data.object_info.alignment }}
+        .alignment = {{ ptm_data.object_info.alignment }},
+        .setter    = &setter_{{ ptm_data.basic_info.hash }},
+        .mover     = &mover_{{ ptm_data.basic_info.hash }}
     },
-    // CVQualifier
-    {
+    .cv_qualifier = {
         .is_const    = {{ ptm_data.cv_qualifier.is_const }},
         .is_volatile = {{ ptm_data.cv_qualifier.is_volatile }}
     },
-    // pointee_hash
-    {{ ptm_data.pointee_hash }},
-    // record_hash
-    {{ ptm_data.record_hash }}
+    .pointee_hash = {{ ptm_data.pointee_hash }},
+    .record_hash  = {{ ptm_data.record_hash }}
 };
 {% endfor %}
 
-
-//---------------------------------------------------------------------
-//  5. 指向方法成员的指针 (PointerToMethodRuntimeMeta)
-//---------------------------------------------------------------------
 {% for ptm_method in pointer_to_methods %}
+static void setter_{{ ptm_method.basic_info.hash }}(void* dst, const void* src)
+{
+    default_object_setter_{{ file_hash }}(dst, src, {{ ptm_method.object_info.size }});
+}
+static void mover_{{ ptm_method.basic_info.hash }}(void* dst, void* src)
+{
+    default_object_mover_{{ file_hash }}(dst, src, {{ ptm_method.object_info.size }});
+}
+
 static PointerToMethodRuntimeMeta s_ptm_method_meta_{{ ptm_method.basic_info.hash }}
 {
-    // BasicTypeMeta
-    {
+    .basic_info = {
         .name           = "{{ ptm_method.basic_info.name }}",
         .qualified_name = "{{ ptm_method.basic_info.qualified_name }}",
         .hash           = {{ ptm_method.basic_info.hash }},
         .kind           = {{ ptm_method.basic_info.kind }}
     },
-    // ObjectTypeMeta
-    {
+    .object_info = {
         .size      = {{ ptm_method.object_info.size }},
-        .alignment = {{ ptm_method.object_info.alignment }}
+        .alignment = {{ ptm_method.object_info.alignment }},
+        .setter    = &setter_{{ ptm_method.basic_info.hash }},
+        .mover     = &mover_{{ ptm_method.basic_info.hash }}
     },
-    // CVQualifier
-    {
+    .cv_qualifier = {
         .is_const    = {{ ptm_method.cv_qualifier.is_const }},
         .is_volatile = {{ ptm_method.cv_qualifier.is_volatile }}
     },
-    // pointee_hash
-    {{ ptm_method.pointee_hash }},
-    // record_hash
-    {{ ptm_method.record_hash }}
+    .pointee_hash = {{ ptm_method.pointee_hash }},
+    .record_hash  = {{ ptm_method.record_hash }}
 };
 {% endfor %}
+)";
 
-
-//---------------------------------------------------------------------
-//  6. 数组 (ArrayRuntimeMeta)
-//---------------------------------------------------------------------
+static constexpr inline std::string_view dynamic_meta_template_array = R"(
 {% for array_type in arrays %}
+static void setter_{{ array_type.basic_info.hash }}(void* dst, const void* src)
+{
+    default_object_setter_{{ file_hash }}(dst, src, {{ array_type.object_info.size }});
+}
+static void mover_{{ array_type.basic_info.hash }}(void* dst, void* src)
+{
+    default_object_mover_{{ file_hash }}(dst, src, {{ array_type.object_info.size }});
+}
+
 static ArrayRuntimeMeta s_array_meta_{{ array_type.basic_info.hash }}
 {
-    // BasicTypeMeta
-    {
+    .basic_info = {
         .name           = "{{ array_type.basic_info.name }}",
         .qualified_name = "{{ array_type.basic_info.qualified_name }}",
         .hash           = {{ array_type.basic_info.hash }},
         .kind           = {{ array_type.basic_info.kind }}
     },
-    // ObjectTypeMeta
-    {
+    .object_info = {
         .size      = {{ array_type.object_info.size }},
-        .alignment = {{ array_type.object_info.alignment }}
+        .alignment = {{ array_type.object_info.alignment }},
+        .setter    = &setter_{{ array_type.basic_info.hash }},
+        .mover     = &mover_{{ array_type.basic_info.hash }}
     },
-    // CVQualifier
-    {
+    .cv_qualifier = {
         .is_const    = {{ array_type.cv_qualifier.is_const }},
         .is_volatile = {{ array_type.cv_qualifier.is_volatile }}
     },
-    // element_hash
-    {{ array_type.element_hash }},
-    // total size in elements or in bytes, 具体根据你需要
-    {{ array_type.size }}
+    .element_hash = {{ array_type.element_hash }},
+    .size         = {{ array_type.size }}
 };
 {% endfor %}
+)";
 
-
-//---------------------------------------------------------------------
-//  7. 函数 (FunctionRuntimeMeta) - 包含 invokable_info
-//---------------------------------------------------------------------
+static constexpr inline std::string_view dynamic_meta_template_function = R"(
 {% for fn in free_functions %}
-// 这里可选：若需要像类方法那样生成 bridge/invoker，可写类似：
-static void {{ fn.bridge_name }}(void** args, void* retVal)
+static void s_func_meta_invoker_{{ fn.basic_info.hash }}(void** args, void* retVal)
 {
-    {% for p in fn.invokable_info.parameters %}
-    auto arg{{ p.index }} = *static_cast<{{ p.type_name }}*>(args[{{ p.index }}]);
+    {% for p in fn.invokable_info.parameters -%}
+    auto&& arg{{ p.index }} = *static_cast<{{ p.type_name_remove_ref }}*>(args[{{ p.index }}]);
     {% endfor %}
 
     {% if fn.invokable_info.return_type == "void" %}
-    {{ fn.invokable_info.invokable_name }}({% for p in fn.invokable_info.parameters %}arg{{ p.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
+    {{ fn.invokable_info.invokable_name }}(
+        {% for p in fn.invokable_info.parameters -%}
+        {% if p.is_rvalue_ref %}std::move(arg{{ p.index }}){% else %}arg{{ p.index }}{% endif %}{% if not loop.is_last %}, {% endif %}
+        {% endfor %}
+    );
     {% else %}
-    auto ret = {{ fn.invokable_info.invokable_name }}({% for p in fn.invokable_info.parameters %}arg{{ p.index }}{% if not loop.is_last %}, {% endif %}{% endfor %});
+    auto ret = {{ fn.invokable_info.invokable_name }}(
+        {% for p in fn.invokable_info.parameters -%}
+        {% if p.is_rvalue_ref %}std::move(arg{{ p.index }}){% else %}arg{{ p.index }}{% endif %}{% if not loop.is_last %}, {% endif %}
+        {% endfor %}
+    );
     if(retVal) {
         *static_cast<{{ fn.invokable_info.return_type }}*>(retVal) = ret;
     }
@@ -200,267 +260,356 @@ static void {{ fn.bridge_name }}(void** args, void* retVal)
 
 static FunctionRuntimeMeta s_func_meta_{{ fn.basic_info.hash }} 
 {
-    // BasicTypeMeta
-    {
+    .basic_info = {
         .name           = "{{ fn.basic_info.name }}",
         .qualified_name = "{{ fn.basic_info.qualified_name }}",
         .hash           = {{ fn.basic_info.hash }},
         .kind           = {{ fn.basic_info.kind }}
     },
-    // InvokableTypeMeta
-    {
+    .invokable_info = {
         .mangling         = "{{ fn.invokable_info.mangling }}",
-        .is_variadic      = {{ fn.invokable_info.is_variadic }},
         .return_type_hash = {{ fn.invokable_info.return_type_hash }},
         .param_type_hashs = {
             {% for p in fn.invokable_info.param_type_hashs %}
             {{ p }}{% if not loop.is_last %}, {% endif %}
             {% endfor %}
         },
-        .invoker = &{{ fn.bridge_name }}
+        .is_variadic      = {{ fn.invokable_info.is_variadic }},
+        .invoker = (InvokableTypeMeta::function_t)&s_func_meta_invoker_{{ fn.basic_info.hash }}
     }
 };
 {% endfor %}
+)";
 
-
-//---------------------------------------------------------------------
-//  8. 方法 (MethodRuntimeMeta) - 如果你单独存放，不跟 RecordRuntimeMeta 的 methods 合在一起
-//---------------------------------------------------------------------
+static constexpr inline std::string_view dynamic_meta_template_records = R"(
 {% for method in methods %}
-static void {{ method.bridge_name }}(void* obj, void** args, void* retVal)
+{% if method.is_constructor %}{% if method.is_public and not method.class_is_abstract %}
+static void* s_ctor_invoke_{{ method.basic_info.hash }}(void** args)
 {
-    // 生成和类内方法调用类似的 invoker...
-    // ...
+    {% for p in method.invokable_info.parameters %}
+    auto&& arg{{ p.index }} = *static_cast<{{ p.type_name_remove_ref }}*>(args[{{ p.index }}]);
+    {% endfor %}
+
+    return new {{ method.class_qualified_name }}(
+        {% for p in method.invokable_info.parameters -%}
+        {% if p.is_rvalue_ref %}std::move(arg{{ p.index }}){% else %}arg{{ p.index }}{% endif %}{% if not loop.is_last %}, {% endif %}
+        {% endfor %}
+    );
 }
+{% endif %}
 
 static MethodRuntimeMeta s_method_meta_{{ method.basic_info.hash }}
 {
-    // BasicTypeMeta
-    {
+    .basic_info = {
         .name           = "{{ method.basic_info.name }}",
         .qualified_name = "{{ method.basic_info.qualified_name }}",
         .hash           = {{ method.basic_info.hash }},
         .kind           = {{ method.basic_info.kind }}
     },
-    // InvokableTypeMeta
-    {
+    .invokable_info = {
         .mangling         = "{{ method.invokable_info.mangling }}",
-        .is_variadic      = {{ method.invokable_info.is_variadic }},
         .return_type_hash = {{ method.invokable_info.return_type_hash }},
         .param_type_hashs = {
-            {% for p in method.invokable_info.param_type_hashs %}
-            {{ p }}{% if not loop.is_last %}, {% endif %}
-            {% endfor %}
+            {% for p in method.invokable_info.param_type_hashs -%}
+            {{ p }}{% if not loop.is_last %}, 
+            {% endif %}{% endfor %}
         },
-        // 这里 method 的 invoker 签名和 FunctionRuntimeMeta 不太一样
-        .invoker = &{{ method.bridge_name }}
+        .is_variadic      = {{ method.invokable_info.is_variadic }},
+        {% if method.is_public and not method.class_is_abstract %}
+        .invoker = (InvokableTypeMeta::ctor_t)&s_ctor_invoke_{{ method.basic_info.hash }}
+        {% else %}
+        .invoker = (InvokableTypeMeta::ctor_t)nullptr
+        {% endif %}
     },
-    // CVQualifier
-    {
+    .cv_qualifier = {
         .is_const    = {{ method.cv_qualifier.is_const }},
         .is_volatile = {{ method.cv_qualifier.is_volatile }}
     },
-    .visibility = {{ method.visibility }},
-    .is_virtual = {{ method.is_virtual }}
+    .visibility  = {{ method.visibility }},
+    .is_virtual  = {{ method.is_virtual }}
 };
+
+{% else if method.is_destructor %}{% if method.is_public %}
+static void s_dtor_invoke_{{ method.basic_info.hash }}(void* obj)
+{
+    delete static_cast<{{ method.class_qualified_name }}*>(obj);
+}{% endif %}
+
+static MethodRuntimeMeta s_method_meta_{{ method.basic_info.hash }}
+{
+    .basic_info = {
+        .name           = "{{ method.basic_info.name }}",
+        .qualified_name = "{{ method.basic_info.qualified_name }}",
+        .hash           = {{ method.basic_info.hash }},
+        .kind           = {{ method.basic_info.kind }}
+    },
+    .invokable_info = {
+        .mangling         = "{{ method.invokable_info.mangling }}",
+        .return_type_hash = {{ method.invokable_info.return_type_hash }},
+        .param_type_hashs = {
+            {% for p in method.invokable_info.param_type_hashs -%}
+            {{ p }}{% if not loop.is_last %}, 
+            {% endif %}{% endfor %}
+        },
+        .is_variadic      = {{ method.invokable_info.is_variadic }},
+        {% if method.is_public %}
+        .invoker = (InvokableTypeMeta::dtor)&s_dtor_invoke_{{ method.basic_info.hash }}
+        {% else %}
+        .invoker = (InvokableTypeMeta::dtor)nullptr
+        {% endif %}
+    },
+    .cv_qualifier = {
+        .is_const    = {{ method.cv_qualifier.is_const }},
+        .is_volatile = {{ method.cv_qualifier.is_volatile }}
+    },
+    .visibility  = {{ method.visibility }},
+    .is_virtual  = {{ method.is_virtual }}
+};
+
+{% else %}{% if method.is_public%}
+static void s_method_invoke_{{ method.basic_info.hash }}(void* obj, void** args, void* retVal)
+{
+    auto self = static_cast<{{ method.class_qualified_name }}*>(obj);
+
+    {% for p in method.invokable_info.parameters %}
+    auto&& arg{{ p.index }} = *static_cast<{{ p.type_name_remove_ref }}*>(args[{{ p.index }}]);
+    {% endfor %}
+
+    {% if method.invokable_info.return_type == "void" %}
+    self->{{ method.invokable_info.invokable_name }}(
+        {% for p in method.invokable_info.parameters -%}
+        {% if p.is_rvalue_ref %}std::move(arg{{ p.index }}){% else %}arg{{ p.index }}{% endif %}{% if not loop.is_last %}, {% endif %}
+        {% endfor %}
+    );
+    {% else %}
+    auto ret = self->{{ method.invokable_info.invokable_name }}(
+        {% for p in method.invokable_info.parameters -%}
+        {% if p.is_rvalue_ref %}std::move(arg{{ p.index }}){% else %}arg{{ p.index }}{% endif %}{% if not loop.is_last %}, {% endif %}
+        {% endfor %}
+    );
+    if(retVal) {
+        *static_cast<{{ method.invokable_info.return_type }}*>(retVal) = ret;
+    }
+    {% endif %}
+}{% endif %}
+
+static MethodRuntimeMeta s_method_meta_{{ method.basic_info.hash }}
+{
+    .basic_info = {
+        .name           = "{{ method.basic_info.name }}",
+        .qualified_name = "{{ method.basic_info.qualified_name }}",
+        .hash           = {{ method.basic_info.hash }},
+        .kind           = {{ method.basic_info.kind }}
+    },
+    .invokable_info = {
+        .mangling         = "{{ method.invokable_info.mangling }}",
+        .return_type_hash = {{ method.invokable_info.return_type_hash }},
+        .param_type_hashs = {
+            {% for p in method.invokable_info.param_type_hashs -%}
+            {{ p }}{% if not loop.is_last %}, 
+            {% endif %}{% endfor %}
+        },
+        .is_variadic      = {{ method.invokable_info.is_variadic }},
+        {% if method.is_public%}
+        .invoker = (InvokableTypeMeta::method_t)&s_method_invoke_{{ method.basic_info.hash }}
+        {% else %}
+        .invoker = (InvokableTypeMeta::method_t)nullptr
+        {% endif %}
+    },
+    .cv_qualifier = {
+        .is_const    = {{ method.cv_qualifier.is_const }},
+        .is_volatile = {{ method.cv_qualifier.is_volatile }}
+    },
+    .visibility  = {{ method.visibility }},
+    .is_virtual  = {{ method.is_virtual }}
+};
+{% endif %}
 {% endfor %}
 
-
-//---------------------------------------------------------------------
-//  9. 字段 (FieldRuntimeMeta)
-//---------------------------------------------------------------------
 {% for field in fields %}
-static void get_{{ field.basic_info.hash }}(void* obj, void* outVal)
+static void get_{{ field.basic_info.hash }}(void* obj, void** outField)
 {
-    // ...
+    default_field_getter_{{ file_hash }}(obj, *outField, {{ field.offset }}, {{ field.object_info.size }});
 }
-static void set_{{ field.basic_info.hash }}(void* obj, void* inVal)
+
+static void set_{{ field.basic_info.hash }}(void* obj, const void* inVal)
 {
-    // ...
+    default_field_setter_{{ file_hash }}(obj, inVal, {{ field.offset }}, {{ field.object_info.size }});
 }
 
 static FieldRuntimeMeta s_field_meta_{{ field.basic_info.hash }}
 {
-    // BasicTypeMeta
-    {
+    .basic_info = {
         .name           = "{{ field.basic_info.name }}",
         .qualified_name = "{{ field.basic_info.qualified_name }}",
         .hash           = {{ field.basic_info.hash }},
         .kind           = {{ field.basic_info.kind }}
     },
-    // ObjectTypeMeta
-    {
+    .object_info = {
         .size      = {{ field.object_info.size }},
-        .alignment = {{ field.object_info.alignment }}
+        .alignment = {{ field.object_info.alignment }},
+        // setter/mover 可根据需要继续添加
     },
-    // CVQualifier
-    {
+    .cv_qualifier = {
         .is_const    = {{ field.cv_qualifier.is_const }},
         .is_volatile = {{ field.cv_qualifier.is_volatile }}
     },
-    // offset
     .offset     = {{ field.offset }},
     .visibility = {{ field.visibility }},
-
-    // 如果需要静态判断
-    .getter = &get_{{ field.basic_info.hash }},
-    .setter = &set_{{ field.basic_info.hash }}
+    .getter     = &get_{{ field.basic_info.hash }},
+    .setter     = &set_{{ field.basic_info.hash }}
 };
 {% endfor %}
 
-
-//---------------------------------------------------------------------
-// 10. 记录 (RecordRuntimeMeta) - 类/结构体
-//---------------------------------------------------------------------
 {% for record in records %}
-// 你也可以在这里给每个字段/method 生成独立的 invoker 函数；
-// 或者只记录 meta，具体看你需求。
-
 static RecordRuntimeMeta s_record_meta_{{ record.basic_info.hash }}
 {
-    // BasicTypeMeta
-    {
+    .basic_info = {
         .name           = "{{ record.basic_info.name }}",
         .qualified_name = "{{ record.basic_info.qualified_name }}",
         .hash           = {{ record.basic_info.hash }},
         .kind           = {{ record.basic_info.kind }}
     },
-    // ObjectTypeMeta
-    {
+    .object_info = {
         .size      = {{ record.object_info.size }},
         .alignment = {{ record.object_info.alignment }}
+        // .setter / .mover
     },
-    // base_hashs
-    {
-        {% for base_hash in record.base_hashs %}
-        {{ base_hash }}{% if not loop.is_last %}, {% endif %}
-        {% endfor %}
+    .base_hashs = {
+        {% for base_hash in record.base_hashs -%}
+        {{ base_hash }}{% if not loop.is_last %}, 
+        {% endif %}{% endfor %}
     },
-    // ctor_hashs
-    {
-        {% for chash in record.ctor_hashs %}
-        {{ chash }}{% if not loop.is_last %}, {% endif %}
-        {% endfor %}
+    .ctor_hashs = {
+        {% for ch in record.ctor_hashs -%}
+        {{ ch }}{% if not loop.is_last %}, 
+        {% endif %}{% endfor %}
     },
-    // dtor_hash, 这里若你有
-
-    // field_meta_hashs
-    {
-        {% for fh in record.field_meta_hashs %}
-        {{ fh }}{% if not loop.is_last %}, {% endif %}
-        {% endfor %}
+    .dtor_hash  = 0,
+    .field_meta_hashs = {
+        {% for fh in record.field_meta_hashs -%}
+        {{ fh }}{% if not loop.is_last %}, 
+        {% endif %}{% endfor %}
     },
-    // method_meta_hashs
-    {
-        {% for mh in record.method_meta_hashs %}
-        {{ mh }}{% if not loop.is_last %}, {% endif %}
-        {% endfor %}
+    .method_meta_hashs = {
+        {% for mh in record.method_meta_hashs -%}
+        {{ mh }}{% if not loop.is_last %}, 
+        {% endif %}{% endfor %}
     },
-    // static_method_metax_hashs
-    {
-        {% for smh in record.static_method_metax_hashs %}
-        {{ smh }}{% if not loop.is_last %}, {% endif %}
-        {% endfor %}
-    },
-
-    // get_field_func_t
-    // 如果你有自定义 get_field_func，需要实现后赋值；否则给 nullptr
-    nullptr
+    .static_method_metax_hashs = {
+        {% for smh in record.static_method_metax_hashs -%}
+        {{ smh }}{% if not loop.is_last %}, 
+        {% endif %}{% endfor %}
+    }
 };
 {% endfor %}
+)";
 
-
-//---------------------------------------------------------------------
-// 11. 枚举 (EnumRuntimeMeta)
-//---------------------------------------------------------------------
+static constexpr inline std::string_view dynamic_meta_template_enum = R"(
 {% for en in enums %}
 static EnumRuntimeMeta s_enum_meta_{{ en.basic_info.hash }}
 {
-    // BasicTypeMeta
-    {
+    .basic_info = {
         .name           = "{{ en.basic_info.name }}",
         .qualified_name = "{{ en.basic_info.qualified_name }}",
         .hash           = {{ en.basic_info.hash }},
         .kind           = {{ en.basic_info.kind }}
     },
-    // is_scoped
-    {{ en.is_scoped }},
-    // underlying_type_hash
-    {{ en.underlying_type_hash }},
-    // enumerators
-    {
-        {% for enumerator in en.enumerators %}
+    .is_scoped = {{ en.is_scoped }},
+    .underlying_type_hash = {{ en.underlying_type_hash }},
+    .enumerators = {
+        {% for enumerator in en.enumerators -%}
         EnumRuntimeMeta::Enumerator {
             .name           = "{{ enumerator.name }}",
             .signed_value   = {{ enumerator.signed_value }},
             .unsigned_value = {{ enumerator.unsigned_value }}
-        }{% if not loop.is_last %}, {% endif %}
-        {% endfor %}
+        }{% if not loop.is_last %},
+        {% endif %}{% endfor %}
     }
 };
 {% endfor %}
+)";
 
-
-//---------------------------------------------------------------------
-//  12. 注册入口函数
-//---------------------------------------------------------------------
-void register_reflections_{{ file_hash }}(RuntimeRegistry& registry)
+static constexpr inline std::string_view dynamic_meta_template_register_end = R"(
+void register_reflections_{{ file_hash }}(RuntimeMetaRegistry& registry)
 {
-    // 先注册 fundamentals
-    {% for fundamental in fundamentals %}
+    {% for fundamental in fundamentals -%}
     registry.registerMeta(&s_fundamental_meta_{{ fundamental.basic_info.hash }});
     {% endfor %}
 
-    // 指针
-    {% for pointer in pointers %}
+    {% for pointer in pointers -%}
     registry.registerMeta(&s_pointer_meta_{{ pointer.basic_info.hash }});
     {% endfor %}
 
-    // 引用
-    {% for reference in references %}
+    {% for reference in references -%}
     registry.registerMeta(&s_reference_meta_{{ reference.basic_info.hash }});
     {% endfor %}
 
-    // 指向数据成员的指针
-    {% for ptm_data in pointer_to_data_members %}
+    {% for ptm_data in pointer_to_data_members -%}
     registry.registerMeta(&s_ptm_data_meta_{{ ptm_data.basic_info.hash }});
     {% endfor %}
 
-    // 指向方法成员的指针
-    {% for ptm_method in pointer_to_methods %}
+    {% for ptm_method in pointer_to_methods -%}
     registry.registerMeta(&s_ptm_method_meta_{{ ptm_method.basic_info.hash }});
     {% endfor %}
 
-    // 数组
-    {% for array_type in arrays %}
+    {% for array_type in arrays -%}
     registry.registerMeta(&s_array_meta_{{ array_type.basic_info.hash }});
     {% endfor %}
 
-    // 独立函数
-    {% for fn in free_functions %}
+    {% for fn in free_functions -%}
     registry.registerMeta(&s_func_meta_{{ fn.basic_info.hash }});
     {% endfor %}
 
-    // 方法(如果你单独管理, 不放在 record 里)
-    {% for method in methods %}
+    {% for method in methods -%}
     registry.registerMeta(&s_method_meta_{{ method.basic_info.hash }});
     {% endfor %}
 
-    // 字段(如果你单独管理, 不放在 record 里)
-    {% for field in fields %}
+    {% for field in fields -%}
     registry.registerMeta(&s_field_meta_{{ field.basic_info.hash }});
     {% endfor %}
 
-    // 记录
-    {% for record in records %}
+    {% for record in records -%}
     registry.registerMeta(&s_record_meta_{{ record.basic_info.hash }});
     {% endfor %}
 
-    // 枚举
-    {% for en in enums %}
+    {% for en in enums -%}
     registry.registerMeta(&s_enum_meta_{{ en.basic_info.hash }});
     {% endfor %}
 }
 
 } // end namespace lux::cxx::dref::runtime
 )";
+
+static constexpr inline std::array<std::string_view, 8> dynamic_meta_template_strs = {
+	dynamic_meta_template_header,
+	dynamic_meta_template_fundamentals,
+	dynamic_meta_template_ptr_ref,
+	dynamic_meta_template_array,
+	dynamic_meta_template_function,
+	dynamic_meta_template_records,
+	dynamic_meta_template_enum,
+	dynamic_meta_template_register_end
+};
+
+static inline std::string_view register_file_header =
+R"(#include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
+#include <lux/cxx/dref/runtime/MetaRegistry.hpp>
+
+namespace lux::cxx::dref::runtime {
+
+{% for fh in file_hashs -%}
+extern void register_reflections_{{ fh }}(RuntimeMetaRegistry& registry);
+{% endfor %}
+
+static inline void {{ register_function_name }}(RuntimeMetaRegistry& registry)
+{
+    {% for fh in file_hashs -%}
+    register_reflections_{{ fh }}(registry);
+    {% endfor %}
+}
+
+}
+
+)";
+

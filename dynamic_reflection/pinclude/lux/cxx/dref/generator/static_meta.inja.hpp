@@ -21,7 +21,7 @@
  */
 
 #pragma once
-static inline std::string_view static_meta_template =
+static inline std::string_view static_meta_template_str =
 R"(#pragma once
 #include <array>
 #include <cstddef>
