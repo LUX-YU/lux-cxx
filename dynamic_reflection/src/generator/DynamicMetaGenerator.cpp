@@ -312,10 +312,10 @@ void DynamicMetaGenerator::visit(CXXRecordDecl* decl)
 		visit(method);
 	}
 
-	record_json["static_method_metax_hashs"] = nlohmann::json::array();
+	record_json["static_method_meta_hashs"] = nlohmann::json::array();
 	for (auto& static_method : decl->static_method_decls)
 	{
-		record_json["static_method_metax_hashs"].push_back(std::to_string(fnv1a(static_method->mangling)));
+		record_json["static_method_meta_hashs"].push_back(std::to_string(fnv1a(static_method->mangling)));
 		visit(static_method);
 	}
 
@@ -335,6 +335,7 @@ void DynamicMetaGenerator::visit(FieldDecl* decl)
 
 	field_json_basic_info["name"] = decl->name;
 	field_json_basic_info["qualified_name"] = decl->full_qualified_name;
+	field_json_basic_info["type_qualified_name"] = decl->type->name;
 	field_json_basic_info["hash"] = std::to_string(fnv1a(decl->full_qualified_name));
 	field_json_basic_info["kind"] = typeKind2StrExtra(getETypeKinds(decl->type));
 
@@ -349,6 +350,8 @@ void DynamicMetaGenerator::visit(FieldDecl* decl)
 	field_json["object_info"] = field_json_object_info;
 	field_json["offset"] = decl->offset;
 	field_json["visibility"] = visibility2Str(decl->visibility);
+	field_json["class_qualified_name"] = decl->parent_class->full_qualified_name;
+	field_json["class_is_abstract"] = decl->parent_class->is_abstract;
 	field_.push_back(field_json);
 }
 
@@ -461,6 +464,8 @@ void DynamicMetaGenerator::visit(ParmVarDecl* decl)
 	{
 		return;
 	}
+
+	visit(decl->type);
 }
 
 // type visitor
@@ -503,6 +508,8 @@ void DynamicMetaGenerator::visit(PointerType* type)
 
 	json ptr_json;
 	json ptr_json_basic_info;
+	json ptr_json_object_info;
+	json ptr_json_cv_qualifier;
 
 	ptr_json_basic_info["name"] = type->name;
 	ptr_json_basic_info["qualified_name"] = type->name;
@@ -529,7 +536,19 @@ void DynamicMetaGenerator::visit(PointerType* type)
 			ptr_json_basic_info["kind"] = typeKind2StrExtra(runtime::ETypeKinds::PointerToObject);
 		}
 	}
+
+	ptr_json_object_info["size"] = type->size > 0 ? type->size : 0;
+	ptr_json_object_info["alignment"] = type->align > 0 ? type->align : 0;
+
+	ptr_json_cv_qualifier["is_const"] = type->is_const;
+	ptr_json_cv_qualifier["is_volatile"] = type->is_volatile;
+
 	ptr_json["basic_info"] = ptr_json_basic_info;
+	ptr_json["object_info"] = ptr_json_object_info;
+	ptr_json["cv_qualifier"] = ptr_json_cv_qualifier;
+	ptr_json["pointee_hash"] = std::to_string(fnv1a(type->pointee->id));
+
+	ptr_.push_back(ptr_json);
 
 	visit(type->pointee);
 }
@@ -607,8 +626,7 @@ void DynamicMetaGenerator::visit(FunctionType* type)
 	if (checkAndMarkVisited(type->id)) {
 		return;
 	}
-
-	visit(type->decl);
+	// visit(type->decl);
 }
 
 void DynamicMetaGenerator::visit(lux::cxx::dref::UnsupportedType* type)
@@ -663,6 +681,4 @@ void DynamicMetaGenerator::toJsonFile(nlohmann::json& json)
 	
 	json["methods"] = method_;
 	json["fields"] = field_;
-	json["ctor"] = ctor_;
-	json["dtor"] = dtor_;
 }

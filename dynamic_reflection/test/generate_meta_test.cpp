@@ -32,5 +32,10 @@ int main(int argc, char* argv[])
 	runtime::RuntimeMetaRegistry registry;
 	runtime::register_reflections(registry);
 
+	for (auto& fundamental : registry.fundamentals())
+	{
+		std::cout << "Fundamental: " << fundamental->basic_info.name << std::endl;
+	}
+
     return 0;
 }

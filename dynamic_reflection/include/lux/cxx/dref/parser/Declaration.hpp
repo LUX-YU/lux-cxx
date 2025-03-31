@@ -275,6 +275,8 @@ namespace lux::cxx::dref {
         runtime::EVisibility visibility = runtime::EVisibility::INVALID; ///< e.g., public, protected, private (if relevant).
         std::size_t offset = 0; ///< The field offset in bytes (or bits, depending on usage).
 
+		CXXRecordDecl* parent_class = nullptr; ///< The class where this field is declared.
+
         void accept(DeclVisitor* visitor) override
         {
             visitor->visit(this);

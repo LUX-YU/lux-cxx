@@ -120,6 +120,7 @@ namespace lux::cxx::dref
                     auto field_decl = std::make_unique<FieldDecl>();
                     parseFieldDecl(cursor, *field_decl);
                     field_decl->kind = EDeclKind::FIELD_DECL;
+					field_decl->parent_class = &decl;
                     // Add the parsed field declaration to the record's field list
                     decl.field_decls.push_back(field_decl.get());
                     // Register the declaration in the parser's registry (handles ownership)

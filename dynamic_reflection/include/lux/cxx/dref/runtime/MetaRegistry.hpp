@@ -4,11 +4,20 @@
 
 namespace lux::cxx::dref::runtime
 {
-    struct MetaPtr
-    {
-        ETypeKinds kind;
-        void* meta_ptr;
-    };
+    using VRuntimeMetaPtr = std::variant<
+        std::monostate,
+        FundamentalRuntimeMeta*,
+        ReferenceRuntimeMeta*,
+		PointerRuntimeMeta*,
+		PointerToDataMemberRuntimeMeta*,
+		PointerToMethodRuntimeMeta*,
+		ArrayRuntimeMeta*,
+		FunctionRuntimeMeta*,
+		MethodRuntimeMeta*,
+		FieldRuntimeMeta*,
+		RecordRuntimeMeta*,
+		EnumRuntimeMeta*
+    >;
 
     /**
      * @class RuntimeMetaRegistry
@@ -20,7 +29,8 @@ namespace lux::cxx::dref::runtime
      * separate lists (e.g., `record_meta_list_`) for easy indexing of specific metadata types.
      */
     class LUX_CXX_PUBLIC RuntimeMetaRegistry
-    {
+    {    
+    public:
         /**
          * @struct IdentityHash
          * @brief Custom hash functor for size_t keys (identity).
@@ -37,15 +47,14 @@ namespace lux::cxx::dref::runtime
         };
 
         /// @brief Template alias for a metadata hash map (keyed by size_t).
-        using MetaMap = std::unordered_map<size_t, MetaPtr, IdentityHash>;
+        using MetaMap = std::unordered_map<size_t, VRuntimeMetaPtr, IdentityHash>;
 
     public:
-        RuntimeMetaRegistry() = default;
+        RuntimeMetaRegistry();
 
         //=====================
         // Register functions
         //=====================
-
         void registerMeta(FundamentalRuntimeMeta* meta);
         void registerMeta(PointerRuntimeMeta* meta);
         void registerMeta(ReferenceRuntimeMeta* meta);
@@ -63,13 +72,16 @@ namespace lux::cxx::dref::runtime
         //=====================
         bool hasMeta(std::string_view name) const;
         bool hasMeta(size_t hash) const;
-        const MetaPtr* findMeta(std::string_view name) const;
-        const MetaPtr* findMeta(size_t hash) const;
+        const VRuntimeMetaPtr findMeta(std::string_view name) const;
+        const VRuntimeMetaPtr findMeta(size_t hash) const;
 
         //=====================
         // findXxx by index
         //=====================
         // 这些接口用于按照“注册顺序”获取具体类型的指针
+		static FundamentalRuntimeMeta* fetchFundamental(size_t index);
+		static FundamentalRuntimeMeta* fetchFundamental(std::string_view);
+
         const FundamentalRuntimeMeta* findFundamental(size_t index) const;
         const PointerRuntimeMeta* findPointer(size_t index) const;
         const ReferenceRuntimeMeta* findReference(size_t index) const;

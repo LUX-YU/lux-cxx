@@ -62,6 +62,9 @@ public:
     ~TestClass() {}
 
     int LUX_REFL(int) a1;
+    int a12(int, const int, const bool, const double) {
+		return 1;
+    }
 protected:
     int a2;
 

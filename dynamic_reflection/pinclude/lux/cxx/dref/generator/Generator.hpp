@@ -70,8 +70,6 @@ private:
 	nlohmann::json method_			 = nlohmann::json::array();
 	nlohmann::json field_			 = nlohmann::json::array();
 	// nlohmann::json static_method_	 = nlohmann::json::array(); record in function_
-	nlohmann::json ctor_			 = nlohmann::json::array();
-	nlohmann::json dtor_			 = nlohmann::json::array();
 
 	std::unordered_set<std::string> type_map_;
 };
