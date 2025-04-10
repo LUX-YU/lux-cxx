@@ -25,6 +25,7 @@
 // 
 
 #include <cstddef>
+#include "StaticMeta.hpp"
 #define LUX_REF_MARK_PREFIX "LUX::META;"
 
 #if defined __LUX_PARSE_TIME__
@@ -36,8 +37,3 @@
 #define LUX_REFL(...)
 #endif
 
-namespace lux::cxx::dref
-{
-    // For static reflection
-    template <typename T> class type_meta;
-}

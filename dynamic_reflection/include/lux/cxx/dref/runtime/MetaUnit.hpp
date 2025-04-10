@@ -1,3 +1,4 @@
+#pragma once
 /*
  * Copyright (c) 2025 Chenhui Yu
  *
@@ -20,57 +21,42 @@
  * SOFTWARE.
  */
 
-#include <lux/cxx/dref/parser/MetaUnit.hpp>
-#include <lux/cxx/dref/parser/MetaUnitImpl.hpp>
+#include <deque>
+#include <lux/cxx/visibility.h>
+#include <string_view>
+#include <memory>
+
+#include "Declaration.hpp"
+#include "Type.hpp"
 
 namespace lux::cxx::dref
 {
-	size_t MetaUnit::calculateTypeMetaId(std::string_view name)
+	class MetaUnitImpl;
+	class MetaUnitData;
+	class LUX_CXX_PUBLIC MetaUnit final
 	{
-		return lux::cxx::algorithm::fnv1a(name);
-	}
-	MetaUnit::MetaUnit()
-		:_impl(nullptr)
-	{
-		
-	}
+		friend class CxxParserImpl;
+	public:
+		MetaUnit();
 
-	MetaUnit::MetaUnit(MetaUnit&& other) noexcept
-	{
-		_impl = std::move(other._impl);
-	}
+		MetaUnit(MetaUnit&&) noexcept;
+		MetaUnit& operator=(MetaUnit&&) noexcept;
+		~MetaUnit();
+		static size_t calculateTypeMetaId(std::string_view name);
 
-	MetaUnit& MetaUnit::operator=(MetaUnit&& other) noexcept
-	{
-		_impl = std::move(other._impl);
-		return *this;
-	}
+		[[nodiscard]] bool isValid() const;
+		[[nodiscard]] size_t id() const;
+		[[nodiscard]] const std::string& name() const;
+		[[nodiscard]] const std::string& version() const;
+		[[nodiscard]] const std::vector<Decl*>& markedDeclarations() const;
+		[[nodiscard]] const std::vector<Type*>& markedType() const;
 
-	MetaUnit::MetaUnit(std::unique_ptr<MetaUnitImpl> impl)
-	{
-		_impl = std::move(impl);
-	}
+		std::string toJson();
+		static void fromJson(const std::string& json, MetaUnit& unit);
 
-	MetaUnit::~MetaUnit() = default;
+	private:
+		std::unique_ptr<MetaUnitImpl> _impl;
 
-	size_t MetaUnit::id() const
-	{
-		return _impl->_id;
-	}
-
-	const std::string& MetaUnit::name() const
-	{
-		return _impl->_name;
-	}
-
-	const std::string& MetaUnit::version() const
-	{
-		return _impl->_version;
-	}
-
-	const std::vector<Decl*>&
-	MetaUnit::markedDeclarations() const
-	{
-		return _impl->_data->marked_declarations;
-	}
+		explicit MetaUnit(std::unique_ptr<MetaUnitImpl>);
+	};
 }

@@ -74,56 +74,5 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    /*
-    const auto& type_meta_list = data.typeMetaList();
-    std::cout << "-----------------------Type Meta List-----------------------" << std::endl;
-    for (const auto& type_meta : type_meta_list)
-    {
-        std::cout << "Type:          " << type_meta.name << std::endl;
-        std::cout << "Kind:          " << kind2str(type_meta.type_kind) << std::endl;
-        std::cout << "Size:          " << type_meta.size << std::endl;
-        std::cout << "Align:         " << type_meta.align << std::endl;
-        std::cout << std::endl;
-    }
-
-    std::cout << "----------------------- Marked Declaration List -----------------------" << std::endl;
-    for (const auto& decl : data.markedClassDeclarationList())
-    {
-        show_declaration_info(&decl);
-        std::cout << std::endl;
-    }
-
-    for (const auto& decl : data.markedEnumerationDeclarationList())
-    {
-        show_declaration_info(&decl);
-        std::cout << std::endl;
-    }
-
-    for (const auto& decl : data.markedFunctionDeclarationList())
-    {
-        show_declaration_info(&decl);
-        std::cout << std::endl;
-    }
-
-    std::cout << "---------------------- Unmarked Declaration List ----------------------" << std::endl;
-    for (const auto& decl : data.unmarkedClassDeclarationList())
-    {
-        show_declaration_info(&decl);
-        std::cout << std::endl;
-    }
-
-    for (const auto& decl : data.unmarkedEnumerationDeclarationList())
-    {
-        show_declaration_info(&decl);
-        std::cout << std::endl;
-    }
-
-    for (const auto& decl : data.unmarkedFunctionDeclarationList())
-    {
-        show_declaration_info(&decl);
-        std::cout << std::endl;
-    }
-    */
-
     return 0;
 }

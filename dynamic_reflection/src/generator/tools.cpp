@@ -75,13 +75,13 @@ bool isStandardAbsolute(const std::string& s)
         (s[2] == '\\' || s[2] == '/'));
 }
 
-std::string visibility2Str(lux::cxx::dref::runtime::EVisibility visibility)
+std::string visibility2Str(lux::cxx::dref::EVisibility visibility)
 {
     switch (visibility)
     {
-    case lux::cxx::dref::runtime::EVisibility::PUBLIC:    return "EVisibility::PUBLIC";
-    case lux::cxx::dref::runtime::EVisibility::PRIVATE:   return "EVisibility::PRIVATE";
-    case lux::cxx::dref::runtime::EVisibility::PROTECTED: return "EVisibility::PROTECTED";
+    case lux::cxx::dref::EVisibility::PUBLIC:    return "EVisibility::PUBLIC";
+    case lux::cxx::dref::EVisibility::PRIVATE:   return "EVisibility::PRIVATE";
+    case lux::cxx::dref::EVisibility::PROTECTED: return "EVisibility::PROTECTED";
     default:
         return "EVisibility::INVALID";
     }

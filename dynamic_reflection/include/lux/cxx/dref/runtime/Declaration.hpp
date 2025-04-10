@@ -23,9 +23,15 @@
 #include <string>
 #include <vector>
 #include <cstddef>
-#include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
 
 namespace lux::cxx::dref {
+    enum class EVisibility {
+        INVALID = 0,  /**< Invalid visibility. */
+        PUBLIC,       /**< Public access specifier. */
+        PROTECTED,    /**< Protected access specifier. */
+        PRIVATE       /**< Private access specifier. */
+    };
+
     /**
      * Forward declarations to allow referencing these classes below.
      * They will be defined later in this header.
@@ -63,6 +69,7 @@ namespace lux::cxx::dref {
      */
     enum class EDeclKind
     {
+        UNKNOWN,
         NAMED_DECL,
         TYPED_DECL,
         TAG_DECL,
@@ -95,21 +102,31 @@ namespace lux::cxx::dref {
     class CXXRecordDecl;
     class CXXMethodDecl;
     class FieldDecl;
+    class VarDecl;
     class ParmVarDecl;
     class FunctionDecl;
+	class CXXConstructorDecl;
+	class CXXConversionDecl;
+	class CXXDestructorDecl;
+
     class DeclVisitor
     {
     public:
         virtual ~DeclVisitor() = default;
 
         // Visit methods for each concrete decl type.
-        virtual void visit(EnumDecl*) = 0;
-        virtual void visit(RecordDecl*) = 0;
-        virtual void visit(CXXRecordDecl*) = 0;
-        virtual void visit(FieldDecl*) = 0;
-        virtual void visit(FunctionDecl*) = 0;
-        virtual void visit(CXXMethodDecl*) = 0;
-        virtual void visit(ParmVarDecl*) = 0;
+        virtual void visit(EnumDecl*) {};
+        virtual void visit(RecordDecl*) {};
+        virtual void visit(CXXRecordDecl*) {};
+        virtual void visit(FieldDecl*) {};
+        virtual void visit(FunctionDecl*) {};
+        virtual void visit(CXXMethodDecl*) {};
+        virtual void visit(ParmVarDecl*) {};
+
+        virtual void visit(CXXConstructorDecl* decl) {};
+        virtual void visit(CXXConversionDecl* decl) {};
+        virtual void visit(CXXDestructorDecl* decl) {};
+        virtual void visit(VarDecl* decl) {};
     };
 
     /**
@@ -127,7 +144,7 @@ namespace lux::cxx::dref {
          * Accepts a visitor, which then calls the appropriate overloaded
          * visit method based on the dynamic type of this declaration.
          */
-        virtual void accept(DeclVisitor*) = 0;
+        virtual void accept(DeclVisitor*) {};
     };
 
     /**
@@ -140,7 +157,8 @@ namespace lux::cxx::dref {
         std::string full_qualified_name; ///< The fully qualified name (including namespaces, classes, etc.).
         std::string spelling;            ///< The exact spelling in the source code.
         std::vector<std::string> attributes; ///< Additional attributes or annotations on the declaration.
-        Type* type = nullptr;                ///< Optional type information if applicable.
+		bool is_anonymous = false;       ///< True if this declaration is anonymous (e.g., unnamed struct).
+        Type* type = nullptr;            ///< Optional type information if applicable.
     };
 
     //======================================================================
@@ -272,8 +290,8 @@ namespace lux::cxx::dref {
     class FieldDecl final : public DeclaratorDecl
     {
     public:
-        runtime::EVisibility visibility = runtime::EVisibility::INVALID; ///< e.g., public, protected, private (if relevant).
-        std::size_t offset = 0; ///< The field offset in bytes (or bits, depending on usage).
+        EVisibility visibility = EVisibility::INVALID; ///< e.g., public, protected, private (if relevant).
+        std::size_t offset {}; ///< The field offset in bytes (or bits, depending on usage).
 
 		CXXRecordDecl* parent_class = nullptr; ///< The class where this field is declared.
 
@@ -309,7 +327,7 @@ namespace lux::cxx::dref {
     class CXXMethodDecl : public FunctionDecl
     {
     public:
-        runtime::EVisibility visibility = runtime::EVisibility::INVALID; ///< Visibility (public, protected, private).
+        EVisibility visibility = EVisibility::INVALID; ///< Visibility (public, protected, private).
 
         bool is_static = false; ///< True if this is a static method.
         bool is_virtual = false; ///< True if this method is declared virtual.
@@ -351,12 +369,11 @@ namespace lux::cxx::dref {
     class ParmVarDecl final : public VarDecl
     {
     public:
-        std::size_t index = 0;  ///< The index of this parameter in the function parameter list.
+        std::size_t index {};  ///< The index of this parameter in the function parameter list.
 
         void accept(DeclVisitor* visitor) override
         {
             visitor->visit(this);
         }
     };
-
 } // namespace lux::cxx::dref

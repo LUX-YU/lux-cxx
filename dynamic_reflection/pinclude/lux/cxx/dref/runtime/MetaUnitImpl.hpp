@@ -21,9 +21,9 @@
  */
 
 #pragma once
-#include <lux/cxx/dref/parser/Declaration.hpp>
-#include <lux/cxx/dref/parser/Type.hpp>
-#include <lux/cxx/algotithm/hash.hpp>
+#include <lux/cxx/dref/runtime/Declaration.hpp>
+#include <lux/cxx/dref/runtime/Type.hpp>
+#include <lux/cxx/algorithm/hash.hpp>
 
 #include <unordered_map>
 #include <memory>
@@ -33,21 +33,33 @@ namespace lux::cxx::dref
 	struct MetaUnitData
 	{
 		// All declaration and types
-		std::vector<std::unique_ptr<Decl>> declarations;
-		std::vector<std::unique_ptr<Type>> types;
+		std::vector<std::unique_ptr<Decl>>		declarations;
+		std::vector<std::unique_ptr<Type>>		types;
 
 		std::unordered_map<std::string, Decl*>  declaration_map;
 		std::unordered_map<std::string, Type*>  type_map;
+		std::unordered_map<std::string, Type*>  type_alias_map;
 
 		// Marked declarations
-		std::vector<Decl*>				   marked_declarations;
-		std::vector<Type*>				   marked_types;
+		std::vector<Decl*>						marked_declarations;
+		std::vector<Type*>						marked_types;
 	};
 
 	class MetaUnitImpl
 	{
 	public:
 		friend class MetaUnit; // parse time 
+
+		MetaUnitImpl(const MetaUnitImpl&) = delete;
+		MetaUnitImpl& operator=(const MetaUnitImpl&) = delete;
+
+		MetaUnitImpl(MetaUnitImpl&&) = default;
+		MetaUnitImpl& operator=(MetaUnitImpl&&) = default;
+
+		MetaUnitImpl() {
+			_id   = 0;
+			_data = std::make_unique<MetaUnitData>();
+		}
 
 		MetaUnitImpl(std::unique_ptr<MetaUnitData> data, std::string unit_name, std::string unit_version)
 			: _data(std::move(data)), _name(std::move(unit_name)), _version(std::move(unit_version))
@@ -57,6 +69,27 @@ namespace lux::cxx::dref
 		}
 
 		~MetaUnitImpl() = default;
+
+		Decl* findDeclById(const std::string& idStr) const
+		{
+			auto it = _data->declaration_map.find(idStr);
+			if (it != _data->declaration_map.end()) {
+				return it->second;
+			}
+			return nullptr;
+		}
+
+		Type* findTypeById(const std::string& idStr) const
+		{
+			auto it = _data->type_map.find(idStr);
+			if (it != _data->type_map.end()) {
+				return it->second;
+			}
+			return nullptr;
+		}
+
+		std::string toJson();
+		static void fromJson(const std::string& json, MetaUnitImpl& unit);
 
 	private:
 		size_t		 _id;

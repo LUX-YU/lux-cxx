@@ -1,15 +1,6 @@
 #pragma once
 #include <lux/cxx/dref/runtime/Attribute.hpp>
 
-/*
-#include <vector>
-#include <algorithm>
-#include <set>
-#include <unordered_map>
-#include <unordered_set>
-#include <tuple>
-#include <utility>
-*/
 #include <string>
 #include <cstddef>
 #include <cstdint>
@@ -25,7 +16,8 @@ void LUX_REFL(static_reflection) TestFunction(
     size_t&& c,
     const double& d,
     const std::string& str,
-    FuncType* func_ptr
+    FuncType* func_ptr,
+    std::string str2
 )
 {
 
@@ -121,6 +113,11 @@ public:
     };
 
     void __func(test_ns::TestClass2&)
+    {
+
+    }
+     
+    void __func2(const test_ns::TestClass2&, const std::string& str)
     {
 
     }

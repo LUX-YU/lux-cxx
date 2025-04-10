@@ -28,7 +28,7 @@ namespace lux::cxx::dref
 	{
 		decl.is_scoped = cursor.isEnumDeclScoped();
 		auto underlying_type = createOrFindType(cursor.enumDeclIntegerType());
-		assert(underlying_type->kind == ETypeKind::BUILTIN);
+		assert(underlying_type->kind == ETypeKinds::Builtin);
 		decl.underlying_type = dynamic_cast<BuiltinType*>(underlying_type);
 
 		cursor.visitChildren(
@@ -52,5 +52,6 @@ namespace lux::cxx::dref
 		auto enum_type = dynamic_cast<EnumType*>(decl.type);
 		assert(enum_type != nullptr);
 		enum_type->decl = &decl;
+		enum_type->kind = decl.is_scoped ? ETypeKinds::ScopedEnum : ETypeKinds::UnscopedEnum;
 	}
 }

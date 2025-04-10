@@ -269,11 +269,13 @@ function(target_add_meta)
 
     # 计算所有输出文件：对每个输入 .hpp -> 2 个 .hpp
     set(_all_generated_files "")
+    set(_generated_source_files "")
     foreach(_mf IN LISTS _meta_files)
         get_filename_component(_base "${_mf}" NAME_WE)
         set(_dyn_file "${_meta_out_dir}/${_base}.meta.dynamic.cpp")
         set(_static_file  "${_meta_out_dir}/${_base}.meta.static.hpp")
         list(APPEND _all_generated_files "${_dyn_file}" "${_static_file}")
+        list(APPEND _generated_source_files "${_dyn_file}")
     endforeach()
 
     if(${_meta_echo} OR ${ARGS_ECHO})
@@ -312,7 +314,7 @@ function(target_add_meta)
     # 加入编译
     target_sources("${_target_name}"
         PRIVATE
-        ${_all_generated_files}
+        ${_generated_source_files}
     )
     add_dependencies("${_target_name}" "${_meta_gen_target}")
 

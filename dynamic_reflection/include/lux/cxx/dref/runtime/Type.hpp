@@ -25,24 +25,56 @@
 #include <vector>
 #include <clang-c/Index.h>
 
-
 namespace lux::cxx::dref {
-
-    /**
-     * Enumeration of different type categories in C/C++.
-     * Used to classify whether a type is builtin, pointer, reference, etc.
-     */
-    enum class ETypeKind {
-        BUILTIN,
-        POINTER,
-        LVALUE_REFERENCE,
-        RVALUE_REFERENCE,
-        RECORD,     ///< Class/struct/union
-		CXX_RECORD, ///< C++ class/struct
-        ENUM,       ///< Enumeration
-        FUNCTION,   ///< Function type
-        ARRAY,
-        UNSUPPORTED ///< Fallback for unhandled/unrecognized types
+    enum class ETypeKinds {
+        Unknown = 0,            /**< Unknown type. */
+        Imcomplete,             /**< Incomplete type. (Note: "Imcomplete" is a known spelling issue.) */
+		Builtin,                /**< Built-in type. */
+        // Fundamental types
+        Void,                   /**< void type. */
+        Nullptr_t,              /**< std::nullptr_t type (C++11). */
+        Bool,                   /**< Boolean type. */
+        // Integer and character types
+        Char,                   /**< char type. */
+        SignedChar,             /**< signed char type. */
+        UnsignedChar,           /**< unsigned char type. */
+        Char8,                  /**< char8_t type (C++20). */
+        Char16,                 /**< char16_t type (C++11). */
+        Char32,                 /**< char32_t type (C++11). */
+        WChar,                  /**< wchar_t type. */
+        Short,                  /**< short integer type. */
+        Int,                    /**< int type. */
+        Long,                   /**< long integer type. */
+        LongLong,               /**< long long integer type. */
+        UnsignedShort,          /**< unsigned short integer type. */
+        UnsignedInt,            /**< unsigned int type. */
+        UnsignedLong,           /**< unsigned long integer type. */
+        UnsignedLongLong,       /**< unsigned long long integer type. */
+        // Floating-point types
+        Float,                  /**< float type. */
+        Double,                 /**< double type. */
+        LongDouble,             /**< long double type. */
+        // Compound types
+        // Reference types
+        LvalueReference,        /**< lvalue reference (T&). */
+        RvalueReference,        /**< rvalue reference (T&&) (C++11). */
+        // Pointer types
+		Pointer,                /**< Pointer type. */
+        PointerToObject,        /**< Pointer to an object. */
+        PointerToFunction,      /**< Pointer to a function. */
+        // Pointer-to-member types
+        PointerToDataMember,    /**< Pointer to a data member. */
+        PointerToMemberFunction,/**< Pointer to a member function. */
+        Array,                  /**< Array type. */
+        Function,               /**< Function type. */
+        // Enumeration types
+        Enum,
+        UnscopedEnum,           /**< Unscoped enumeration. */
+        ScopedEnum,             /**< Scoped enumeration (C++11). */
+		Record,                /**< Record type (struct/class). */
+        // Class types
+        Class,                  /**< Non-union class type. */
+        Union                   /**< Union type. */
     };
 
     /**
@@ -89,7 +121,7 @@ namespace lux::cxx::dref {
 
         std::string name; ///< A descriptive name, used for debugging or display.
         std::string id;   ///< A unique identifier for internal referencing.
-        ETypeKind   kind; ///< The classification of this type (e.g. BUILTIN, POINTER).
+        ETypeKinds  kind; ///< The classification of this type (e.g. BUILTIN, POINTER).
         bool        is_const{ false };    ///< True if the type is marked as const.
         bool        is_volatile{ false }; ///< True if the type is marked as volatile.
         int         size;  ///< Size in bytes (if known), otherwise could be set to -1 or 0 if unknown.
@@ -127,11 +159,10 @@ namespace lux::cxx::dref {
     //==================================================================
     // 1) BuiltinType: e.g. int, float, bool, char, double, etc.
     //==================================================================
-
     class BuiltinType final : public Type
     {
     public:
-        static constexpr auto static_kind = ETypeKind::BUILTIN;
+        static constexpr auto static_kind = ETypeKinds::Builtin;
 
         /**
          * EBuiltinKind enumerates a variety of built-in types recognized by Clang.
@@ -285,7 +316,7 @@ namespace lux::cxx::dref {
     class PointerType final : public Type
     {
     public:
-        static constexpr auto static_kind = ETypeKind::POINTER;
+        static constexpr auto static_kind = ETypeKinds::Pointer;
 
         Type* pointee = nullptr;   ///< The type being pointed to.
         bool  is_pointer_to_member{ false }; ///< True if it's a pointer-to-member type (C++ feature).
@@ -315,7 +346,7 @@ namespace lux::cxx::dref {
     class LValueReferenceType final : public ReferenceType
     {
     public:
-        static constexpr auto static_kind = ETypeKind::LVALUE_REFERENCE;
+        static constexpr auto static_kind = ETypeKinds::LvalueReference;
 
         void accept(TypeVisitor* visitor) override {
             visitor->visit(this);
@@ -328,7 +359,7 @@ namespace lux::cxx::dref {
     class RValueReferenceType final : public ReferenceType
     {
     public:
-        static constexpr auto static_kind = ETypeKind::RVALUE_REFERENCE;
+        static constexpr auto static_kind = ETypeKinds::RvalueReference;
 
         void accept(TypeVisitor* visitor) override {
             visitor->visit(this);
@@ -346,7 +377,7 @@ namespace lux::cxx::dref {
     class RecordType final : public TagType
     {
     public:
-        static constexpr auto static_kind = ETypeKind::RECORD;
+        static constexpr auto static_kind = ETypeKinds::Record;
 
         void accept(TypeVisitor* visitor) override {
             visitor->visit(this);
@@ -363,7 +394,7 @@ namespace lux::cxx::dref {
     class EnumType final : public TagType
     {
     public:
-        static constexpr auto static_kind = ETypeKind::ENUM;
+        static constexpr auto static_kind = ETypeKinds::Enum;
 
         void accept(TypeVisitor* visitor) override {
             visitor->visit(this);
@@ -381,12 +412,11 @@ namespace lux::cxx::dref {
     class FunctionType final : public Type
     {
     public:
-        static constexpr auto static_kind = ETypeKind::FUNCTION;
+        static constexpr auto static_kind = ETypeKinds::Function;
 
         Type* result_type = nullptr;         ///< The function's return type.
         std::vector<Type*> param_types;      ///< The list of parameter types.
         bool is_variadic = false;            ///< True if this function accepts variadic arguments.
-        FunctionDecl* decl = nullptr;        ///< Reference to the corresponding FunctionDecl node.
 
 		void accept(TypeVisitor* visitor) override {
 			visitor->visit(this);

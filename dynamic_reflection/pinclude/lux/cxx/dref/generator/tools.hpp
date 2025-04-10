@@ -5,8 +5,8 @@
 #include <optional>
 #include <sstream>
 #include <lux/cxx/dref/runtime/Attribute.hpp>
-#include <lux/cxx/algotithm/string_operations.hpp>
-#include <lux/cxx/algotithm/hash.hpp>
+#include <lux/cxx/algorithm/string_operations.hpp>
+#include <lux/cxx/algorithm/hash.hpp>
 
 #include <lux/cxx/dref/runtime/RuntimeMeta.hpp>
 
@@ -40,7 +40,7 @@ std::filesystem::path makeAbsolute(
 // ------------------------------------------------------
 bool isStandardAbsolute(const std::string& s);
 
-std::string visibility2Str(lux::cxx::dref::runtime::EVisibility visibility);
+std::string visibility2Str(lux::cxx::dref::EVisibility visibility);
 
 std::string truncateAtLastParen(const std::string& funcName);
 

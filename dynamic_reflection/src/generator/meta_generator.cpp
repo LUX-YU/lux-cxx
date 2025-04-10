@@ -28,16 +28,16 @@
 #include <optional>
 #include <set>
 #include <array>
-#include <sstream>
+#include <unordered_set>
 
 #include <lux/cxx/dref/generator/Generator.hpp>
 
 #include <lux/cxx/dref/parser/CxxParser.hpp>
 #include <lux/cxx/dref/parser/libclang.hpp>
-#include <lux/cxx/dref/parser/Declaration.hpp>
-#include <lux/cxx/dref/parser/Type.hpp>
-#include <lux/cxx/algotithm/hash.hpp>
-#include <lux/cxx/algotithm/string_operations.hpp>
+#include <lux/cxx/dref/runtime/Declaration.hpp>
+#include <lux/cxx/dref/runtime/Type.hpp>
+#include <lux/cxx/algorithm/hash.hpp>
+#include <lux/cxx/algorithm/string_operations.hpp>
 
 // The text of your Inja templates:
 #include "lux/cxx/dref/generator/static_meta.inja.hpp"
@@ -54,6 +54,11 @@ static std::string generateDynamicReflectionCode(inja::Environment& env, inja_te
         ss << env.render(meta_template, data);
 	}
 	return ss.str();
+}
+
+static std::string generateStaticReflectionCode(inja::Environment& env, inja::Template& static_meta_template, nlohmann::json& data)
+{
+	return env.render(static_meta_template, data);
 }
 
 // -------------------------------------------------------------------------
@@ -86,7 +91,11 @@ int main(int argc, char* argv[])
     }
 	
     if (!std::filesystem::exists(config.source_file)) {
-        std::cerr << "[Warn] source_file " << config.source_file << " does not exist or not matched.\n";
+        std::cerr << "[Error] source_file " << config.source_file << " does not exist or not matched.\n";
+        std::cerr << "[Error] You can check your build system, and try to make sure use absolute path for source file.\n"
+            "If you are using cmake, the possible format is ${CMAKE_CURRENT_SOURCE_DIR}/to/source_file.";
+
+        return 1;
         // not strictly an error, but we can't find the compile entry
     }
     if (!std::filesystem::exists(config.compile_commands)) {
@@ -95,7 +104,14 @@ int main(int argc, char* argv[])
     }
 
     // gather additional includes from compile_commands
-    auto extra_includes  = fetchIncludePaths(config.compile_commands, config.source_file);
+    auto extra_includes     = fetchIncludePaths(config.compile_commands, config.source_file);
+    auto source_file_path   = std::filesystem::path(config.source_file);
+    auto source_file_parent = source_file_path.parent_path();
+    if (source_file_parent != std::filesystem::path("."))
+    {
+        extra_includes.push_back(source_file_parent.string());
+    }
+
 	auto include_options = convertToDashI(extra_includes);
 
     // Build final clang parse options
@@ -127,6 +143,7 @@ int main(int argc, char* argv[])
 	}
 
     std::vector<std::string> file_hashs;
+    std::unordered_set<std::string> global_filter;
 
     for (const auto& file : config.target_files)
     {
@@ -134,11 +151,11 @@ int main(int argc, char* argv[])
         auto static_meta_generator  = std::make_unique<StaticMetaGenerator>();
 
 		std::filesystem::path file_path = file;
-        auto maybeRel = findRelativeIncludePath(file_path, extra_includes);
-        if (!maybeRel)
+        auto maybe_rel = findRelativeIncludePath(file_path, extra_includes);
+        if (!maybe_rel.has_value())
         {
-            std::cerr << "[Error] Could not find a relative include path for " << file << "\n";
-            return 1;
+			std::cerr << "[Error] Cannot find relative path for " << file << "\n";
+			return 1;
         }
 
         // Now parse the file
@@ -160,25 +177,39 @@ int main(int argc, char* argv[])
 
         for (auto& decl : data.markedDeclarations())
         {
+			if (global_filter.find(decl->id) != global_filter.end()) {
+				continue;
+			}
+			global_filter.insert(decl->id);
+
 			decl->accept(static_meta_generator.get());
 			decl->accept(dynamic_meta_generator.get());
         }
 
-		nlohmann::json json;
+		nlohmann::json dyn_json;
+		nlohmann::json static_json;
         auto file_hash = std::to_string(lux::cxx::algorithm::fnv1a(file_path.string()));
         file_hashs.push_back(std::move(file_hash));
 
-		dynamic_meta_generator->toJsonFile(json);
-		json["include_path"] = (*maybeRel).string();
-		json["file_hash"]    = file_hashs.back();
+		dynamic_meta_generator->toJsonFile(dyn_json);
+        dyn_json["include_path"] = (*maybe_rel).string();
+        dyn_json["file_hash"]    = file_hashs.back();
         
-		// static_env.render(static_meta_template, json);
+		static_meta_generator->toJsonFile(static_json);
         try {
-			auto dynamic_render_rst = generateDynamicReflectionCode(dynamic_env, dynamic_meta_templates, json);
-            auto output_path = std::filesystem::path(config.out_dir) / (base_name + ".meta.dynamic.cpp");
-			std::ofstream output(output_path, std::ios::binary);
-			output << dynamic_render_rst;
-			output.close();
+			auto dynamic_render_rst = generateDynamicReflectionCode(dynamic_env, dynamic_meta_templates, dyn_json);
+			auto static_render_rst  = generateStaticReflectionCode(static_env, static_meta_template, static_json);
+            auto dyn_output_path    = std::filesystem::path(config.out_dir) / (base_name + ".meta.dynamic.cpp");
+			auto static_output_path = std::filesystem::path(config.out_dir) / (base_name + ".meta.static.hpp");
+
+            std::ofstream dyn_output(dyn_output_path, std::ios::binary);
+			std::ofstream static_output(static_output_path, std::ios::binary);
+
+            dyn_output << dynamic_render_rst;
+            dyn_output.close();
+
+			static_output << static_render_rst;
+			static_output.close();
 		}
 		catch (std::exception& e) {
 			std::cerr << "[Error] Rendering of template failed.\n" << e.what() << std::endl;

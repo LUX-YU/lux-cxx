@@ -20,43 +20,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#include <vector>
+#include <queue>
 
-#include <deque>
-#include <lux/cxx/visibility.h>
-#include <string_view>
-#include <memory>
-
-#include "Declaration.hpp"
-
-namespace lux::cxx::dref
+namespace lux::cxx::algorithm
 {
-	class MetaUnitImpl;
-	class MetaUnitData;
-	class LUX_CXX_PUBLIC MetaUnit final
+	template<typename T>
+	void topological_sort()
 	{
-		friend class CxxParserImpl;
-	public:
-		MetaUnit();
-		MetaUnit(MetaUnit&&) noexcept;
-		MetaUnit& operator=(MetaUnit&&) noexcept;
-		~MetaUnit();
 
-		static size_t calculateTypeMetaId(std::string_view name);
-
-		[[nodiscard]] bool isValid() const;
-
-		[[nodiscard]] size_t id() const;
-
-		[[nodiscard]] const std::string& name() const;
-
-		[[nodiscard]] const std::string& version() const;
-
-		[[nodiscard]] const std::vector<Decl*>& markedDeclarations() const;
-		[[nodiscard]] const std::vector<Type*>& markedType() const;
-
-	private:
-		std::unique_ptr<MetaUnitImpl> _impl;
-
-		explicit MetaUnit(std::unique_ptr<MetaUnitImpl>);
-	};
+	}
 }

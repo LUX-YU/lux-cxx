@@ -22,7 +22,7 @@ struct LUX_REFL(static_reflection;dynamic_reflection) TestClass
 	{
 	}
 
-    double func1(int a, double b)
+    double func1(int a, double b, std::string)
     {
         return field2 + a / b;
     }

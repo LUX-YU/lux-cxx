@@ -1,8 +1,8 @@
 #include <lux/cxx/dref/parser/CxxParserImpl.hpp>
 #include <lux/cxx/dref/runtime/Attribute.hpp>
 
-#include <lux/cxx/dref/parser/MetaUnit.hpp>
-#include <lux/cxx/algotithm/string_operations.hpp>
+#include <lux/cxx/dref/runtime/MetaUnit.hpp>
+#include <lux/cxx/algorithm/string_operations.hpp>
 
 #include <numeric>
 #include <iostream>

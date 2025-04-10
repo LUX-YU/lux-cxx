@@ -591,7 +591,7 @@ static constexpr inline std::string_view dynamic_meta_template_register_end = R"
 void register_reflections_{{ file_hash }}(RuntimeMetaRegistry& registry)
 {
     {% for fundamental in fundamentals -%}
-    registry.registerMeta(&s_fundamental_meta_{{ fundamental.basic_info.hash }});
+    registry.sRegisterMeta(&s_fundamental_meta_{{ fundamental.basic_info.hash }});
     {% endfor %}
 
     {% for pointer in pointers -%}

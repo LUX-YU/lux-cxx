@@ -1,10 +1,10 @@
 # import target libclang
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang.cmake)
-find_package(inja      CONFIG REQUIRED)
+find_package(inja          CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 set(DREF_PARSER_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParserImpl.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/MetaUnit.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_class_declaration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_enumeration_declaration.cpp
 )
@@ -12,6 +12,8 @@ set(DREF_PARSER_SRCS
 # start constructing component dynamic_reflection_runtime
 set(DREF_RUNTIME_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaRegistry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnit.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnitSerializer.cpp
 )
 
 add_component(
@@ -73,6 +75,7 @@ target_link_libraries(
     dynamic_reflection_parser
     PUBLIC
         libclang
+        nlohmann_json::nlohmann_json
 )  
 
 component_add_internal_dependencies(
@@ -95,12 +98,12 @@ component_add_transitive_commands(
 # start constructing component dynamic_reflection_generator
 set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-
+#[[
 add_executable(
 	lux_meta_generator
 	${CMAKE_CURRENT_SOURCE_DIR}/src/generator/meta_generator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/DynamicMetaGenerator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/StaticMataGenerator.cpp    
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/StaticMetaGenerator.cpp    
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/MetaRuntimeBinder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/tools.cpp
 )
 
@@ -124,6 +127,7 @@ install(
 	TARGETS lux_meta_generator
     RUNTIME DESTINATION bin
 )
+]]
 
 set(ENABLE_DYNAMIC_REFLECTION_TEST true BOOL "Enable dynamic reflection test")
 if(ENABLE_DYNAMIC_REFLECTION_TEST)

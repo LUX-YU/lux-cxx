@@ -31,14 +31,14 @@ R"(#pragma once
 namespace lux::cxx::dref{
     {% for class in classes -%}
     template<>
-    class type_meta<{{ class.name }}>
+    class type_meta<::{{ class.name }}>
     {
     public:
-        using type = {{ class.name }};
+        using type = ::{{ class.name }};
         static constexpr size_t size  = sizeof({{ class.name }});
         static constexpr size_t align = {{ class.align }};
         static constexpr const char* name = "{{ class.name }}";
-        static constexpr EMetaType meta_type = {{ class.record_type }};
+        static constexpr ERecordType meta_type = {{ class.record_type }};
         static constexpr size_t hash = {{ class.hash }};
 
         static constexpr std::array<FieldInfo, {{ length(class.fields) }}> fields{
@@ -101,13 +101,12 @@ namespace lux::cxx::dref{
 
     {% for enum in enums -%}
     template<>
-    class type_meta<{{ enum.name }}>
+    class type_meta<::{{ enum.name }}>
     {
     public:
         static constexpr size_t size = {{ enum.size }};
         using value_type   = std::underlying_type_t<{{ enum.name }}>;
         using element_type = std::pair<const char*, std::underlying_type_t<{{ enum.name }}>>;
-        static constexpr EMetaType meta_type = EMetaType::ENUMERATOR;
         static constexpr size_t hash = {{ enum.hash }};
         static constexpr bool is_scoped = {{ enum.is_scoped }};
         static constexpr const char* underlying_type_name = "{{ enum.underlying_type_name }}";
@@ -140,9 +139,9 @@ namespace lux::cxx::dref{
         {
             switch (value)
             {
-                {% for case in enum.cases -%}
-                case {{ enum.name }}::{{ case }}:
-                    return "{{ case }}";{% if not loop.is_last %}
+                {% for element in enum.elements -%}
+                case {{ enum.name }}::{{ element.key }}:
+                    return "{{ element.key }}";{% if not loop.is_last %}
                 {% endif %}{% endfor %}
             }
             return "";

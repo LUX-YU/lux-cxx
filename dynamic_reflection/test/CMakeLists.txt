@@ -98,3 +98,14 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::dynamic_reflection_parser
 )
+
+add_executable(
+	meta_unit_serial_test
+	meta_unit_serial_test.cpp
+)
+
+target_link_libraries(
+	meta_unit_serial_test
+	PRIVATE
+	lux::cxx::dynamic_reflection_parser
+)

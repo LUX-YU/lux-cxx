@@ -21,7 +21,7 @@
  */
 
 #include <lux/cxx/dref/parser/CxxParserImpl.hpp>
-#include <lux/cxx/dref/parser/Declaration.hpp>
+#include <lux/cxx/dref/runtime/Declaration.hpp>
 
 namespace lux::cxx::dref
 {
@@ -35,20 +35,20 @@ namespace lux::cxx::dref
      * @param specifier Clang's CX_CXXAccessSpecifier value.
      * @return EVisibility corresponding to the provided specifier.
      */
-    static runtime::EVisibility visibilityFromClangVisibility(const CX_CXXAccessSpecifier specifier)
+    static EVisibility visibilityFromClangVisibility(const CX_CXXAccessSpecifier specifier)
     {
         switch (specifier)
         {
         case CX_CXXInvalidAccessSpecifier:
-            return runtime::EVisibility::INVALID;
+            return EVisibility::INVALID;
         case CX_CXXPublic:
-            return runtime::EVisibility::PUBLIC;
+            return EVisibility::PUBLIC;
         case CX_CXXProtected:
-            return runtime::EVisibility::PROTECTED;
+            return EVisibility::PROTECTED;
         case CX_CXXPrivate:
-            return runtime::EVisibility::PRIVATE;
+            return EVisibility::PRIVATE;
         }
-        return runtime::EVisibility::INVALID; // Fallback for any unhandled cases
+        return EVisibility::INVALID; // Fallback for any unhandled cases
     }
 
     /**

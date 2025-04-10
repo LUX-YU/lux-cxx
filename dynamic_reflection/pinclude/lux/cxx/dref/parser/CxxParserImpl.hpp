@@ -25,9 +25,9 @@
 
 #include "libclang.hpp"
 #include <lux/cxx/dref/parser/CxxParser.hpp>
-#include <lux/cxx/dref/parser/MetaUnitImpl.hpp>
-#include <lux/cxx/dref/parser/Declaration.hpp>
-#include <lux/cxx/dref/parser/Type.hpp>
+#include <lux/cxx/dref/runtime/MetaUnitImpl.hpp>
+#include <lux/cxx/dref/runtime/Declaration.hpp>
+#include <lux/cxx/dref/runtime/Type.hpp>
 #include <memory>
 
 namespace lux::cxx::dref
@@ -108,6 +108,7 @@ namespace lux::cxx::dref
             decl.full_qualified_name = fullQualifiedName(cursor);
             decl.spelling            = cursor.cursorSpelling().to_std();
             decl.attributes          = parseAnnotations(cursor);
+			decl.is_anonymous        = cursor.isAnonymous();
 
             parseBasicDecl(cursor, decl);
 
@@ -144,11 +145,6 @@ namespace lux::cxx::dref
                 registerDeclaration(std::move(param_decl));
             }
 			parseNamedDecl(cursor, decl); // type is set here
-
-            if (auto type = dynamic_cast<FunctionType*>(decl.type))
-            {
-				type->decl = &decl;
-            }
         }
 
         void parseCxxMethodDecl(const Cursor& cursor,    CXXMethodDecl& decl);
@@ -171,22 +167,23 @@ namespace lux::cxx::dref
         static void parseBuiltinType(const ClangType& clang_type, BuiltinType::EBuiltinKind kind,  BuiltinType& type)
         {
             type.builtin_type = kind;
+			type.kind         = ETypeKinds::Builtin;
             parseBasicType(clang_type, type);
-        }
-
-        static ClangType rootAnonicalType(const ClangType& type)
-        {
-            if (type.kind() == CXType_Typedef)
-            {
-                return rootAnonicalType(type.canonicalType());
-            }
-            return type;
         }
 
         void parsePointerType(const ClangType& clang_type, PointerType& type)
         {
             type.pointee = createOrFindType(clang_type.pointeeType());
-        	type.kind    = ETypeKind::POINTER;
+            if (type.is_pointer_to_member)
+            {
+                type.kind = type.pointee->kind == ETypeKinds::Function
+                    ? ETypeKinds::PointerToFunction : ETypeKinds::PointerToObject;
+            }
+            else
+            {
+                type.kind = type.pointee->kind == ETypeKinds::Function
+                    ? ETypeKinds::PointerToMemberFunction : ETypeKinds::PointerToDataMember;
+            }
             parseBasicType(clang_type, type);
         }
 
@@ -198,19 +195,19 @@ namespace lux::cxx::dref
 
         void parseRecordType(const ClangType& clang_type, RecordType& type)
         {
-        	type.kind = ETypeKind::RECORD;
+        	type.kind = ETypeKinds::Record;
         	parseBasicType(clang_type, type);
         }
 
     	void parseEnumType(const ClangType& clang_type, EnumType& type)
         {
-        	type.kind = ETypeKind::ENUM;
+        	type.kind = ETypeKinds::Enum;
         	parseBasicType(clang_type, type);
         }
 
     	void parseFunctionType(const ClangType& clang_type, FunctionType& type)
         {
-	        type.kind		= ETypeKind::FUNCTION;
+	        type.kind		= ETypeKinds::Function;
         	type.result_type = createOrFindType(clang_type.resultType());
         	type.is_variadic = clang_type.isFunctionTypeVariadic();
         	const int num_args    = clang_type.getNumArgTypes();
@@ -229,10 +226,18 @@ namespace lux::cxx::dref
 
     	Type* createOrFindType(const ClangType& clang_type)
 		{
-			const auto canonical_type = clang_type.canonicalType();
+			const auto canonical_type     = clang_type.canonicalType();
+			const auto origin_type_name   = clang_type.typeSpelling().to_std();
 			if (const auto canonical_name = canonical_type.typeSpelling().to_std(); hasType(canonical_name))
 			{
-				return getType(canonical_name);
+				// if the type is a typedef, we need to register it in the type alias map
+				auto type_ptr = getType(canonical_name);
+                if (!hasType(origin_type_name))
+                {
+					_meta_unit_data->type_alias_map[origin_type_name] = type_ptr;
+                }
+
+				return type_ptr;
 			}
 
 			switch (const auto type_kind = clang_type.kind())
@@ -297,14 +302,14 @@ namespace lux::cxx::dref
 				{
 					auto l_reference_type = std::make_unique<LValueReferenceType>();
 					parseReferenceType(clang_type, *l_reference_type);
-					l_reference_type->kind = ETypeKind::LVALUE_REFERENCE;
+					l_reference_type->kind = ETypeKinds::LvalueReference;
 					return registerType(std::move(l_reference_type));
 				}
 				case CXType_RValueReference:
 				{
 					auto r_reference_type = std::make_unique<RValueReferenceType>();
 					parseReferenceType(clang_type, *r_reference_type);
-					r_reference_type->kind = ETypeKind::RVALUE_REFERENCE;
+					r_reference_type->kind = ETypeKinds::RvalueReference;
 					return registerType(std::move(r_reference_type));
 				}
 				case CXType_Record:
@@ -321,7 +326,7 @@ namespace lux::cxx::dref
 				}
 				case CXType_Typedef:
 				{
-					return createOrFindType(clang_type.canonicalType());
+					return createOrFindType(clang_type);
 				}
 				/* for obj - c
 				// case CXType_ObjCInterface:
@@ -348,7 +353,7 @@ namespace lux::cxx::dref
 				}
 				// case CXType_Auto:
 				case CXType_Elaborated:
-					return createOrFindType(clang_type.canonicalType());
+					return createOrFindType(clang_type);
 				// case CXType_Attributed:
 				default:
 				{
