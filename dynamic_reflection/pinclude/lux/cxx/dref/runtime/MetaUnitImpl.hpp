@@ -61,6 +61,11 @@ namespace lux::cxx::dref
 			_data = std::make_unique<MetaUnitData>();
 		}
 
+		/**
+		 * @brief Construct a new MetaUnitImpl object
+		 * @param data The data to be used
+		 * @param unit_name The name of the unit, usually the md5 of file
+		 */
 		MetaUnitImpl(std::unique_ptr<MetaUnitData> data, std::string unit_name, std::string unit_version)
 			: _data(std::move(data)), _name(std::move(unit_name)), _version(std::move(unit_version))
 		{
@@ -88,13 +93,13 @@ namespace lux::cxx::dref
 			return nullptr;
 		}
 
-		std::string toJson();
+		nlohmann::json toJson() const;
 		static void fromJson(const std::string& json, MetaUnitImpl& unit);
 
 	private:
-		size_t		 _id;
+		size_t						  _id;
 		std::unique_ptr<MetaUnitData> _data;
-		std::string	 _name;
-		std::string	 _version;
+		std::string					  _name;
+		std::string					  _version;
 	};
 }

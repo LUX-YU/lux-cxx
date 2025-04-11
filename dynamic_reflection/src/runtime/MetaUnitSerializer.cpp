@@ -471,7 +471,6 @@ namespace lux::cxx::dref
             fixupFunctionCommon(fn, j, declMap, typeMap);
         }
         break;
-
         case EDeclKind::CXX_METHOD_DECL:
         case EDeclKind::CXX_CONSTRUCTOR_DECL:
         case EDeclKind::CXX_CONVERSION_DECL:
@@ -487,7 +486,8 @@ namespace lux::cxx::dref
                     auto it = declMap.find(s);
                     if (it != declMap.end() && it->second->kind == EDeclKind::CXX_RECORD_DECL)
                     {
-                        method->parent_class = static_cast<CXXRecordDecl*>(it->second);
+						auto parent_class = static_cast<CXXRecordDecl*>(it->second);
+                        method->parent_class = parent_class;
                     }
                 }
             }
@@ -505,13 +505,19 @@ namespace lux::cxx::dref
     {
         switch (k)
         {
-        case ETypeKinds::Builtin:          return std::make_unique<BuiltinType>();
-        case ETypeKinds::Pointer:          return std::make_unique<PointerType>();
-        case ETypeKinds::LvalueReference:  return std::make_unique<LValueReferenceType>();
-        case ETypeKinds::RvalueReference:  return std::make_unique<RValueReferenceType>();
-        case ETypeKinds::Record:           return std::make_unique<RecordType>();
-        case ETypeKinds::Enum:             return std::make_unique<EnumType>();
-        case ETypeKinds::Function:         return std::make_unique<FunctionType>();
+        case ETypeKinds::Builtin:           return std::make_unique<BuiltinType>();
+		case ETypeKinds::PointerToDataMember: [[fallthrough]];
+		case ETypeKinds::PointerToMemberFunction: [[fallthrough]];
+		case ETypeKinds::PointerToFunction: [[fallthrough]];
+		case ETypeKinds::PointerToObject:   [[fallthrough]];
+        case ETypeKinds::Pointer:           return std::make_unique<PointerType>();
+        case ETypeKinds::LvalueReference:   return std::make_unique<LValueReferenceType>();
+        case ETypeKinds::RvalueReference:   return std::make_unique<RValueReferenceType>();
+        case ETypeKinds::Record:            return std::make_unique<RecordType>();
+		case ETypeKinds::ScopedEnum:        [[fallthrough]];
+		case ETypeKinds::UnscopedEnum:      [[fallthrough]];
+        case ETypeKinds::Enum:              return std::make_unique<EnumType>();
+        case ETypeKinds::Function:          return std::make_unique<FunctionType>();
         default:
             return std::make_unique<UnsupportedType>();
         }
@@ -540,6 +546,10 @@ namespace lux::cxx::dref
             j["builtin_type"] = (int)b->builtin_type;
         }
         break;
+        case ETypeKinds::PointerToDataMember: [[fallthrough]];
+        case ETypeKinds::PointerToMemberFunction: [[fallthrough]];
+        case ETypeKinds::PointerToFunction: [[fallthrough]];
+        case ETypeKinds::PointerToObject: [[fallthrough]];
         case ETypeKinds::Pointer:
         {
             auto* p = static_cast<const PointerType*>(t);
@@ -565,6 +575,8 @@ namespace lux::cxx::dref
             j["decl_id"] = (rt->decl ? rt->decl->id : "");
         }
         break;
+		case ETypeKinds::ScopedEnum: [[fallthrough]];
+		case ETypeKinds::UnscopedEnum: [[fallthrough]];
         case ETypeKinds::Enum:
         {
             auto* et = static_cast<const EnumType*>(t);
@@ -618,6 +630,10 @@ namespace lux::cxx::dref
             b->builtin_type = (BuiltinType::EBuiltinKind)j.value("builtin_type", 0);
         }
         break;
+        case ETypeKinds::PointerToDataMember: [[fallthrough]];
+        case ETypeKinds::PointerToMemberFunction: [[fallthrough]];
+        case ETypeKinds::PointerToFunction: [[fallthrough]];
+        case ETypeKinds::PointerToObject: [[fallthrough]];
         case ETypeKinds::Pointer:
         {
             auto* p = static_cast<PointerType*>(raw);
@@ -699,6 +715,8 @@ namespace lux::cxx::dref
             }
         }
         break;
+		case ETypeKinds::ScopedEnum: [[fallthrough]];
+		case ETypeKinds::UnscopedEnum: [[fallthrough]];
         case ETypeKinds::Enum:
         {
             auto* et = static_cast<EnumType*>(t);
@@ -925,13 +943,13 @@ namespace lux::cxx::dref
         }
     }
 
-    std::string MetaUnitImpl::toJson()
+    nlohmann::json MetaUnitImpl::toJson() const
     {
         auto json = serializeMetaUnitData(*_data);
         json["version"] = this->_version;
 		json["name"] = this->_name;
 
-		return nlohmann::to_string(json);
+        return json;
     }
 
     void MetaUnitImpl::fromJson(const std::string& json, MetaUnitImpl& unit)

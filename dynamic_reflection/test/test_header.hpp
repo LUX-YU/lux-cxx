@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/cxx/dref/runtime/Attribute.hpp>
+#include <lux/cxx/dref/runtime/Marker.hpp>
 
 #include <string>
 #include <cstddef>
@@ -11,7 +11,7 @@ using FuncType = void(int, double);
 class UnexposedClass;
 typedef int myint;
 
-void LUX_REFL(static_reflection) TestFunction(
+void LUX_REFL(marked) TestFunction(
     LUX_REFL(parameter) myint z,
     size_t&& c,
     const double& d,
@@ -23,7 +23,7 @@ void LUX_REFL(static_reflection) TestFunction(
 
 }
 
-struct LUX_REFL(static_reflection) TestStruct
+struct LUX_REFL(marked) TestStruct
 {
     int a1;
     int a2;
@@ -33,18 +33,18 @@ struct LUX_REFL(static_reflection) TestStruct
     UnexposedClass* a3;
 };
 
-enum class LUX_REFL(static_reflection) TestEnum
+enum class LUX_REFL(marked) TestEnum
 {
     VALUE1,
-    VALUE2 = 100,
-    VALUE3
+        VALUE2 = 100,
+        VALUE3
 };
 
-enum LUX_REFL(static_reflection){
-  AnonymousEnum = 100,
+enum LUX_REFL(marked) {
+    AnonymousEnum = 100,
 };
 
-class LUX_REFL(static_reflection) TestClass
+class LUX_REFL(marked) TestClass
 {
 public:
     TestClass();
@@ -55,7 +55,7 @@ public:
 
     int LUX_REFL(int) a1;
     int a12(int, const int, const bool, const double) {
-		return 1;
+        return 1;
     }
 protected:
     int a2;
@@ -64,12 +64,12 @@ protected:
 private:
     const int* a3;
 
-    void __function(int**, double*, long&){}
+    void __function(int**, double*, long&) {}
 };
 
 namespace test_ns
 {
-    class LUX_REFL(dynamic_reflection) TestClass2
+    class LUX_REFL(marked) TestClass2
     {
     public:
         int a1;
@@ -82,7 +82,7 @@ namespace test_ns
 
     namespace test_ns_2
     {
-        class LUX_REFL(static_reflection) TestClass3
+        class LUX_REFL(marked) TestClass3
         {
         public:
             enum class InternalEnum
@@ -101,7 +101,7 @@ namespace test_ns
     }
 }
 
-struct LUX_REFL(static_reflection) TestStruct2 : public test_ns::test_ns_2::TestClass3, test_ns::TestClass2
+struct LUX_REFL(marked) TestStruct2 : public test_ns::test_ns_2::TestClass3, test_ns::TestClass2
 {
 public:
     using AliasType = test_ns::TestClass2;

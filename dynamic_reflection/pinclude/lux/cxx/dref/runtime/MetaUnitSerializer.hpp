@@ -50,13 +50,19 @@ namespace lux::cxx::dref
     {
         switch (k)
         {
-        case ETypeKinds::Builtin:          return "BuiltinType";
-        case ETypeKinds::Pointer:          return "PointerType";
-        case ETypeKinds::LvalueReference:  return "LValueReferenceType";
-        case ETypeKinds::RvalueReference:  return "RValueReferenceType";
-        case ETypeKinds::Record:           return "RecordType";
-        case ETypeKinds::Enum:             return "EnumType";
-        case ETypeKinds::Function:         return "FunctionType";
+        case ETypeKinds::Builtin:                   return "BuiltinType";
+        case ETypeKinds::Pointer:                   return "PointerType";
+        case ETypeKinds::PointerToDataMember:       return "MemberDataPointerType";
+        case ETypeKinds::PointerToMemberFunction:   return "MemberFuncPointerType";
+        case ETypeKinds::PointerToFunction:         return "FuncPointerType";
+        case ETypeKinds::PointerToObject:           return "ObjectPointerType";
+        case ETypeKinds::LvalueReference:           return "LValueReferenceType";
+        case ETypeKinds::RvalueReference:           return "RValueReferenceType";
+        case ETypeKinds::Record:                    return "RecordType";
+        case ETypeKinds::Enum:                      return "EnumType";
+		case ETypeKinds::ScopedEnum:                return "ScopedEnumType";
+		case ETypeKinds::UnscopedEnum:              return "UnscopedEnumType";
+        case ETypeKinds::Function:                  return "FunctionType";
         default:
             return "UnsupportedType";
         }
@@ -64,12 +70,18 @@ namespace lux::cxx::dref
 
     static inline ETypeKinds stringToTypeKind(const std::string& s)
     {
-        if (s == "BuiltinType")         return ETypeKinds::Builtin;
+        if (s == "BuiltinType")              return ETypeKinds::Builtin;
         else if (s == "PointerType")         return ETypeKinds::Pointer;
+		else if (s == "MemberDataPointerType") return ETypeKinds::PointerToDataMember;
+		else if (s == "MemberFuncPointerType") return ETypeKinds::PointerToMemberFunction;
+		else if (s == "FuncPointerType")     return ETypeKinds::PointerToFunction;
+		else if (s == "ObjectPointerType")   return ETypeKinds::PointerToObject;
         else if (s == "LValueReferenceType") return ETypeKinds::LvalueReference;
         else if (s == "RValueReferenceType") return ETypeKinds::RvalueReference;
         else if (s == "RecordType")          return ETypeKinds::Record;
         else if (s == "EnumType")            return ETypeKinds::Enum;
+		else if (s == "ScopedEnumType")      return ETypeKinds::ScopedEnum;
+		else if (s == "UnscopedEnumType")    return ETypeKinds::UnscopedEnum;
         else if (s == "FunctionType")        return ETypeKinds::Function;
         return ETypeKinds::Unknown;
     }

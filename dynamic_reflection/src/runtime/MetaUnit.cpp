@@ -75,7 +75,7 @@ namespace lux::cxx::dref
 		return _impl->_data->marked_declarations;
 	}
 
-	std::string MetaUnit::toJson()
+	nlohmann::json MetaUnit::toJson() const
 	{
 		return _impl->toJson();
 	}

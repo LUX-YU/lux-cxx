@@ -24,6 +24,8 @@
 #include <memory>
 #include <optional>
 #include <vector>
+#include <string_view>
+#include <functional>
 #include <lux/cxx/visibility.h>
 #include <lux/cxx/dref/runtime/MetaUnit.hpp>
 
@@ -40,6 +42,18 @@ namespace lux::cxx::dref
 
     using ParseResult = std::pair<EParseResult, MetaUnit>;
 
+	struct ParseOptions
+	{
+        // The name of the library
+		std::string              name;
+        // version The version of the library
+		std::string              version;
+		std::string              marker_symbol;
+        // commands The commands to pass to the parser
+		std::vector<std::string> commands;
+		std::string              pch_file;
+	};
+
     class LUX_CXX_PUBLIC CxxParser
     {
     public:
@@ -47,7 +61,7 @@ namespace lux::cxx::dref
          * @brief Construct a new CxxParser object
          * 
         */
-        CxxParser();
+        CxxParser(ParseOptions option);
 
         /**
 		 * @brief Destroy the CxxParser object
@@ -57,23 +71,16 @@ namespace lux::cxx::dref
 
         /**
 		 * @brief Parse a file and return the result
-		 * 
 		 * @param file The file to parse
-		 * @param commands The commands to pass to the parser
-		 * @param name The name of the library
-		 * @param version The version of the library
-		 * @return ParseResult The result of the parsing
-		 */
-        [[nodiscard]] ParseResult 
-        parse(std::string_view file, const std::vector<std::string>& commands, std::string_view name, std::string_view version) const;
-
-        /*
-         * @brief Set the PCH file to use
          */
-        void setPCHFile(const std::string& file);
+        [[nodiscard]] ParseResult parse(std::string_view file) const;
+
+		/**
+		 * @brief Set the callback for parse error
+         */
+        void setOnParseError(std::function<void(const std::string&)> callback);
 
     private:
-
         std::unique_ptr<CxxParserImpl> _impl;
     };
 } // namespace lux::reflection

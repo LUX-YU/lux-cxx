@@ -2,16 +2,11 @@
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang.cmake)
 find_package(inja          CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
-set(DREF_PARSER_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParser.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParserImpl.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_class_declaration.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_enumeration_declaration.cpp
-)
 
-# start constructing component dynamic_reflection_runtime
+#[[==========================
+    Dynamic Reflection Runtime
+=============================]]
 set(DREF_RUNTIME_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnit.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnitSerializer.cpp
 )
@@ -34,6 +29,12 @@ component_include_directories(
         ${CLANG_INCLUDE_DIRS}
 )
 
+target_link_libraries(
+    dynamic_reflection_runtime
+    PUBLIC
+        nlohmann_json::nlohmann_json
+)
+
 target_compile_definitions(
     dynamic_reflection_runtime
     PRIVATE
@@ -52,7 +53,16 @@ component_add_cmake_scripts(
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/reflection_header_template.hpp.in
 )
 
-# start constructing component dynamic_reflection_parser
+#[[==========================
+    Dynamic Reflection Parser
+=============================]]
+set(DREF_PARSER_SRCS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParserImpl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_class_declaration.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/parse_enumeration_declaration.cpp
+)
+
 add_component(
     COMPONENT_NAME                  dynamic_reflection_parser
     NAMESPACE                       lux::cxx
@@ -61,9 +71,6 @@ add_component(
 
 component_include_directories(
     dynamic_reflection_parser
-    BUILD_TIME_EXPORT
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME
         include
     PRIVATE
@@ -75,7 +82,6 @@ target_link_libraries(
     dynamic_reflection_parser
     PUBLIC
         libclang
-        nlohmann_json::nlohmann_json
 )  
 
 component_add_internal_dependencies(
@@ -95,24 +101,53 @@ component_add_transitive_commands(
     "find_package(Clang REQUIRED)"
 )
 
-# start constructing component dynamic_reflection_generator
-set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
-set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-#[[
+#[[==========================
+    Dynamic Reflection Generator
+=============================]]
+set(DREF_GENERATOR_SRCS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/GeneratorHelper.cpp
+)
+
+add_component(
+    COMPONENT_NAME                  dynamic_reflection_generator
+    NAMESPACE                       lux::cxx
+    SOURCE_FILES                    ${DREF_GENERATOR_SRCS}
+)
+
+component_include_directories(
+    dynamic_reflection_generator
+    INSTALL_TIME
+        include
+    PRIVATE
+        pinclude
+        ${CLANG_INCLUDE_DIRS}
+)
+
+component_add_internal_dependencies(
+    dynamic_reflection_generator
+        lux::cxx::algorithm
+        lux::cxx::dynamic_reflection_runtime
+)
+
+target_compile_definitions(
+    dynamic_reflection_generator
+    PRIVATE
+    LUX_CXX_LIBRARY
+)
+
+#[[==========================
+    Executable: lux_meta_generator
+=============================]]
 add_executable(
 	lux_meta_generator
-	${CMAKE_CURRENT_SOURCE_DIR}/src/generator/meta_generator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/StaticMetaGenerator.cpp    
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/MetaRuntimeBinder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/MetaGenerator.cpp
 )
 
 target_link_libraries(
 	lux_meta_generator
 	PRIVATE
-	lux::cxx::dynamic_reflection_parser
-	lux::cxx::dynamic_reflection_runtime
-	lux::cxx::static_reflection
+	lux::cxx::dynamic_reflection_generator
+    lux::cxx::dynamic_reflection_parser
     pantor::inja
 )
 
@@ -127,7 +162,6 @@ install(
 	TARGETS lux_meta_generator
     RUNTIME DESTINATION bin
 )
-]]
 
 set(ENABLE_DYNAMIC_REFLECTION_TEST true BOOL "Enable dynamic reflection test")
 if(ENABLE_DYNAMIC_REFLECTION_TEST)

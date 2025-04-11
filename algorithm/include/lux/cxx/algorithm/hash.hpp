@@ -54,10 +54,4 @@ namespace lux::cxx::algorithm
 		}
         return hash;
     }
-
-    template<size_t ArrSize>
-    consteval size_t THash(const char(&char_array)[ArrSize])
-    {
-        return TFnv1a<ArrSize>(char_array);
-    }
 }

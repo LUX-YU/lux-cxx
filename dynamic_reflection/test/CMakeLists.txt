@@ -3,6 +3,29 @@ set(DREF_PUBLIC_DIR ${PARENT_DIR}/include)
 
 include_component_cmake_scripts(dynamic_reflection_runtime)
 
+add_executable(
+	meta_parse_test
+	${CMAKE_CURRENT_SOURCE_DIR}/meta_parse_test.cpp
+)
+
+target_link_libraries(
+	meta_parse_test
+	PRIVATE
+		lux::cxx::dynamic_reflection_parser
+)
+
+add_executable(
+	meta_deserializer_test
+	${CMAKE_CURRENT_SOURCE_DIR}/meta_deserializer_test.cpp
+)
+
+target_link_libraries(
+	meta_deserializer_test
+	PRIVATE
+		lux::cxx::dynamic_reflection_runtime
+)
+
+#[[
 get_filename_component(DYNAMIC_REFLECTION_BINARAY_DIR ${CMAKE_CURRENT_BINARY_DIR}/.. ABSOLUTE)
 message(STATUS "DYNAMIC_REFLECTION_BINARAY_DIR: ${DYNAMIC_REFLECTION_BINARAY_DIR}")
 find_program(
@@ -64,48 +87,4 @@ if(GENERATOR)
 		lux_meta_generator
 	)
 endif()
-
-# macro definition
-set(LUX_DREF_TEST_GEN_FILE_PATH 
-    ${CMAKE_BINARY_DIR}/gen/include/clang_config.h
-)
-set(LUX_CXX_INCLUDE_DIR_DEF
-    ${DREF_PUBLIC_DIR}
-)
-configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/clang_config.h.in
-    ${LUX_DREF_TEST_GEN_FILE_PATH}
-)
-
-add_executable(
-	dref_parse_test
-	${CMAKE_CURRENT_SOURCE_DIR}/dref_parse_test.cpp
-)
-
-target_link_libraries(
-	dref_parse_test
-	PRIVATE
-	lux::cxx::dynamic_reflection_parser
-)
-
-add_executable(
-	serializer_test
-	${CMAKE_CURRENT_SOURCE_DIR}/serializer_test.cpp
-)
-
-target_link_libraries(
-	serializer_test
-	PRIVATE
-	lux::cxx::dynamic_reflection_parser
-)
-
-add_executable(
-	meta_unit_serial_test
-	meta_unit_serial_test.cpp
-)
-
-target_link_libraries(
-	meta_unit_serial_test
-	PRIVATE
-	lux::cxx::dynamic_reflection_parser
-)
+]]

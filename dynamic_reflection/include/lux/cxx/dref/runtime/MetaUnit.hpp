@@ -25,7 +25,7 @@
 #include <lux/cxx/visibility.h>
 #include <string_view>
 #include <memory>
-
+#include <nlohmann/json.hpp>
 #include "Declaration.hpp"
 #include "Type.hpp"
 
@@ -51,7 +51,7 @@ namespace lux::cxx::dref
 		[[nodiscard]] const std::vector<Decl*>& markedDeclarations() const;
 		[[nodiscard]] const std::vector<Type*>& markedType() const;
 
-		std::string toJson();
+		nlohmann::json toJson() const;
 		static void fromJson(const std::string& json, MetaUnit& unit);
 
 	private:

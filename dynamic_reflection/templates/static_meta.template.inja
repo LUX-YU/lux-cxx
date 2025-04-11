@@ -1,0 +1,99 @@
+#pragma once
+#include <array>
+#include <cstddef>
+#include <tuple>
+#include <string_view>
+#include <type_traits>
+
+namespace lux::cxx::dref {
+
+    {%- for class in classes %}
+    template<>
+    class type_meta<::{{ class.name }}>
+    {
+    public:
+        using type = ::{{ class.name }};
+        static constexpr size_t size = {{ class.size }};
+        static constexpr size_t align = {{ class.align }};
+        static constexpr const char* name = "{{ class.name }}";
+        static constexpr bool is_abstract = {{ class.is_abstract }};
+
+        static constexpr std::array<const char*, {{ class.attributes|length }}> attributes{{
+            {%- for attr in class.attributes %}
+                "{{ attr }}"{{ "," if not loop.last }}
+            {%- endfor %}
+        }};
+
+        static constexpr std::array<const char*, {{ class.field_decls|length }}> fields{{
+            {%- for field_id in class.field_decls %}
+                "{{ field_id }}"{{ "," if not loop.last }}
+            {%- endfor %}
+        }};
+
+        static constexpr std::array<const char*, {{ class.bases|length }}> bases{{
+            {%- for base in class.bases %}
+                "{{ base }}"{{ "," if not loop.last }}
+            {%- endfor %}
+        }};
+
+        static constexpr std::array<const char*, {{ class.method_decls|length }}> methods{{
+            {%- for method_id in class.method_decls %}
+                "{{ method_id }}"{{ "," if not loop.last }}
+            {%- endfor %}
+        }};
+
+        static constexpr std::array<const char*, {{ class.static_method_decls|length }}> static_methods{{
+            {%- for static_method_id in class.static_method_decls %}
+                "{{ static_method_id }}"{{ "," if not loop.last }}
+            {%- endfor %}
+        }};
+
+        template<typename Func, typename Obj>
+        static constexpr void foreach_field(Func&& func, Obj& object)
+        {
+            {%- for field_id in class.field_decls %}
+            func(object.{{ field_id }});
+            {%- endfor %}
+        }
+    };
+    {%- endfor %}
+
+    {%- for enum in enums %}
+    template<>
+    class type_meta<::{{ enum.name }}>
+    {
+    public:
+        using value_type = std::underlying_type_t<::{{ enum.name }}>;
+        static constexpr size_t size = {{ enum.size }};
+        static constexpr const char* name = "{{ enum.name }}";
+        static constexpr bool is_scoped = {{ enum.is_scoped }};
+        static constexpr const char* underlying_type = "{{ enum.underlying_type_id }}";
+        
+        static constexpr std::array<const char*, {{ enum.enumerators|length }}> keys{{
+            {%- for enumerator in enum.enumerators %}
+                "{{ enumerator.name }}"{{ "," if not loop.last }}
+            {%- endfor %}
+        }};
+
+        static constexpr std::array<value_type, {{ enum.enumerators|length }}> values{{
+            {%- for enumerator in enum.enumerators %}
+                {{ enumerator.unsigned_value }}{{ "," if not loop.last }}
+            {%- endfor %}
+        }};
+
+        static constexpr const char* toString(const ::{{ enum.name }} value)
+        {
+            switch(value)
+            {
+            {%- for enumerator in enum.enumerators %}
+                case ::{{ enum.name }}::{{ enumerator.name }}:
+                    return "{{ enumerator.name }}";
+            {%- endfor %}
+                default:
+                    return "";
+            }
+        }
+    };
+    {%- endfor %}
+
+} // namespace lux::cxx::dref

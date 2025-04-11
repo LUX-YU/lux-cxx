@@ -25,20 +25,20 @@
 
 namespace lux::cxx::dref
 {
-    CxxParser::CxxParser()
+    CxxParser::CxxParser(ParseOptions option)
     {
-        _impl = std::make_unique<CxxParserImpl>();
+        _impl = std::make_unique<CxxParserImpl>(std::move(option));
     }
 
     CxxParser::~CxxParser() = default;
 
-    ParseResult CxxParser::parse(const std::string_view file, const std::vector<std::string>& commands, std::string_view name, std::string_view version) const
+    ParseResult CxxParser::parse(std::string_view file) const
     {
-        return _impl->parse(file, commands, name, version);
+        return _impl->parse(file);
     }
 
-    void CxxParser::setPCHFile(const std::string& file)
+    void CxxParser::setOnParseError(std::function<void(const std::string&)> callback)
     {
-
+		_impl->setOnParseError(std::move(callback));
     }
 } // namespace lux::engine::core

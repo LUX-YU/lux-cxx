@@ -55,7 +55,6 @@ enum class LUX_REFL(static_reflection;dynamic_reflection) TestEnum
     THIRD_ENUMERATOR = 4,
 };
 
-
 namespace lux::cxx::dref::test
 {
     struct LUX_REFL(static_reflection;dynamic_reflection) TestClass
