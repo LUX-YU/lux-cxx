@@ -137,6 +137,7 @@ namespace lux::cxx::dref {
     public:
         std::string id;     ///< A unique identifier for internal bookkeeping.
         EDeclKind   kind;   ///< The specific kind of declaration (see EDeclKind).
+		size_t      index;  ///< The index of this declaration in its parent container (if applicable).
 
         virtual ~Decl() = default;
 
@@ -369,7 +370,7 @@ namespace lux::cxx::dref {
     class ParmVarDecl final : public VarDecl
     {
     public:
-        std::size_t index {};  ///< The index of this parameter in the function parameter list.
+        std::size_t arg_index {};  ///< The index of this parameter in the function parameter list.
 
         void accept(DeclVisitor* visitor) override
         {

@@ -25,11 +25,10 @@ target_link_libraries(
 		lux::cxx::dynamic_reflection_runtime
 )
 
-#[[
 get_filename_component(DYNAMIC_REFLECTION_BINARAY_DIR ${CMAKE_CURRENT_BINARY_DIR}/.. ABSOLUTE)
 message(STATUS "DYNAMIC_REFLECTION_BINARAY_DIR: ${DYNAMIC_REFLECTION_BINARAY_DIR}")
 find_program(
-	GENERATOR
+	LUX_GENERATOR
 	lux_meta_generator
 	PATHS ${DYNAMIC_REFLECTION_BINARAY_DIR}
 	NO_CACHE
@@ -38,47 +37,35 @@ find_program(
 	NO_PACKAGE_ROOT_PATH
 	NO_CMAKE_PATH
 )
-if(GENERATOR)
-	message(STATUS "Found lux_meta_generator: ${GENERATOR}")
-
+if(LUX_GENERATOR)
 	add_executable(
-		generate_meta_test
-		${CMAKE_CURRENT_SOURCE_DIR}/generate_meta_test.cpp
-		${GENERATED_META_FILES}
+		generator_test
+		${CMAKE_CURRENT_SOURCE_DIR}/generator_test.cpp
 	)
-	
+
 	target_link_libraries(
-		generate_meta_test
+		generator_test
 		PRIVATE
-		dynamic_reflection_runtime
-	)
-	
-	target_include_directories(
-		generate_meta_test
-		PRIVATE  
-		${CMAKE_BINARY_DIR}/metagen
-		${CMAKE_CURRENT_SOURCE_DIR}
+			lux::cxx::dynamic_reflection_runtime
 	)
 
 	add_meta(
-		NAME test_meta
-		META_GEN_OUT_DIR     ${CMAKE_BINARY_DIR}/metagen
-		META_GENERATOR       ${GENERATOR}
-		TARGET_FILES
-		    ${CMAKE_CURRENT_SOURCE_DIR}/test_header2.hpp
+		NAME			test_meta
+		GENERATOR		${LUX_GENERATOR}
+		OUT_DIR			${CMAKE_BINARY_DIR}/metagen
+		META_SUFFIX     "meta.hpp"
+		MARKER          "marked"
+		META_GENERATOR  ${GENERATOR}
+		TEMPLATE		${TEST_TEMPLATE_DIR}/static_meta.template.inja
+		TARGET_FILES	${CMAKE_CURRENT_SOURCE_DIR}/test_header.hpp
 		ECHO
 	)
 
-	meta_add_files(
-		test_meta
-		TARGET_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/test_header.hpp
-	)
-
 	target_add_meta(
-		TARGET  generate_meta_test
-		NAME    test_meta
+		TARGET			generator_test
+		NAME			test_meta
 		ALWAYS_REGENERATE
+		ARGS_DONT_ADD_TO_SOURCE
 		ECHO
 	)
 
@@ -87,4 +74,3 @@ if(GENERATOR)
 		lux_meta_generator
 	)
 endif()
-]]

@@ -69,10 +69,19 @@ namespace lux::cxx::dref
 		return _impl->_version;
 	}
 
-	const std::vector<Decl*>&
-	MetaUnit::markedDeclarations() const
+	const std::vector<Decl*>& MetaUnit::markedDeclarations() const
 	{
 		return _impl->_data->marked_declarations;
+	}
+
+	const Decl* MetaUnit::findDeclById(const std::string& id) const
+	{
+		return _impl->findDeclById(id);
+	}
+
+	const Type* MetaUnit::findTypeById(const std::string& id) const
+	{
+		return _impl->findTypeById(id);
 	}
 
 	nlohmann::json MetaUnit::toJson() const

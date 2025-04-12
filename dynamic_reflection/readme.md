@@ -1,378 +1,272 @@
-# MetaUnit JSON Field Documentation (Refactored Version)
+# JSON Document Field Reference
 
-This document provides a detailed description of the fields used in the JSON files produced by the MetaUnit serialization process. It explains the JSON structure and the purpose of each field, along with examples to help clarify the format.
-
----
-
-## 1. Overall JSON Structure
-
-The MetaUnit JSON file comprises the following key parts:
-
-- **declarations**  
-  - **Type:** Array of objects  
-  - **Description:** Contains all serialized declaration objects, each corresponding to a serialized instance of a `Decl` subclass.
-
-- **types**  
-  - **Type:** Array of objects  
-  - **Description:** Contains all serialized type objects, each corresponding to a serialized instance of a `Type` subclass.
-
-- **type_alias_map**  
-  - **Type:** Object (key/value map)  
-  - **Description:** Maps type alias strings (keys) to the corresponding type ID (values). An empty string may be used if a type is unavailable.
-
-- **marked_declarations**  
-  - **Type:** Array of integers  
-  - **Description:** Contains indices pointing to the declarations in the `declarations` array that require special handling.
-
-- **marked_types**  
-  - **Type:** Array of integers  
-  - **Description:** Contains indices pointing to the types in the `types` array that have been "marked."
-
-- **version**  
-  - **Type:** String  
-  - **Description:** The version string of the MetaUnit.
-
-- **name**  
-  - **Type:** String  
-  - **Description:** The name of the MetaUnit.
-
-### 1.1 Additional Generator Fields
-These fields are added by the generator but are not part of the standard MetaUnit JSON:
-- **source_path**: The path of the source file.
-- **source_parent**: The directory path of the source file.
-- **parser_compile_options**: The compiler options used for parsing.
-
-#### Example: Overall JSON Overview
-```json
-{
-  "declarations": [ ... ],
-  "types": [ ... ],
-  "type_alias_map": { "MyInt": "int" },
-  "marked_declarations": [0, 2, 5],
-  "marked_types": [1, 3],
-  "name": "example_meta_unit",
-  "version": "1.0.0",
-  "source_path": "src/module.cpp",
-  "source_parent": "src",
-  "parser_compile_options": "-std=c++17"
-}
-```
+This document describes **all** the major fields you may encounter in the generated JSON for both **declarations** (functions, classes, enums, fields, etc.) and **types** (built-in, pointer, function, record, etc.). Below is a comprehensive list of the typical fields, their data types, and their meaning.
 
 ---
 
-## 2. Declaration Objects
+## 1. Top-Level JSON Fields
 
-Declaration objects represent various kinds of declarations. Each declaration includes a set of common fields, as well as specialized fields based on the declaration type.
+1. **`declarations`** *(array)*  
+   An array of declaration objects. Each object describes some C++ entity such as a function, a class, an enum, a variable, etc.
+
+2. **`types`** *(array)*  
+   An array of type objects. Each describes a specific kind of type (built-in, pointer, record, function, enum, etc.).
+
+3. **`marked_declarations`** *(array of numbers)*  
+   A list of integer indices referencing special declarations in the `declarations` array. Example: `[3, 5]` means you should look at `declarations[3]` and `declarations[5]` for marked declarations.
+
+4. **`marked_types`** *(array of numbers)*  
+   Similar to `marked_declarations`, but references entries in the `types` array.
+
+5. **`type_alias_map`** *(object)*  
+   A dictionary for user-friendly aliases to type IDs. Each **key** is an alias (e.g., `"std::string"`), and each **value** is the real type’s `id` (e.g., `"std::basic_string<char>"`). This is used to store or restore custom naming conventions.
+
+6. **`name`** *(string)*  
+   A user-defined or tool-defined name for this entire JSON metadata unit.
+
+7. **`version`** *(string)*  
+   A version string indicating the format or tool version.
+
+---
+
+## 2. Declarations Array
+
+Each item in the `declarations` array is an **object** with various fields. Some fields are common to all declarations; others appear only with certain kinds of declarations (e.g., `EnumDecl`, `CXXRecordDecl`, etc.).
 
 ### 2.1 Common Declaration Fields
 
-- **id**  
-  - **Type:** String  
-  - **Description:** A unique identifier for the declaration.
+- **`__kind`** *(string)*  
+  Indicates the declaration’s kind. Possible values include (but are not limited to):
+  - `"ENUM_DECL"`
+  - `"RECORD_DECL"`
+  - `"CXX_RECORD_DECL"`
+  - `"FIELD_DECL"`
+  - `"FUNCTION_DECL"`
+  - `"CXX_METHOD_DECL"`
+  - `"CXX_CONSTRUCTOR_DECL"`
+  - `"CXX_CONVERSION_DECL"`
+  - `"CXX_DESTRUCTOR_DECL"`
+  - `"PARAM_VAR_DECL"`
+  - `"VAR_DECL"`
+  - ...  
+  It’s essentially the enumerator name of the internal declaration kind.
 
-- **__kind**  
-  - **Type:** String  
-  - **Description:** A string indicating the type of declaration (e.g., `"ENUM_DECL"`, `"FUNCTION_DECL"`).
+- **`id`** *(string)*  
+  A globally or uniquely identifiable string for this declaration (e.g., a USR from Clang, a tool-generated ID, etc.).
 
-- **name**  
-  - **Type:** String  
-  - **Description:** The simple name of the declaration (applicable to instances inheriting from `NamedDecl`).
+- **`index`** *(number)*  
+  The array index of this object in `declarations`. Used to cross-reference with `marked_declarations` or other references.
 
-- **fq_name**  
-  - **Type:** String  
-  - **Description:** The fully-qualified name.
+- **`fq_name`** *(string)*  
+  A fully qualified name, possibly including namespaces, class scopes, or function parameter signatures.
 
-- **spelling**  
-  - **Type:** String  
-  - **Description:** The spelling of the declaration.
+- **`name`** *(string)*  
+  The simple identifier without namespaces or parameter lists (e.g., just `"TestFunction"` or `"TestClass"`).
 
-- **attributes**  
-  - **Type:** Array of strings  
-  - **Description:** Attributes associated with the declaration.
+- **`spelling`** *(string)*  
+  The raw spelling or textual representation in the source code. It can be identical to `name` or might include more details (especially for templated items or operators).
 
-- **is_anonymous**  
-  - **Type:** Boolean  
-  - **Description:** Indicates whether the declaration is anonymous.
+- **`is_anonymous`** *(boolean)*  
+  Indicates if the declaration is anonymous (e.g., an unnamed enum or struct).
 
-- **type_id**  
-  - **Type:** String  
-  - **Description:** The ID of the associated type (if any).
+- **`type_id`** *(string)*  
+  References a type from the `types` array by that type’s `id`. For example, a field declaration might have `"type_id": "int"`, which corresponds to a built-in type object in the `types` array.
 
-#### Example: Function Declaration
-```json
-{
-  "__kind": "FunctionDecl",
-  "id": "func_1",
-  "name": "compute",
-  "fq_name": "namespace::compute",
-  "spelling": "compute",
-  "attributes": ["LUX::META", "static_reflection"],
-  "is_anonymous": false,
-  "type_id": "void (int, int)",
-  "is_variadic": false,
-  "mangling": "mangled_name_here",
-  "params": ["param_1", "param_2"],
-  "result_type_id": "void"
-}
-```
+- **`attributes`** *(array of strings)*  
+  Extra metadata or user-defined markers on this declaration (e.g., `[ "marked" ]`). This can be empty or omitted if none exist.
 
-### 2.2 Specialized Declaration Fields
+#### 2.1.1 Visibility
 
-#### 2.2.1 ENUM_DECL (Enumeration Declaration)
-
-- **is_scoped**  
-  - **Type:** Boolean  
-  - **Description:** Indicates whether the enum is scoped.
-
-- **underlying_type_id**  
-  - **Type:** String  
-  - **Description:** The type ID of the enum’s underlying type.
-
-- **enumerators**  
-  - **Type:** Array of objects  
-  - **Description:** Contains each enumerator with:
-    - **name**: The name of the enumerator.
-    - **signed_value**: The signed integer value.
-    - **unsigned_value**: The unsigned integer value.
-
-##### Example: Enumeration Declaration
-```json
-{
-  "__kind": "EnumDecl",
-  "id": "enum_1",
-  "name": "TestEnum",
-  "fq_name": "TestEnum",
-  "spelling": "TestEnum",
-  "attributes": ["LUX::META"],
-  "is_anonymous": false,
-  "is_scoped": true,
-  "type_id": "TestEnum",
-  "underlying_type_id": "int",
-  "enumerators": [
-    { "name": "VALUE1", "signed_value": 0, "unsigned_value": 0 },
-    { "name": "VALUE2", "signed_value": 100, "unsigned_value": 100 }
-  ]
-}
-```
-
-#### 2.2.2 RECORD_DECL and CXX_RECORD_DECL (Record/Class Declarations)
-
-- **For RECORD_DECL (Record Declaration):**  
-  - No additional fields are added.
-
-- **For CXX_RECORD_DECL (C++ Record Declaration):**
-  - **bases**: Array of base class IDs.
-  - **constructor_decls**: Array of constructor declaration IDs.
-  - **destructor_decl**: The ID of the destructor declaration.
-  - **method_decls**: Array of non-static method declaration IDs.
-  - **static_method_decls**: Array of static method declaration IDs.
-  - **field_decls**: Array of field declaration IDs.
-  - **is_abstract**: A Boolean flag indicating whether the class is abstract.
-
-##### Example: C++ Record Declaration
-```json
-{
-  "__kind": "CXXRecordDecl",
-  "id": "class_1",
-  "name": "TestStruct",
-  "fq_name": "TestStruct",
-  "spelling": "TestStruct",
-  "attributes": ["LUX::META"],
-  "is_anonymous": false,
-  "is_abstract": false,
-  "bases": [],
-  "constructor_decls": [],
-  "destructor_decl": "",
-  "method_decls": [],
-  "static_method_decls": [],
-  "field_decls": ["field_1", "field_2"],
-  "type_id": "TestStruct"
-}
-```
-
-#### 2.2.3 FIELD_DECL (Field Declaration)
-
-- **visibility**  
-  - **Type:** Integer  
-  - **Description:** The visibility level of the field (e.g., 1 for public).
-
-- **offset**  
-  - **Type:** Number  
-  - **Description:** The offset (in bytes) of the field within its parent structure/class.
-
-- **parent_class_id**  
-  - **Type:** String  
-  - **Description:** The ID of the parent class (if applicable).
-
-##### Example: Field Declaration
-```json
-{
-  "__kind": "FieldDecl",
-  "id": "field_1",
-  "name": "a1",
-  "fq_name": "TestStruct::a1",
-  "spelling": "a1",
-  "attributes": [],
-  "is_anonymous": false,
-  "type_id": "int",
-  "offset": 0,
-  "parent_class_id": "TestStruct",
-  "visibility": 1
-}
-```
-
-#### 2.2.4 FUNCTION_DECL and Related Declarations (e.g., CXX_METHOD_DECL)
-
-Function declarations include additional fields beyond the common ones:
-
-- **result_type_id**  
-  - **Type:** String  
-  - **Description:** The type ID of the return value.
-
-- **mangling**  
-  - **Type:** String  
-  - **Description:** The mangled name of the function.
-
-- **is_variadic**  
-  - **Type:** Boolean  
-  - **Description:** Indicates whether the function accepts a variable number of arguments.
-
-- **params**  
-  - **Type:** Array of strings  
-  - **Description:** An array of parameter declaration IDs.
-
-##### Example: Function Declaration
-```json
-{
-  "__kind": "FunctionDecl",
-  "id": "func_2",
-  "name": "TestFunction",
-  "fq_name": "TestFunction(int)",
-  "spelling": "TestFunction",
-  "attributes": ["LUX::META"],
-  "is_anonymous": false,
-  "is_variadic": false,
-  "mangling": "mangled_func_name",
-  "params": ["param_1", "param_2"],
-  "result_type_id": "int",
-  "type_id": "int (int, double)"
-}
-```
-
-#### 2.2.5 PARAM_VAR_DECL / VAR_DECL
-
-- **PARAM_VAR_DECL:** Represents parameter variable declarations with an extra field **index** indicating the parameter's position in the list.
-- **VAR_DECL:** Represents variable declarations with no additional fields.
+In many declarations (especially in C++ classes), you may see a **`visibility`** field:
+- **`visibility`** *(number)*  
+  - Typically `1` = public, `2` = protected, `3` = private, `0` = invalid/unspecified.  
+  - Applies to fields, methods, constructors, etc.
 
 ---
 
-## 3. Type Objects
+### 2.2 Specific Declaration Kinds
 
-Type objects store metadata about types and consist of common fields along with specialized fields based on the type kind.
+Below are the additional or unique fields you may see for particular declaration kinds.
 
-### 3.1 Common Type Fields
+#### 2.2.1 `EnumDecl`
 
-- **id**  
-  - **Type:** String  
-  - **Description:** Unique identifier for the type.
+- **`is_scoped`** *(boolean)*  
+  Whether the enum is a scoped enum (`enum class`) or not.
+- **`underlying_type_id`** *(string)*  
+  The type ID of its underlying type. Usually references a built-in type like `"int"` in the `types` array.
+- **`enumerators`** *(array)*  
+  Each enumerator is an object with:
+  - `name` (e.g., `"VALUE1"`)
+  - `signed_value` (e.g., `0`)
+  - `unsigned_value` (e.g., `0`)
 
-- **__kind**  
-  - **Type:** String  
-  - **Description:** The type category (e.g., `"BuiltinType"`, `"Pointer"`, `"RecordType"`, etc.).
+#### 2.2.2 `CXXRecordDecl` (or `RECORD_DECL`)
 
-- **name**  
-  - **Type:** String  
-  - **Description:** The name of the type.
+- **`bases`** *(array of strings)*  
+  Class IDs (via `id`) of direct base classes (applies to C++).
+- **`constructor_decls`** *(array of strings)*  
+  A list of IDs referencing `CXX_CONSTRUCTOR_DECL` objects.
+- **`destructor_decl`** *(string)*  
+  A single reference ID to the `CXX_DESTRUCTOR_DECL`, if present.
+- **`method_decls`** *(array of strings)*  
+  A list of IDs referencing non-static member functions (`CXX_METHOD_DECL`, `CXX_CONVERSION_DECL`, etc.) that are not constructors or destructors.
+- **`static_method_decls`** *(array of strings)*  
+  A list of IDs referencing static member functions.
+- **`field_decls`** *(array of strings)*  
+  A list of IDs referencing `FIELD_DECL` objects.
+- **`is_abstract`** *(boolean)*  
+  True if this record has at least one pure virtual function.
 
-- **type_kind**  
-  - **Type:** Integer  
-  - **Description:** A numerical representation of the type category.
+#### 2.2.3 `FieldDecl`
 
-- **is_const**  
-  - **Type:** Boolean  
-  - **Description:** Indicates if the type is constant.
+- **`parent_class_id`** *(string)*  
+  ID of the containing class or struct.
+- **`offset`** *(number)*  
+  The bit offset within the class or struct layout (if known).
+- **`visibility`** *(number)*  
+  The access level (e.g., 1 = public, etc.).
 
-- **is_volatile**  
-  - **Type:** Boolean  
-  - **Description:** Indicates if the type is volatile.
+#### 2.2.4 `FunctionDecl` / `CXXMethodDecl` / `CXXConstructorDecl` / `CXXDestructorDecl`
 
-- **size**  
-  - **Type:** Integer  
-  - **Description:** The size (in bytes) of the type.
+Many fields overlap among these function-like declarations:
 
-- **align**  
-  - **Type:** Integer  
-  - **Description:** The alignment (in bytes) required for the type.
+- **`mangling`** *(string)*  
+  The mangled name generated by the compiler (if available).
+- **`is_variadic`** *(boolean)*  
+  True if the function has a `...` parameter.
+- **`result_type_id`** *(string)*  
+  The function’s return type ID in `types`.
+- **`params`** *(array of strings)*  
+  A list of parameter declaration IDs (these IDs should point to `ParmVarDecl` entries).
+- **`parent_class_id`** *(string)*  
+  For methods, the ID of the owning class (if it is a member function).
+- **`is_static`** *(boolean)*  
+  True for static member functions.
+- **`is_virtual`** *(boolean)*  
+  True for virtual member functions.
+- **`is_const`** *(boolean)*  
+  True if it’s declared as a const member function (C++).
+- **`is_volatile`** *(boolean)*  
+  True if it’s declared volatile.
 
-#### Example: Builtin Type
+#### 2.2.5 `ParmVarDecl`
+
+- **`arg_index`** *(number)*  
+  The index of the parameter in the function’s parameter list (0-based).
+
+#### 2.2.6 `VarDecl`
+
+- Usually contains only the shared fields (`id`, `type_id`, `attributes`, etc.) for a global or local variable. Does not have the same function-related fields as `ParmVarDecl`.
+
+---
+
+## 3. Types Array
+
+Each entry in the `types` array is an **object** describing a particular type. Shared fields:
+
+- **`__kind`** *(string)*  
+  The type category, for instance:
+  - `"BuiltinType"`
+  - `"PointerType"`
+  - `"LvalueReferenceType"`
+  - `"RvalueReferenceType"`
+  - `"RecordType"`
+  - `"EnumType"`
+  - `"FunctionType"`
+  - `"UnsupportedType"`
+  - etc.
+
+- **`id`** *(string)*  
+  A unique type identifier.
+
+- **`index`** *(number)*  
+  Its position in the `types` array.
+
+- **`name`** *(string)*  
+  A descriptive or user-friendly name for the type. It can differ from `id` if there’s an alias or a custom label.
+
+- **`type_kind`** *(number)*  
+  An integer enumerating the internal kind. For example:
+  - `2` => Builtin
+  - `24` => LvalueReference
+  - `25` => RvalueReference
+  - `29` => PointerToData (or MemberDataPointer)
+  - `30` => PointerToMemberFunction
+  - `32` => Function
+  - `34` => UnscopedEnum
+  - `35` => ScopedEnum
+  - `36` => Record
+  - etc.  
+  (Exact values can vary depending on the internal tool.)
+
+- **`is_const`** *(boolean)*  
+  True if `const`.
+
+- **`is_volatile`** *(boolean)*  
+  True if `volatile`.
+
+- **`size`** *(number)*  
+  Size in bytes if known. May be `-2` or `0` if unknown or not applicable.
+
+- **`align`** *(number)*  
+  Alignment in bytes if known. Similarly may be `-2` or `0` if unknown.
+
+Below are the possible subtype fields depending on `__kind`.
+
+### 3.1 `BuiltinType`
+
+- **`builtin_type`** *(number)*  
+  An internal code for the built-in category (e.g., 17 => `int`, 22 => `double`, etc.).  
+  Typically used for fundamental types like `int`, `bool`, `float`, etc.
+
+### 3.2 `PointerType`
+
+This covers a range of pointer categories (pointer to object, pointer to function, pointer to member, etc.). The JSON might unify them under `"PointerType"` or a similarly derived name.
+
+- **`pointee_id`** *(string)*  
+  The `id` of the type being pointed to.
+- **`is_pointer_to_member`** *(boolean)*  
+  True if this pointer type is specifically a pointer-to-member (e.g., `int MyClass::*`).
+
+### 3.3 `LValueReferenceType` / `RValueReferenceType`
+
+- **`referred_id`** *(string)*  
+  The `id` of the type to which this reference refers (e.g., `int` -> `int&` or `int&&`).
+
+### 3.4 `RecordType`
+
+- **`decl_id`** *(string)*  
+  References a `CXXRecordDecl` or `RecordDecl` in `declarations` by `id`.
+
+### 3.5 `EnumType`
+
+- **`decl_id`** *(string)*  
+  References an `EnumDecl` in `declarations` by `id`.
+
+### 3.6 `FunctionType`
+
+- **`result_type_id`** *(string)*  
+  The return type’s `id`.
+- **`param_types`** *(array of strings)*  
+  A list of type IDs for each parameter.
+- **`is_variadic`** *(boolean)*  
+  True if this function type is variadic (`...`).
+
+### 3.7 `UnsupportedType`
+
+- Used when the tool encounters a type that it cannot handle. May contain only the basic fields like `id`, `name`, `__kind`, etc.
+
+---
+
+## 4. Marked Declarations & Types
+
+- **`marked_declarations`** *(array of numbers)*  
+  These are integers that match the `index` of some declaration in the `declarations` array. They denote special or user-marked declarations.
+
+- **`marked_types`** *(array of numbers)*  
+  Similarly, these integers match the `index` of some type in the `types` array.
+
+Example usage:
 ```json
-{
-  "__kind": "BuiltinType",
-  "id": "int",
-  "name": "int",
-  "builtin_type": 17,
-  "type_kind": 2,
-  "is_const": false,
-  "is_volatile": false,
-  "size": 4,
-  "align": 4
-}
-```
-
-### 3.2 Specialized Type Fields
-
-#### 3.2.1 Builtin Types
-- **builtin_type:** An integer representing the specific builtin type (e.g., int, char).
-
-#### 3.2.2 Pointer Types
-- **pointee_id**  
-  - **Type:** String  
-  - **Description:** The ID of the type being pointed to.
-- **is_pointer_to_member**  
-  - **Type:** Boolean  
-  - **Description:** Indicates if this is a pointer-to-member.
-
-#### 3.2.3 Reference Types (LvalueReference / RvalueReference)
-- **referred_id**  
-  - **Type:** String  
-  - **Description:** The ID of the referenced type.
-
-#### 3.2.4 Record/Enum Types
-- **decl_id**  
-  - **Type:** String  
-  - **Description:** The ID of the associated record or enum declaration.
-
-#### 3.2.5 Function Types
-- **result_type_id**  
-  - **Type:** String  
-  - **Description:** The ID of the function's return type.
-- **is_variadic**  
-  - **Type:** Boolean  
-  - **Description:** Indicates if the function type accepts a variable number of parameters.
-- **param_types**  
-  - **Type:** Array of strings  
-  - **Description:** A list of type IDs for each parameter.
-
-##### Example: Function Type
-```json
-{
-  "__kind": "FunctionType",
-  "id": "void (int, double)",
-  "name": "void (int, double)",
-  "func_decl_id": "func_decl_3",
-  "param_types": ["int", "double"],
-  "result_type_id": "void",
-  "is_variadic": false,
-  "type_kind": 40,
-  "size": 1,
-  "align": 4
-}
-```
-
-### 3.3 UnsupportedType
-
-Some types that cannot be fully represented are marked as `UnsupportedType`.
-
-##### Example: Unsupported Type
-```json
-{
+"marked_declarations": [6, 12],
+"marked_types": [12, 17, 30]

@@ -51,6 +51,9 @@ namespace lux::cxx::dref
 		[[nodiscard]] const std::vector<Decl*>& markedDeclarations() const;
 		[[nodiscard]] const std::vector<Type*>& markedType() const;
 
+		const Decl* findDeclById(const std::string& id) const;
+		const Type* findTypeById(const std::string& id) const;
+
 		nlohmann::json toJson() const;
 		static void fromJson(const std::string& json, MetaUnit& unit);
 

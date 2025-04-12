@@ -89,6 +89,7 @@ namespace lux::cxx::dref
         // 通用字段
         j["id"] = d->id;
         j["__kind"] = declKindToString(d->kind);
+		j["index"] = d->index;
 
         // 如果是 NamedDecl（比如大多数 Decl 都继承 NamedDecl）
         if (auto* nd = asNamedDecl(d))
@@ -206,7 +207,7 @@ namespace lux::cxx::dref
         case EDeclKind::PARAM_VAR_DECL:
         {
             auto* p = static_cast<const ParmVarDecl*>(d);
-            j["index"] = (uint64_t)p->index;
+            j["arg_index"] = p->arg_index;
         }
         break;
 
@@ -235,9 +236,10 @@ namespace lux::cxx::dref
         auto declPtr = instantiateDecl(k);
         if (!declPtr) return nullptr;
 
-        Decl* raw = declPtr.get();
-        raw->kind = k;
-        raw->id = j.value("id", "");
+        Decl* raw  = declPtr.get();
+        raw->kind  = k;
+        raw->id    = j.value("id", "");
+        raw->index = j["index"].get<size_t>();
 
         // NamedDecl common?
         if (auto* nd = asNamedDecl(raw))
@@ -315,7 +317,7 @@ namespace lux::cxx::dref
         case EDeclKind::PARAM_VAR_DECL:
         {
             auto* p = static_cast<ParmVarDecl*>(raw);
-            p->index = j.value("index", (uint64_t)0);
+            p->arg_index = j.value("arg_index", (uint64_t)0);
         }
         break;
 
@@ -537,6 +539,7 @@ namespace lux::cxx::dref
         j["is_volatile"] = t->is_volatile;
         j["size"] = t->size;
         j["align"] = t->align;
+		j["index"] = t->index;
 
         switch (t->kind)
         {
@@ -621,6 +624,7 @@ namespace lux::cxx::dref
         raw->is_volatile = j.value("is_volatile", false);
         raw->size = j.value("size", 0);
         raw->align = j.value("align", 0);
+        raw->index = j["index"].get<size_t>();
 
         switch (k)
         {
@@ -663,6 +667,10 @@ namespace lux::cxx::dref
 
         switch (t->kind)
         {
+        case ETypeKinds::PointerToDataMember: [[fallthrough]];
+        case ETypeKinds::PointerToMemberFunction: [[fallthrough]];
+        case ETypeKinds::PointerToFunction: [[fallthrough]];
+        case ETypeKinds::PointerToObject: [[fallthrough]];
         case ETypeKinds::Pointer:
         {
             auto* p = static_cast<PointerType*>(t);
@@ -761,27 +769,6 @@ namespace lux::cxx::dref
         }
     }
 
-    static inline int indexOfDecl(const std::vector<std::unique_ptr<Decl>>& vec, const Decl* d)
-    {
-        for (int i = 0; i < (int)vec.size(); i++) {
-            if (vec[i].get() == d)
-                return i;
-        }
-        return -1;
-    }
-
-    /**
-     * 工具函数：给定指针 t，找到它在 data.types 里的下标。
-     */
-    static inline int indexOfType(const std::vector<std::unique_ptr<Type>>& vec, const Type* t)
-    {
-        for (int i = 0; i < (int)vec.size(); i++) {
-            if (vec[i].get() == t)
-                return i;
-        }
-        return -1;
-    }
-
     nlohmann::json serializeMetaUnitData(const MetaUnitData& data)
     {
         nlohmann::json root;
@@ -819,8 +806,7 @@ namespace lux::cxx::dref
             nlohmann::json arr = nlohmann::json::array();
             for (auto* d : data.marked_declarations)
             {
-                int idx = indexOfDecl(data.declarations, d);
-                arr.push_back(idx);  // 如果找不到，则是 -1， 你也可根据需要做处理
+                arr.push_back(d->index);  // 如果找不到，则是 -1， 你也可根据需要做处理
             }
             root["marked_declarations"] = arr;
         }
@@ -830,8 +816,7 @@ namespace lux::cxx::dref
             nlohmann::json arr = nlohmann::json::array();
             for (auto* t : data.marked_types)
             {
-                int idx = indexOfType(data.types, t);
-                arr.push_back(idx);
+                arr.push_back(t->index);
             }
             root["marked_types"] = arr;
         }

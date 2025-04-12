@@ -32,6 +32,7 @@ set(_COMPONENT_META_TOOLS_INCLUDED_ TRUE)
 function(add_meta)
     set(one_value_args
         NAME
+        GENERATOR
         MARKER
         TEMPLATE
         OUT_DIR
@@ -68,9 +69,12 @@ function(add_meta)
     endif()
     if(NOT ARGS_COMPILE_COMMANDS)
         set(ARGS_COMPILE_COMMANDS "${CMAKE_BINARY_DIR}/compile_commands.json")
+        if(NOT EXISTS ${ARGS_COMPILE_COMMANDS})
+            message(FATAL_ERROR "[add_meta] COMPILE_COMMANDS file not found: ${ARGS_COMPILE_COMMANDS}. Please generate it with your build system.")
+        endif()
     endif()
     if(NOT ARGS_META_SUFFIX)
-        set(ARGS_META_SUFFIX ".meta.json")
+        set(ARGS_META_SUFFIX ".meta.cpp")
     endif()
     if(NOT ARGS_SOURCE_FILE)
         set(ARGS_SOURCE_FILE "")  # If empty, please supply compile options via EXTRA_COMPILE_OPTIONS.
@@ -82,16 +86,28 @@ function(add_meta)
         set(ARGS_DRY_RUN OFF)
     endif()
 
+    # Locate the generator executable "lux_meta_generator"
+    if(NOT ARGS_GENERATOR)
+        find_program(LUX_META_GENERATOR lux_meta_generator REQUIRED)
+        if(NOT LUX_META_GENERATOR)
+            message(FATAL_ERROR "[target_add_meta] Could not find the lux_meta_generator executable")
+        endif()
+    else()
+        set(LUX_META_GENERATOR "${ARGS_GENERATOR}")
+        message(STATUS "Use user-provided generator: ${LUX_META_GENERATOR}")
+    endif()
+
     # Store configuration in target properties (prefix properties with META_)
     set_target_properties(${_meta_name} PROPERTIES
+        META_GENERATOR              "${LUX_META_GENERATOR}"
         META_MARKER                 "${ARGS_MARKER}"
         META_TEMPLATE_PATH          "${ARGS_TEMPLATE}"
         META_OUT_DIR                "${ARGS_OUT_DIR}"
         META_COMPILE_COMMANDS       "${ARGS_COMPILE_COMMANDS}"
-        META_TARGET_FILES           "$<JOIN:${ARGS_TARGET_FILES},;>"
+        META_TARGET_FILES           "${ARGS_TARGET_FILES}"
         META_META_SUFFIX            "${ARGS_META_SUFFIX}"
         META_SOURCE_FILE            "${ARGS_SOURCE_FILE}"
-        META_EXTRA_COMPILE_OPTIONS  "$<JOIN:${ARGS_EXTRA_COMPILE_OPTIONS},;>"
+        META_EXTRA_COMPILE_OPTIONS  "${ARGS_EXTRA_COMPILE_OPTIONS}"
         META_SERIAL_META            "${ARGS_SERIAL_META}"
         META_DRY_RUN                "${ARGS_DRY_RUN}"
         META_ECHO                   "${ARGS_ECHO}"
@@ -120,7 +136,7 @@ function(meta_add_files)
     list(APPEND _existing_files ${ARGV})
     list(REMOVE_DUPLICATES _existing_files)
     set_target_properties(${_meta_name} PROPERTIES
-        META_TARGET_FILES "$<JOIN:${_existing_files},;>"
+        META_TARGET_FILES "${_existing_files}"
     )
 endfunction()
 
@@ -138,7 +154,7 @@ endfunction()
 #       )
 function(target_add_meta)
     set(one_value_args NAME TARGET)
-    set(optional_args ALWAYS_REGENERATE ECHO)
+    set(optional_args ALWAYS_REGENERATE ECHO DONT_ADD_TO_SOURCE)
     cmake_parse_arguments(ARGS "" "${one_value_args}" "" ${ARGN})
 
     if(NOT ARGS_NAME)
@@ -163,6 +179,7 @@ function(target_add_meta)
     get_target_property(_meta_serial_meta ${_meta_name} META_SERIAL_META)
     get_target_property(_meta_dry_run ${_meta_name} META_DRY_RUN)
     get_target_property(_meta_echo   ${_meta_name} META_ECHO)
+    get_target_property(_meta_gen_exe ${_meta_name} META_GENERATOR)
 
     if(NOT _meta_out_dir)
         set(_meta_out_dir "${CMAKE_BINARY_DIR}/metagen")
@@ -174,7 +191,7 @@ function(target_add_meta)
         message(FATAL_ERROR "[target_add_meta] META_TEMPLATE_PATH (TEMPLATE parameter) is not provided in ${_meta_name}")
     endif()
     if(NOT _meta_meta_suffix)
-        set(_meta_meta_suffix ".meta.json")
+        set(_meta_meta_suffix ".meta.cpp")
     endif()
     if(NOT _meta_serial_meta)
         set(_meta_serial_meta ON)
@@ -246,8 +263,20 @@ function(target_add_meta)
         endforeach()
     endif()
     file(APPEND "${_config_file}" "  ],\n")
-    file(APPEND "${_config_file}" "  \"serial_meta\": \"${_meta_serial_meta}\",\n")
-    file(APPEND "${_config_file}" "  \"dry_run\": \"${_meta_dry_run}\"\n")
+
+    if("${_meta_serial_meta}" STREQUAL "ON")
+      set(serial_meta_value true)
+    else()
+      set(serial_meta_value false)
+    endif()
+    if("${_meta_dry_run}" STREQUAL "ON")
+      set(dry_run_value true)
+    else()
+      set(dry_run_value false)
+    endif()
+
+    file(APPEND "${_config_file}" "  \"serial_meta\": ${serial_meta_value},\n")
+    file(APPEND "${_config_file}" "  \"dry_run\": ${dry_run_value}\n")
     file(APPEND "${_config_file}" "}\n")
 
     # For each target file, generate an output file (assuming each input file produces one output file with <basename><meta_suffix>)
@@ -281,20 +310,12 @@ function(target_add_meta)
         file(MAKE_DIRECTORY "${_meta_out_dir}")
     endif()
 
-    # Locate the generator executable "lux_meta_generator"
-    find_program(LUX_META_GENERATOR lux_meta_generator)
-    if(LUX_META_GENERATOR)
-        set(_meta_gen_exe "${LUX_META_GENERATOR}")
-    else()
-        message(FATAL_ERROR "[target_add_meta] Could not find the lux_meta_generator executable")
-    endif()
-
     # Add a custom command: when any input file changes, regenerate the outputs
     add_custom_command(
         OUTPUT ${_all_generated_files}
         COMMAND "${_meta_gen_exe}" "${_config_file}"
         DEPENDS ${_meta_files}
-        COMMENT "[target_add_meta] Generating meta information for '${_meta_name}'"
+        COMMENT "[target_add_meta] Generating meta information for '${_meta_name}', command: ${_meta_gen_exe} ${_config_file}"
         VERBATIM
     )
 
@@ -311,7 +332,7 @@ function(target_add_meta)
     )
 
     # Add generated source files to the user's target (if any .cpp files were generated)
-    if(_generated_source_files)
+    if(_generated_source_files AND NOT ARGS_DONT_ADD_TO_SOURCE)
         target_sources("${_target_name}" PRIVATE ${_generated_source_files})
     endif()
     add_dependencies("${_target_name}" "${_meta_gen_target}")

@@ -5,95 +5,26 @@
 #include <string_view>
 #include <type_traits>
 
-namespace lux::cxx::dref {
+namespace lux::cxx::dref{
 
-    {%- for class in classes %}
+    {% for decl_index in marked_declarations -%}{% set decl=decl_from_index(decl_index) %}{% set type=type_from_id(decl.type_id) %}{%if decl.__kind=="CXXRecordDecl" %}
     template<>
-    class type_meta<::{{ class.name }}>
+    class type_meta<{{ decl.fq_name }}>
     {
     public:
-        using type = ::{{ class.name }};
-        static constexpr size_t size = {{ class.size }};
-        static constexpr size_t align = {{ class.align }};
-        static constexpr const char* name = "{{ class.name }}";
-        static constexpr bool is_abstract = {{ class.is_abstract }};
+        using type = {{ decl.fq_name }};
+        static constexpr size_t size = {{ type.size }};
+        static constexpr size_t align = {{ type.align }};
+        static constexpr string_view full_qualified_name = "{{ decl.fq_name }}";
+        static constexpr string_view name = "{{ decl.name }}";
+        static constexpr bool is_abstract = {{ decl.is_abstract }};
 
-        static constexpr std::array<const char*, {{ length(class.attributes) }}> attributes{
-            {%- for attr in class.attributes %}
-                "{{ attr }}"{{ "," if not loop.last }}
-            {%- endfor %}
-        };
-
-        static constexpr std::array<const char*, {{ length(class.field_decls) }}> fields{
-            {%- for field_id in class.field_decls %}
-                "{{ field_id }}"{{ "," if not loop.last }}
-            {%- endfor %}
-        };
-
-        static constexpr std::array<const char*, {{ length(class.bases) }}> bases{
-            {%- for base in class.bases %}
-                "{{ base }}"{{ "," if not loop.last }}
-            {%- endfor %}
-        };
-
-        static constexpr std::array<const char*, {{ length(class.method_decls) }}> methods{
-            {%- for method_id in class.method_decls %}
-                "{{ method_id }}"{{ "," if not loop.last }}
-            {%- endfor %}
-        };
-
-        static constexpr std::array<const char*, {{ length(class.static_method_decls) }}> static_methods{
-            {%- for static_method_id in class.static_method_decls %}
-                "{{ static_method_id }}"{{ "," if not loop.last }}
-            {%- endfor %}
-        };
-
-        template<typename Func, typename Obj>
-        static constexpr void foreach_field(Func&& func, Obj& object)
-        {
-            {%- for field_id in class.field_decls %}
-            func(object.{{ field_id }});
-            {%- endfor %}
-        }
+        using field_types = std::tuple<
+            {% for field_id in decl.field_decls -%}{%- set field_decl=decl_from_id(field_id) -%}
+            {{ field_decl.type_id }} {% if not loop.is_last %},
+            {% endif %}{% endfor %}
+        >;
     };
-    {%- endfor %}
-
-    {%- for enum in enums %}
-    template<>
-    class type_meta<::{{ enum.name }}>
-    {
-    public:
-        using value_type = std::underlying_type_t<::{{ enum.name }}>;
-        static constexpr size_t size = {{ enum.size }};
-        static constexpr const char* name = "{{ enum.name }}";
-        static constexpr bool is_scoped = {{ enum.is_scoped }};
-        static constexpr const char* underlying_type = "{{ enum.underlying_type_id }}";
-        
-        static constexpr std::array<const char*, {{ length(enum.enumerators) }}> keys{
-            {%- for enumerator in enum.enumerators %}
-                "{{ enumerator.name }}"{{ "," if not loop.last }}
-            {%- endfor %}
-        };
-
-        static constexpr std::array<value_type, {{ length(enum.enumerators) }}> values{
-            {%- for enumerator in enum.enumerators %}
-                {{ enumerator.unsigned_value }}{{ "," if not loop.last }}
-            {%- endfor %}
-        };
-
-        static constexpr const char* toString(const ::{{ enum.name }} value)
-        {
-            switch(value)
-            {
-            {%- for enumerator in enum.enumerators %}
-                case ::{{ enum.name }}::{{ enumerator.name }}:
-                    return "{{ enumerator.name }}";
-            {%- endfor %}
-                default:
-                    return "";
-            }
-        }
-    };
-    {%- endfor %}
+    {% endif %}{% endfor %}
 
 } // namespace lux::cxx::dref

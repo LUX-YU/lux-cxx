@@ -165,5 +165,6 @@ install(
 
 set(ENABLE_DYNAMIC_REFLECTION_TEST true BOOL "Enable dynamic reflection test")
 if(ENABLE_DYNAMIC_REFLECTION_TEST)
+    set(TEST_TEMPLATE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/templates)
     add_subdirectory(test)    
 endif()

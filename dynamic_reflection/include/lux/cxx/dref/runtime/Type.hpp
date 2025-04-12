@@ -126,6 +126,7 @@ namespace lux::cxx::dref {
         bool        is_volatile{ false }; ///< True if the type is marked as volatile.
         int         size;  ///< Size in bytes (if known), otherwise could be set to -1 or 0 if unknown.
         int         align; ///< Alignment requirement in bytes (if known).
+        size_t      index; ///< The index of this type in its parent container (if applicable).
 
         /**
          * Accepts a type visitor to allow external operations on this object

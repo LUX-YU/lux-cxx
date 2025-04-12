@@ -219,7 +219,7 @@ namespace lux::cxx::dref
         config.meta_suffix              = j.at("meta_suffix").get<std::string>();
         config.source_file              = j.at("source_file").get<std::string>();
         config.extra_compile_options    = j.at("extra_compile_options").get<std::vector<std::string>>();
-		config.serial_meta              = j.at("serial_meta").value("serial_meta", true);
-		config.dry_run                  = j.at("dry_run").value("dry_run", false);
+		config.serial_meta              = j.value("serial_meta", true);
+		config.dry_run                  = j.value("dry_run", false);
     }
 }

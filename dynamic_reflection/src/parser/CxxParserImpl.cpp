@@ -83,7 +83,7 @@ namespace lux::cxx::dref
 
 	void CxxParserImpl::parseParamDecl(const Cursor& cursor, const int index, ParmVarDecl& decl)
 	{
-		decl.index = index;
+		decl.arg_index = index;
 		decl.kind = EDeclKind::PARAM_VAR_DECL;
 		parseNamedDecl(cursor, decl);
 		decl.full_qualified_name = fullQualifiedParameterName(cursor, index);
@@ -219,6 +219,18 @@ namespace lux::cxx::dref
 			}
 		}
 
+		for (size_t i = 0; i < _meta_unit_data->types.size(); i++)
+		{
+			auto& type  = _meta_unit_data->types[i];
+			type->index = i;
+		}
+
+		for (size_t i = 0; i < _meta_unit_data->declarations.size(); i++)
+		{
+			auto& decl = _meta_unit_data->declarations[i];
+			decl->index = i;
+		}
+
 		auto meta_unit_impl = std::make_unique<MetaUnitImpl>(
 			std::move(_meta_unit_data),
 			std::string(_options.name),
@@ -309,7 +321,7 @@ namespace lux::cxx::dref
 
 						const ClangString attr_name = cursor.displayName();
 						const char* attr_c_name = attr_name.c_str();
-						if(std::string_view(attr_c_name).starts_with(_options.marker_symbol) == std::string_view::npos)
+						if(std::string_view(attr_c_name).find(_options.marker_symbol) == std::string_view::npos)
 						{
 							return CXChildVisit_Continue;
 						}
