@@ -25,6 +25,7 @@ namespace lux::cxx::dref
 		std::string              source_file;
 		// 额外的编译选项，例如头文件的路径，平台特定的编译选项等
 		std::vector<std::string> extra_compile_options;
+		std::vector<std::string> custom_fields_json;
 		// 是否将解析的元信息序列化到json文件中，保存在out_dir目录下
 		bool					 serial_meta;
 		// 是否不生成任何文件

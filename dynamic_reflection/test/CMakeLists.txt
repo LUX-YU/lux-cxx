@@ -1,7 +1,7 @@
 get_filename_component(PARENT_DIR ../ ABSOLUTE)
 set(DREF_PUBLIC_DIR ${PARENT_DIR}/include)
 
-include_component_cmake_scripts(dynamic_reflection_runtime)
+include_component_cmake_scripts(dynamic_reflection_generator)
 
 add_executable(
 	meta_parse_test
@@ -58,6 +58,8 @@ if(LUX_GENERATOR)
 		META_GENERATOR  ${GENERATOR}
 		TEMPLATE		${TEST_TEMPLATE_DIR}/static_meta.template.inja
 		TARGET_FILES	${CMAKE_CURRENT_SOURCE_DIR}/test_header.hpp
+		JSON_FIELD		"{\"foo\":123,\"bar\":[1,2,3]}"
+						"{\"foo2\":345,\"bar2\":[456]}"
 		ECHO
 	)
 

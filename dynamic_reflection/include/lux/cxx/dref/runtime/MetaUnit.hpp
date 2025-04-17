@@ -44,12 +44,13 @@ namespace lux::cxx::dref
 		~MetaUnit();
 		static size_t calculateTypeMetaId(std::string_view name);
 
-		[[nodiscard]] bool isValid() const;
 		[[nodiscard]] size_t id() const;
 		[[nodiscard]] const std::string& name() const;
 		[[nodiscard]] const std::string& version() const;
-		[[nodiscard]] const std::vector<Decl*>& markedDeclarations() const;
-		[[nodiscard]] const std::vector<Type*>& markedType() const;
+
+		[[nodiscard]] const std::vector<CXXRecordDecl*>& markedRecordDecls() const;
+		[[nodiscard]] const std::vector<FunctionDecl*>& markedFunctionDecls() const;
+		[[nodiscard]] const std::vector<EnumDecl*>& markedEnumDecls() const;
 
 		const Decl* findDeclById(const std::string& id) const;
 		const Type* findTypeById(const std::string& id) const;

@@ -54,10 +54,20 @@ namespace lux::cxx::dref
 
 		if (is_marked)
 		{
-			_meta_unit_data->marked_declarations.push_back(raw_ptr);
-			if (auto* named_decl = dynamic_cast<NamedDecl*>(raw_ptr); named_decl != nullptr)
+			if (raw_ptr->kind == EDeclKind::CXX_RECORD_DECL)
 			{
-				_meta_unit_data->marked_types.push_back(named_decl->type);
+				auto record_decl = static_cast<CXXRecordDecl*>(raw_ptr);
+				_meta_unit_data->marked_record_decls.push_back(record_decl);
+			}
+			else if (raw_ptr->kind == EDeclKind::FUNCTION_DECL)
+			{
+				auto function_decl = static_cast<FunctionDecl*>(raw_ptr);
+				_meta_unit_data->marked_function_decls.push_back(function_decl);
+			}
+			else if (raw_ptr->kind == EDeclKind::ENUM_DECL)
+			{
+				auto enum_decl = static_cast<EnumDecl*>(raw_ptr);
+				_meta_unit_data->marked_enum_decls.push_back(enum_decl);
 			}
 		}
 		return raw_ptr;
@@ -65,7 +75,8 @@ namespace lux::cxx::dref
 
 	void CxxParserImpl::parseBasicDecl(const Cursor& cursor, Decl& decl)
 	{
-		decl.id = cursor.USR().to_std();
+		decl.id	  = cursor.USR().to_std();
+		decl.hash = algorithm::fnv1a(decl.id);
 	}
 
 	void CxxParserImpl::parseNamedDecl(const Cursor& cursor, NamedDecl& decl)
@@ -88,6 +99,7 @@ namespace lux::cxx::dref
 		parseNamedDecl(cursor, decl);
 		decl.full_qualified_name = fullQualifiedParameterName(cursor, index);
 		decl.id = fullQualifiedParameterName(cursor, index);
+		decl.hash = algorithm::fnv1a(decl.id);
 	}
 
 	// Decl -> NamedDecl -> ValueDecl -> DeclaratorDecl
@@ -382,6 +394,11 @@ namespace lux::cxx::dref
 		type.name = clang_type.typeSpelling().to_std();
 		type.size = clang_type.typeSizeof();
 		type.align = clang_type.typeAlignOf();
+
+		if (type.is_const)
+		{
+			clang_type;
+		}
 	}
 
 	void CxxParserImpl::parseBuiltinType(const ClangType& clang_type, BuiltinType::EBuiltinKind kind, BuiltinType& type)

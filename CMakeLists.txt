@@ -38,6 +38,7 @@ if(ENABLE_DYNAMIC_REFLECTION)
     add_subdirectory(dynamic_reflection)
     list(APPEND ENABLE_COMPONENTS dynamic_reflection_parser)
     list(APPEND ENABLE_COMPONENTS dynamic_reflection_runtime)
+    list(APPEND ENABLE_COMPONENTS dynamic_reflection_generator)
 endif()
 
 install_components(

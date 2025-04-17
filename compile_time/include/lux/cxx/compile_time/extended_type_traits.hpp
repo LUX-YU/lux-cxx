@@ -67,13 +67,13 @@ namespace lux::cxx
 
 #endif
 
-    template<typename T> extern const T fakeObj;
+    template<typename T> extern const T fake_obj;
     // msvc output :
     // Function name: void __cdecl strip_field_name<&fake_obj<struct test_type>->a>(void) noexcept
     // gcc output :
-    // Function name: lux::cxx::strip_field_name() [with auto V = (& fakeObj<test_type>.test_type::b)]
+    // Function name: lux::cxx::strip_field_name() [with auto V = (& fake_obj<test_type>.test_type::b)]
     // clang output:
-    // Function name: auto lux::cxx::strip_field_name() [V = clang_wrapper_t<const double *>{&fakeObj.b}]
+    // Function name: auto lux::cxx::strip_field_name() [V = clang_wrapper_t<const double *>{&fake_obj.b}]
     template<auto V>
     consteval auto strip_field_name_impl() noexcept {
         std::string_view function_name{ LUX_FUNCTION_NAME };
@@ -94,7 +94,7 @@ namespace lux::cxx
     /*
     constexpr auto field_name = 
         lux::cxx::strip_field_name<
-            lux::cxx::make_clang_wrapper(std::addressof(lux::cxx::fakeObj<test_type>.b))
+            lux::cxx::make_clang_wrapper(std::addressof(lux::cxx::fake_obj<test_type>.b))
         >();
         std::cout << "Field Name:" << field_name << std::endl;
     */

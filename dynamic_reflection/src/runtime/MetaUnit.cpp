@@ -69,9 +69,19 @@ namespace lux::cxx::dref
 		return _impl->_version;
 	}
 
-	const std::vector<Decl*>& MetaUnit::markedDeclarations() const
+	const std::vector<CXXRecordDecl*>& MetaUnit::markedRecordDecls() const
 	{
-		return _impl->_data->marked_declarations;
+		return _impl->_data->marked_record_decls;
+	}
+
+	const std::vector<FunctionDecl*>& MetaUnit::markedFunctionDecls() const
+	{
+		return _impl->_data->marked_function_decls;
+	}
+
+	const std::vector<EnumDecl*>& MetaUnit::markedEnumDecls() const
+	{
+		return _impl->_data->marked_enum_decls;
 	}
 
 	const Decl* MetaUnit::findDeclById(const std::string& id) const

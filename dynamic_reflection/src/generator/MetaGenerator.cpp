@@ -59,21 +59,17 @@ static bool validateFiles(const GeneratorConfig& generator_config)
 // Returns:
 //   A vector of strings representing the compile options to be used by the parser.
 //---------------------------------------------------------------------
-static std::vector<std::string> buildCompileOptions(const GeneratorConfig& generator_config)
+static std::vector<std::string> buildCompileOptions(const GeneratorConfig& generator_config, std::vector<std::filesystem::path>& includes)
 {
-    // Fetch additional include paths from the compile commands based on the source file.
-    auto extra_includes = GeneratorHelper::fetchIncludePaths(
-        generator_config.compile_commands, generator_config.source_file
-    );
     auto source_path = std::filesystem::path(generator_config.source_file);
     auto source_parent = source_path.parent_path();
     // Ensure that the parent directory of the source file is included.
     if (source_parent != std::filesystem::path("."))
     {
-        extra_includes.push_back(source_parent.string());
+        includes.push_back(source_parent.string());
     }
     // Convert the include paths into proper "-I" options.
-    auto include_options = GeneratorHelper::convertToDashI(extra_includes);
+    auto include_options = GeneratorHelper::convertToDashI(includes);
 
     std::vector<std::string> options;
     // Preallocate the container's memory for efficiency.
@@ -117,7 +113,8 @@ static bool processTargetFile(const std::filesystem::path& file,
     const GeneratorConfig& generator_config,
     const std::vector<std::string>& options,
     std::vector<MetaUnit>& meta_list,
-    std::vector<nlohmann::json>& meta_json_list)
+    std::vector<nlohmann::json>& meta_json_list,
+    std::vector<std::filesystem::path>& includes)
 {
     // Convert the current file path to a string.
     std::string file_path = file.string();
@@ -146,9 +143,19 @@ static bool processTargetFile(const std::filesystem::path& file,
     // Convert the parsed data to JSON format.
     auto meta_json = data.toJson();
     // Augment the JSON with additional file-specific metadata.
-    meta_json["source_path"] = file_path;
-    meta_json["source_parent"] = source_parent;
+    meta_json["source_path"]            = file_path;
+    meta_json["source_parent"]          = source_parent;
     meta_json["parser_compile_options"] = options;
+	meta_json["include_dir"]            = GeneratorHelper::findRelativeIncludePath(file, includes).value_or(std::string(""));
+
+    if (!generator_config.custom_fields_json.empty()) {
+		for (const std::string& field : generator_config.custom_fields_json) {
+            auto extra = nlohmann::json::parse(field);
+            for (auto& [key, val] : extra.items()) {
+                meta_json[key] = val;
+            }
+		}
+    }
 
     // If the configuration requests serializing meta data into JSON files,
     // generate a JSON file for the current source file.
@@ -342,14 +349,18 @@ int main(int argc, char* argv[])
     }
 
     // Build compile options (including include paths) to be passed to the parser.
-    auto options = buildCompileOptions(generator_config);
+    // Fetch additional include paths from the compile commands based on the source file.
+    auto extra_includes = GeneratorHelper::fetchIncludePaths(
+        generator_config.compile_commands, generator_config.source_file
+    );
+    auto options = buildCompileOptions(generator_config, extra_includes);
     std::vector<MetaUnit>       meta_unit_list;
     std::vector<nlohmann::json> meta_json_list;
 
     // Process each target file by parsing and collecting metadata.
     for (const auto& file : generator_config.target_files)
     {
-        if (!processTargetFile(file, generator_config, options, meta_unit_list, meta_json_list)) {
+        if (!processTargetFile(file, generator_config, options, meta_unit_list, meta_json_list, extra_includes)) {
             return 1;
         }
     }

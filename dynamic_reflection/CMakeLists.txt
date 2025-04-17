@@ -12,9 +12,9 @@ set(DREF_RUNTIME_SRCS
 )
 
 add_component(
-    COMPONENT_NAME                  dynamic_reflection_runtime
-    NAMESPACE                       lux::cxx
-    SOURCE_FILES                    ${DREF_RUNTIME_SRCS}
+    COMPONENT_NAME dynamic_reflection_runtime
+    NAMESPACE      lux::cxx
+    SOURCE_FILES   ${DREF_RUNTIME_SRCS}
 )
 
 component_include_directories(
@@ -47,10 +47,9 @@ component_add_internal_dependencies(
         lux::cxx::static_reflection
 )
 
-component_add_cmake_scripts(
-	dynamic_reflection_runtime
-	${CMAKE_CURRENT_SOURCE_DIR}/cmake/meta.cmake
-    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/reflection_header_template.hpp.in
+component_add_transitive_commands(
+    dynamic_reflection_runtime
+    "find_package(nlohmann_json REQUIRED)"
 )
 
 #[[==========================
@@ -64,9 +63,9 @@ set(DREF_PARSER_SRCS
 )
 
 add_component(
-    COMPONENT_NAME                  dynamic_reflection_parser
-    NAMESPACE                       lux::cxx
-    SOURCE_FILES                    ${DREF_PARSER_SRCS}
+    COMPONENT_NAME dynamic_reflection_parser
+    NAMESPACE      lux::cxx
+    SOURCE_FILES   ${DREF_PARSER_SRCS}
 )
 
 component_include_directories(
@@ -103,15 +102,20 @@ component_add_transitive_commands(
 
 #[[==========================
     Dynamic Reflection Generator
+    
+    This is just a demo program, you need to modify it according to the actual project, 
+    but the corresponding cmake function is relatively common.
+    
+    You can consider using meta.cmake with your custom generator
 =============================]]
 set(DREF_GENERATOR_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/GeneratorHelper.cpp
 )
 
 add_component(
-    COMPONENT_NAME                  dynamic_reflection_generator
-    NAMESPACE                       lux::cxx
-    SOURCE_FILES                    ${DREF_GENERATOR_SRCS}
+    COMPONENT_NAME dynamic_reflection_generator
+    NAMESPACE      lux::cxx
+    SOURCE_FILES   ${DREF_GENERATOR_SRCS}
 )
 
 component_include_directories(
@@ -127,6 +131,11 @@ component_add_internal_dependencies(
     dynamic_reflection_generator
         lux::cxx::algorithm
         lux::cxx::dynamic_reflection_runtime
+)
+
+component_add_cmake_scripts(
+	dynamic_reflection_generator
+	${CMAKE_CURRENT_SOURCE_DIR}/cmake/meta.cmake
 )
 
 target_compile_definitions(

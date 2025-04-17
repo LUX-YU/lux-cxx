@@ -87,9 +87,10 @@ namespace lux::cxx::dref
         if (!d) return j;
 
         // 通用字段
-        j["id"] = d->id;
+        j["id"]     = d->id;
         j["__kind"] = declKindToString(d->kind);
-		j["index"] = d->index;
+		j["index"]  = d->index;
+		j["hash"]   = std::to_string(d->hash);
 
         // 如果是 NamedDecl（比如大多数 Decl 都继承 NamedDecl）
         if (auto* nd = asNamedDecl(d))
@@ -240,7 +241,9 @@ namespace lux::cxx::dref
         raw->kind  = k;
         raw->id    = j.value("id", "");
         raw->index = j["index"].get<size_t>();
-
+		std::string hash_tr = j["hash"].get<std::string>();
+        auto [p, ec] = std::from_chars(hash_tr.data(), hash_tr.data() + hash_tr.size(), raw->hash);
+        
         // NamedDecl common?
         if (auto* nd = asNamedDecl(raw))
         {
@@ -803,22 +806,24 @@ namespace lux::cxx::dref
 
         // 5) marked_declarations 用“下标”
         {
-            nlohmann::json arr = nlohmann::json::array();
-            for (auto* d : data.marked_declarations)
+			nlohmann::json mark_record_arr = nlohmann::json::array();
+			nlohmann::json mark_func_arr = nlohmann::json::array();
+			nlohmann::json mark_enum_arr = nlohmann::json::array();
+            for (auto* d : data.marked_record_decls)
             {
-                arr.push_back(d->index);  // 如果找不到，则是 -1， 你也可根据需要做处理
+				mark_record_arr.push_back(d->index);
             }
-            root["marked_declarations"] = arr;
-        }
-
-        // 6) marked_types 用“下标”
-        {
-            nlohmann::json arr = nlohmann::json::array();
-            for (auto* t : data.marked_types)
+            for (auto* d : data.marked_function_decls)
             {
-                arr.push_back(t->index);
+				mark_func_arr.push_back(d->index);
             }
-            root["marked_types"] = arr;
+            for (auto* d : data.marked_enum_decls)
+            {
+                mark_enum_arr.push_back(d->index);
+            }
+			root["marked_record_decls"]   = mark_record_arr;
+			root["marked_function_decls"] = mark_func_arr;
+			root["marked_enum_decls"]     = mark_enum_arr;
         }
 
         return root;
@@ -896,36 +901,27 @@ namespace lux::cxx::dref
 			}
         }
 
-        //------------------ marked_declarations (index) ------------------//
-        if (root.contains("marked_declarations") && root["marked_declarations"].is_array())
+        // marked declarations
+		auto deserialize_marked_decl = 
+        [&data, &root]<typename T>(const char* name, std::vector<T*>& decls)
         {
-            for (auto& idxVal : root["marked_declarations"])
+            if (!root.contains(name) || !root[name].is_array())
             {
-                int idx = idxVal.get<int>();
-                if (idx >= 0 && idx < (int)data.declarations.size()) {
-                    data.marked_declarations.push_back(data.declarations[idx].get());
-                }
-                else {
-                    // 如果越界，你可选择跳过或抛异常
-                    // 这里简单跳过
-                }
+                return;
             }
-        }
-
-        //------------------ marked_types (index) ------------------//
-        if (root.contains("marked_types") && root["marked_types"].is_array())
-        {
-            for (auto& idxVal : root["marked_types"])
-            {
-                int idx = idxVal.get<int>();
-                if (idx >= 0 && idx < (int)data.types.size()) {
-                    data.marked_types.push_back(data.types[idx].get());
-                }
-                else {
-                    // 同理可跳过或报错
-                }
-            }
-        }
+			for (auto& id : root[name])
+			{
+				auto idx = id.get<size_t>();
+				if (idx >= 0 && idx <data.declarations.size())
+                {
+					auto it = dynamic_cast<T*>(data.declarations[idx].get());
+					decls.push_back(it);
+				}
+			}
+		};
+		deserialize_marked_decl("marked_record_decls",   data.marked_record_decls);
+		deserialize_marked_decl("marked_function_decls", data.marked_function_decls);
+		deserialize_marked_decl("marked_enum_decls",     data.marked_enum_decls);
     }
 
     nlohmann::json MetaUnitImpl::toJson() const

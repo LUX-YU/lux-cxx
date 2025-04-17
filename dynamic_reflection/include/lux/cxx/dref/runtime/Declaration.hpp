@@ -136,6 +136,7 @@ namespace lux::cxx::dref {
     {
     public:
         std::string id;     ///< A unique identifier for internal bookkeeping.
+        uint64_t    hash;
         EDeclKind   kind;   ///< The specific kind of declaration (see EDeclKind).
 		size_t      index;  ///< The index of this declaration in its parent container (if applicable).
 
@@ -154,12 +155,12 @@ namespace lux::cxx::dref {
     class NamedDecl : public Decl
     {
     public:
-        std::string name;                ///< The user-visible name of the declaration.
-        std::string full_qualified_name; ///< The fully qualified name (including namespaces, classes, etc.).
-        std::string spelling;            ///< The exact spelling in the source code.
+        std::string name;                    ///< The user-visible name of the declaration.
+        std::string full_qualified_name;     ///< The fully qualified name (including namespaces, classes, etc.).
+        std::string spelling;                ///< The exact spelling in the source code.
         std::vector<std::string> attributes; ///< Additional attributes or annotations on the declaration.
-		bool is_anonymous = false;       ///< True if this declaration is anonymous (e.g., unnamed struct).
-        Type* type = nullptr;            ///< Optional type information if applicable.
+		bool is_anonymous = false;           ///< True if this declaration is anonymous (e.g., unnamed struct).
+        Type* type = nullptr;                ///< Optional type information if applicable.
     };
 
     //======================================================================

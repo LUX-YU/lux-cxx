@@ -2,7 +2,7 @@
 #include <lux/cxx/dref/runtime/Attribute.hpp>
 #include <string>
 
-struct LUX_REFL(static_reflection;dynamic_reflection) TestClass
+struct LUX_META(static_reflection;dynamic_reflection) TestClass
 {
     std::string_view field1;
     int              field2;
@@ -48,7 +48,7 @@ struct LUX_REFL(static_reflection;dynamic_reflection) TestClass
     }
 };
 
-enum class LUX_REFL(static_reflection;dynamic_reflection) TestEnum
+enum class LUX_META(static_reflection;dynamic_reflection) TestEnum
 {
     FIRST_ENUMERATOR = 100,
     SECOND_ENUMERATOR = 200,
@@ -57,7 +57,7 @@ enum class LUX_REFL(static_reflection;dynamic_reflection) TestEnum
 
 namespace lux::cxx::dref::test
 {
-    struct LUX_REFL(static_reflection;dynamic_reflection) TestClass
+    struct LUX_META(static_reflection;dynamic_reflection) TestClass
     {
         std::string_view field1;
         int              field2;
@@ -89,12 +89,12 @@ namespace lux::cxx::dref::test
         }
     };
 
-    static inline int LUX_REFL(dynamic_reflection) func()
+    static inline int LUX_META(dynamic_reflection) func()
     {
         return 0;
     }
 
-	static inline int LUX_REFL(dynamic_reflection) func(int a)
+	static inline int LUX_META(dynamic_reflection) func(int a)
 	{
 		return a;
 	}

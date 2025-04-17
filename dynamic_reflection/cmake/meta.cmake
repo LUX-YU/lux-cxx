@@ -45,6 +45,7 @@ function(add_meta)
     set(multi_value_args
         TARGET_FILES
         EXTRA_COMPILE_OPTIONS
+        JSON_FIELD
     )
     set(optional_args ECHO ALWAYS_REGENERATE)
     cmake_parse_arguments(ARGS "${optional_args}" "${one_value_args}" "${multi_value_args}" ${ARGN})
@@ -69,9 +70,9 @@ function(add_meta)
     endif()
     if(NOT ARGS_COMPILE_COMMANDS)
         set(ARGS_COMPILE_COMMANDS "${CMAKE_BINARY_DIR}/compile_commands.json")
-        if(NOT EXISTS ${ARGS_COMPILE_COMMANDS})
-            message(FATAL_ERROR "[add_meta] COMPILE_COMMANDS file not found: ${ARGS_COMPILE_COMMANDS}. Please generate it with your build system.")
-        endif()
+        # if(NOT EXISTS ${ARGS_COMPILE_COMMANDS})
+        #     message(FATAL_ERROR "[add_meta] COMPILE_COMMANDS file not found: ${ARGS_COMPILE_COMMANDS}. Please generate it with your build system.")
+        # endif()
     endif()
     if(NOT ARGS_META_SUFFIX)
         set(ARGS_META_SUFFIX ".meta.cpp")
@@ -111,6 +112,7 @@ function(add_meta)
         META_SERIAL_META            "${ARGS_SERIAL_META}"
         META_DRY_RUN                "${ARGS_DRY_RUN}"
         META_ECHO                   "${ARGS_ECHO}"
+        META_JSON_FIELD             "${ARGS_JSON_FIELD}"
     )
 endfunction()
 
@@ -180,6 +182,7 @@ function(target_add_meta)
     get_target_property(_meta_dry_run ${_meta_name} META_DRY_RUN)
     get_target_property(_meta_echo   ${_meta_name} META_ECHO)
     get_target_property(_meta_gen_exe ${_meta_name} META_GENERATOR)
+    get_target_property(_meta_json_fields ${_meta_name} META_JSON_FIELD)
 
     if(NOT _meta_out_dir)
         set(_meta_out_dir "${CMAKE_BINARY_DIR}/metagen")
@@ -277,6 +280,28 @@ function(target_add_meta)
 
     file(APPEND "${_config_file}" "  \"serial_meta\": ${serial_meta_value},\n")
     file(APPEND "${_config_file}" "  \"dry_run\": ${dry_run_value}\n")
+
+    if(_meta_json_fields)
+        file(APPEND "${_config_file}" ",\n  \"custom_fields_json\": [\n")
+        list(LENGTH _meta_json_fields _len)
+        math(EXPR _last "${_len} - 1")
+    
+        foreach(i RANGE 0 ${_last})
+            list(GET _meta_json_fields ${i} field)
+            string(REPLACE "\"" "\\\"" field_escaped "${field}")
+            if(i LESS ${_last})
+                file(APPEND "${_config_file}"
+                    "    \"${field_escaped}\",\n")
+            else()
+                file(APPEND "${_config_file}"
+                    "    \"${field_escaped}\"\n")
+            endif()
+        endforeach()
+        file(APPEND "${_config_file}" "  ]\n")
+    else()
+        file(APPEND "${_config_file}" "\n")
+    endif()
+
     file(APPEND "${_config_file}" "}\n")
 
     # For each target file, generate an output file (assuming each input file produces one output file with <basename><meta_suffix>)

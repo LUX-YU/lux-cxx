@@ -41,8 +41,9 @@ namespace lux::cxx::dref
 		std::unordered_map<std::string, Type*>  type_alias_map;
 
 		// Marked declarations
-		std::vector<Decl*>						marked_declarations;
-		std::vector<Type*>						marked_types;
+		std::vector<CXXRecordDecl*>				marked_record_decls;
+		std::vector<FunctionDecl*>				marked_function_decls;
+		std::vector<EnumDecl*>					marked_enum_decls;
 	};
 
 	class MetaUnitImpl

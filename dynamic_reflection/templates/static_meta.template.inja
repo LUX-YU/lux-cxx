@@ -7,7 +7,7 @@
 
 namespace lux::cxx::dref{
 
-    {% for decl_index in marked_declarations -%}{% set decl=decl_from_index(decl_index) %}{% set type=type_from_id(decl.type_id) %}{%if decl.__kind=="CXXRecordDecl" %}
+    {% for decl_index in marked_record_decls -%}{% set decl=decl_from_index(decl_index) %}{% set type=type_from_id(decl.type_id) %}{%if decl.__kind=="CXXRecordDecl" %}
     template<>
     class type_meta<{{ decl.fq_name }}>
     {
