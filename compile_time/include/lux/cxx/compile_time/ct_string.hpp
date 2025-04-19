@@ -78,7 +78,10 @@ namespace lux::cxx
     // lux::cxx::is_type_template_of can not be used here
     // because literal_ct_string is a LiteralType
     template<typename T>
-    struct is_ct_string : is_none_type_template_of<ct_string, T> {};
+    struct is_ct_string : std::false_type {};
+    
+    template<literal_ct_string _str>
+    struct is_ct_string<ct_string<_str>> : std::true_type {};
 
     template<typename T> constexpr bool is_ct_string_v = is_ct_string<T>::value;
     
@@ -102,14 +105,16 @@ namespace lux::cxx
         template<std::size_t... NS1, std::size_t... NS2>
         static constexpr auto _get(std::index_sequence<NS1...>, std::index_sequence<NS2...>)
         {
-            return ct_string_s<(S1::view()[NS1], ...), (S2::view()[NS2], ...)>{};
+            // Create a combined character pack from both strings
+            return ct_string<literal_ct_string<char, S1::size() + S2::size()>{
+                std::in_place, S1::view()[NS1]..., S2::view()[NS2]...}>{};
         }
 
         static constexpr auto _make()
         {
             return _get(
-                std::make_index_sequence < S1::size() > {},
-                std::make_index_sequence < S2::size() > {}
+                std::make_index_sequence<S1::size()>{},
+                std::make_index_sequence<S2::size()>{}
             );
         }
 

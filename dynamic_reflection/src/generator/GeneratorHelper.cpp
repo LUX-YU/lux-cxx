@@ -167,6 +167,17 @@ namespace lux::cxx::dref
                         pathStr = argStr.substr(2);
                     }
                 }
+                else if (argStr.rfind("-isystem", 0) == 0)
+                {
+                    if (argStr == "-isystem") {
+                        if (i + 1 < args.size()) {
+                            pathStr = args[++i];
+                        }
+                    }
+                    else {
+                        pathStr = argStr.substr(std::string("-isystem").length());
+                    }
+                }
                 else if (argStr.rfind("-external:I", 0) == 0)
                 {
                     if (argStr == "-external:I") {

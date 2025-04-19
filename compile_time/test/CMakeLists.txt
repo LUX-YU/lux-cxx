@@ -41,3 +41,14 @@ target_link_libraries(
     PRIVATE
     compile_time
 )
+
+add_executable(
+    compile_time_string_test
+    compile_time_string_test.cpp
+)
+
+target_link_libraries(
+    compile_time_string_test
+    PRIVATE
+    compile_time
+)
