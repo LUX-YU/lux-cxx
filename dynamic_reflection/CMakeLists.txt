@@ -26,7 +26,7 @@ component_include_directories(
         include
     PRIVATE
         pinclude
-        ${CLANG_INCLUDE_DIRS}
+        ${LIBCLANG_INCLUDE_DIR}
 )
 
 target_link_libraries(
@@ -74,7 +74,7 @@ component_include_directories(
         include
     PRIVATE
         pinclude
-        ${CLANG_INCLUDE_DIRS}
+        ${LIBCLANG_INCLUDE_DIR}
 )
 
 target_link_libraries(

@@ -1,5 +1,3 @@
-find_package(nameof CONFIG REQUIRED)
-
 add_interface_component(
     COMPONENT_NAME                  compile_time
     NAMESPACE                       lux::cxx
@@ -11,17 +9,6 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     INSTALL_TIME
         include
-)
-
-target_link_libraries(
-    compile_time
-    INTERFACE
-    nameof::nameof
-)
-
-component_add_transitive_commands(
-    compile_time
-    "find_package(nameof CONFIG REQUIRED)"
 )
 
 set(ENABLE_COMPILE_TIME_TEST OFF CACHE BOOL "Enable compile time test")

@@ -479,6 +479,55 @@ namespace lux::cxx::dref
 		parseBasicType(clang_type, type);
 	}
 
+	static BuiltinType::EBuiltinKind clang_type2builtin_type(CXTypeKind kind)
+	{
+		switch (kind)
+		{
+		case CXType_Void: return BuiltinType::EBuiltinKind::VOID;
+		case CXType_Bool: return BuiltinType::EBuiltinKind::BOOL;
+		case CXType_Char_U: return BuiltinType::EBuiltinKind::CHAR_U;
+		case CXType_UChar: return BuiltinType::EBuiltinKind::UCHAR;
+		case CXType_Char16: return BuiltinType::EBuiltinKind::CHAR16_T;
+		case CXType_Char32: return BuiltinType::EBuiltinKind::CHAR32_T;
+		case CXType_UShort: return BuiltinType::EBuiltinKind::UNSIGNED_SHORT_INT;
+		case CXType_UInt: return BuiltinType::EBuiltinKind::UNSIGNED_INT;
+		case CXType_ULong: return BuiltinType::EBuiltinKind::UNSIGNED_LONG_INT;
+		case CXType_ULongLong: return BuiltinType::EBuiltinKind::UNSIGNED_LONG_LONG_INT;
+		case CXType_UInt128: return BuiltinType::EBuiltinKind::EXTENDED_UNSIGNED;
+		case CXType_Char_S: return BuiltinType::EBuiltinKind::SIGNED_CHAR_S;
+		case CXType_SChar: return BuiltinType::EBuiltinKind::SIGNED_SIGNED_CHAR;
+		case CXType_WChar: return BuiltinType::EBuiltinKind::WCHAR_T;
+		case CXType_Short: return BuiltinType::EBuiltinKind::SHORT_INT;
+		case CXType_Int: return BuiltinType::EBuiltinKind::INT;
+		case CXType_Long: return BuiltinType::EBuiltinKind::LONG_INT;
+		case CXType_LongLong: return BuiltinType::EBuiltinKind::LONG_LONG_INT;
+		case CXType_Int128: return BuiltinType::EBuiltinKind::EXTENDED_SIGNED;
+		case CXType_Float: return BuiltinType::EBuiltinKind::FLOAT;
+		case CXType_Double: return BuiltinType::EBuiltinKind::DOUBLE;
+		case CXType_LongDouble: return BuiltinType::EBuiltinKind::LONG_DOUBLE;
+		case CXType_NullPtr: return BuiltinType::EBuiltinKind::NULLPTR;
+		case CXType_Overload: return BuiltinType::EBuiltinKind::OVERLOAD;
+		case CXType_Dependent: return BuiltinType::EBuiltinKind::DEPENDENT;
+		case CXType_ObjCId: return BuiltinType::EBuiltinKind::OBJC_IDENTIFIER;
+		case CXType_ObjCClass: return BuiltinType::EBuiltinKind::OBJC_CLASS;
+		case CXType_ObjCSel: return BuiltinType::EBuiltinKind::OBJC_SEL;
+		case CXType_Float128: return BuiltinType::EBuiltinKind::FLOAT_128;
+		case CXType_Half: return BuiltinType::EBuiltinKind::HALF;
+		case CXType_Float16: return BuiltinType::EBuiltinKind::FLOAT16;
+		case CXType_ShortAccum: return BuiltinType::EBuiltinKind::SHORT_ACCUM;
+		case CXType_Accum: return BuiltinType::EBuiltinKind::ACCUM;
+		case CXType_LongAccum: return BuiltinType::EBuiltinKind::LONG_ACCUM;
+		case CXType_UShortAccum: return BuiltinType::EBuiltinKind::UNSIGNED_SHORT_ACCUM;
+		case CXType_UAccum: return BuiltinType::EBuiltinKind::UNSIGNED_ACCUM;
+		case CXType_ULongAccum: return BuiltinType::EBuiltinKind::UNSIGNED_LONG_ACCUM;
+		case CXType_BFloat16: return BuiltinType::EBuiltinKind::BFLOAT16;
+		case CXType_Ibm128: return BuiltinType::EBuiltinKind::IMB_128;
+		default:
+			break;
+		}
+		return static_cast<BuiltinType::EBuiltinKind>(0); // Invalid type
+	}
+
 	Type* CxxParserImpl::createOrFindType(const ClangType& clang_type)
 	{
 		const auto canonical_type = clang_type.canonicalType();
@@ -539,7 +588,7 @@ namespace lux::cxx::dref
 		case CXType_Ibm128:
 		{
 			auto builtin_type = std::make_unique<BuiltinType>();
-			parseBuiltinType(clang_type, static_cast<BuiltinType::EBuiltinKind>(type_kind), *builtin_type);
+			parseBuiltinType(clang_type, clang_type2builtin_type(type_kind), *builtin_type);
 			return registerType(std::move(builtin_type));
 		}
 		// case CXType_Complex:
