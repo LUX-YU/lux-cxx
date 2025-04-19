@@ -22,6 +22,7 @@ namespace lux::cxx::dref
         j["result_type_id"] = (fn->result_type ? fn->result_type->id : "");
         j["mangling"] = fn->mangling;
         j["is_variadic"] = fn->is_variadic;
+		j["invoke_name"] = fn->invoke_name;
 
         nlohmann::json paramsArr = nlohmann::json::array();
         for (auto* p : fn->params)
@@ -297,6 +298,7 @@ namespace lux::cxx::dref
         {
             auto* fn = static_cast<FunctionDecl*>(raw);
             fn->mangling = j.value("mangling", "");
+			fn->invoke_name = j.value("invoke_name", "");
             fn->is_variadic = j.value("is_variadic", false);
         }
         break;

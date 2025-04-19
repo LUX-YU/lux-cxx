@@ -76,11 +76,22 @@ namespace lux::cxx
         }
     }
 
+    constexpr static inline std::string_view erase_elaborated_specifier(std::string_view sv) noexcept
+    {
+        constexpr std::string_view kw[] = { "struct ", "class ", "enum ", "union " };
+        for (auto k : kw)
+            if (sv.starts_with(k)) {
+                sv.remove_prefix(k.size());
+                break;
+            }
+        return sv;
+    }
+
     template<typename Type>
     [[nodiscard]] constexpr std::string_view type_name() noexcept
     {
         constexpr auto value = strip_type_name<Type>();
-        return value;
+        return erase_elaborated_specifier(value);
     }
 
     template<typename Type, typename hash_str_t = detail::hash_string<char>>

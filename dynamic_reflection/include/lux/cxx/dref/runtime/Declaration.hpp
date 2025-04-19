@@ -309,10 +309,14 @@ namespace lux::cxx::dref {
     class FunctionDecl : public DeclaratorDecl
     {
     public:
-        Type* result_type = nullptr;  ///< The return type of the function.
-        std::vector<class ParmVarDecl*> params; ///< The parameter list of the function.
-
-        std::string mangling; ///< The mangled name, if relevant for linkage.
+        ///< The return type of the function.
+        Type* result_type = nullptr;  
+        ///< The parameter list of the function.
+        std::vector<class ParmVarDecl*> params; 
+        /// The name used to invoke this function.For member functions, it's spelling, for non member functions, it's namespace::spelling.
+		std::string invoke_name; 
+        ///< The mangled name, if relevant for linkage.
+        std::string mangling; 
 
 		bool is_variadic = false; ///< True if this function accepts variadic arguments.
 

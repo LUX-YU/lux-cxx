@@ -4,6 +4,7 @@
 #include <inja/inja.hpp>
 #include <fstream>
 #include <filesystem>
+#include <unordered_set>
 
 using namespace ::lux::cxx::dref;
 
@@ -185,6 +186,48 @@ static bool processTargetFile(const std::filesystem::path& file,
     return true;
 }
 
+static bool dfsFindChain(const CXXRecordDecl* current,
+    std::string_view            target_name,
+    std::vector<const CXXRecordDecl*>& path,
+    std::unordered_set<const CXXRecordDecl*>& visited)
+{
+    if (!current || visited.count(current)) return false;
+    visited.insert(current);
+
+    path.push_back(current);
+    if (current->name == target_name ||
+        current->full_qualified_name == target_name) {
+        return true;
+    }
+
+    for (const auto* base : current->bases) {
+        if (dfsFindChain(base, target_name, path, visited)) {
+            return true;
+        }
+    }
+
+    path.pop_back();
+    return false;
+}
+
+/**
+ * find_parent_chain(E, "A")  ⇒  {E, D, C, A}
+ *
+ * @param start
+ * @param target_name
+ * @return
+ */
+static std::vector<const CXXRecordDecl*> find_parent_chain(const CXXRecordDecl* start, std::string_view target_name)
+{
+    std::vector<const CXXRecordDecl*> path;
+    std::unordered_set<const CXXRecordDecl*> visited;
+
+    if (dfsFindChain(start, target_name, path, visited)) {
+        return path; 
+    }
+    return {};
+}
+
 //---------------------------------------------------------------------
 // renderTemplates: Render output files using the provided template
 //
@@ -256,13 +299,41 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
         [&meta_unit_list, &meta_json_list, &i](const inja::Arguments& args) -> nlohmann::json {
             auto& meta_json = meta_json_list[i];
             auto& meta_unit = meta_unit_list[i];
-            auto index = args.at(0)->get<std::string>();
-            auto type = meta_unit.findTypeById(index);
+            auto id = args.at(0)->get<std::string>();
+            auto type = meta_unit.findTypeById(id);
             if (!type) {
-                std::cerr << "[Error] Type with id " << index << " not found.\n";
+                std::cerr << "[Error] Type with id " << id << " not found.\n";
                 throw std::runtime_error("Type not found");
             }
             return meta_json["types"][type->index];
+        }
+    );
+
+    inja_env.add_callback(
+        "parent_chain",
+        [&meta_unit_list, &meta_json_list, &i](const inja::Arguments& args) -> nlohmann::json
+        {
+            auto& meta_json = meta_json_list[i];
+            auto& meta_unit = meta_unit_list[i];
+            auto id     = args.at(0)->get<std::string>();
+			auto target = args.at(1)->get<std::string>();
+            auto decl = meta_unit.findDeclById(id);
+            if (decl->kind != EDeclKind::CXX_RECORD_DECL)
+            {
+				std::cerr << "[Error] Declaration with id " << id << " is not a CXX_RECORD_DECL.\n";
+				throw std::runtime_error("Declaration is not a CXX_RECORD_DECL");
+            }
+            auto decl_list = find_parent_chain(static_cast<const CXXRecordDecl*>(decl), target);
+			nlohmann::json ret = nlohmann::json::array();
+            for (auto decl : decl_list)
+            {
+				nlohmann::json info = {
+					{"id", decl->id},
+					{"hash", std::to_string(decl->hash)}
+				};
+                ret.push_back(info);
+            }
+			return ret;
         }
     );
 

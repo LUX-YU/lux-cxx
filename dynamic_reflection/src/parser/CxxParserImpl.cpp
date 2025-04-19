@@ -9,6 +9,17 @@
 
 namespace lux::cxx::dref
 {
+	static std::string strip_param_list(std::string_view sig)
+	{
+		const auto paren = sig.find('(');
+		if (paren == std::string_view::npos)
+			return std::string{ sig };
+		std::size_t last = paren;
+		while (last > 0 && std::isspace(static_cast<unsigned char>(sig[last - 1])))
+			--last;
+		return std::string{ sig.substr(0, last) };
+	}
+
 	[[nodiscard]] bool CxxParserImpl::hasDeclaration(const std::string& id) const
 	{
 		return _meta_unit_data->declaration_map.contains(id);
@@ -108,13 +119,7 @@ namespace lux::cxx::dref
 		decl.result_type = createOrFindType(cursor.cursorResultType());
 		decl.mangling = cursor.mangling().to_std();
 		decl.is_variadic = cursor.isVariadic();
-		if (decl.kind != EDeclKind::CXX_CONSTRUCTOR_DECL &&
-			decl.kind != EDeclKind::CXX_CONVERSION_DECL &&
-			decl.kind != EDeclKind::CXX_DESTRUCTOR_DECL &&
-			decl.kind != EDeclKind::CXX_METHOD_DECL)
-		{
-			decl.kind = EDeclKind::FUNCTION_DECL;
-		}
+
 
 		for (size_t i = 0; i < cursor.numArguments(); i++)
 		{
@@ -123,7 +128,20 @@ namespace lux::cxx::dref
 			decl.params.push_back(param_decl.get());
 			registerDeclaration(std::move(param_decl));
 		}
-		parseNamedDecl(cursor, decl); // type is set here
+		parseNamedDecl(cursor, decl); // type is set here		
+
+		if (decl.kind != EDeclKind::CXX_CONSTRUCTOR_DECL &&
+			decl.kind != EDeclKind::CXX_CONVERSION_DECL &&
+			decl.kind != EDeclKind::CXX_DESTRUCTOR_DECL &&
+			decl.kind != EDeclKind::CXX_METHOD_DECL)
+		{
+			decl.kind = EDeclKind::FUNCTION_DECL;
+			decl.invoke_name = strip_param_list(decl.full_qualified_name);
+		}
+		else
+		{
+			decl.invoke_name = decl.spelling;
+		}
 	}
 
 	std::vector<std::string> CxxParserImpl::parseAnnotations(const Cursor& cursor)
