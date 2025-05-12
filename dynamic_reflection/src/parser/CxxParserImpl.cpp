@@ -109,7 +109,7 @@ namespace lux::cxx::dref
 		decl.kind = EDeclKind::PARAM_VAR_DECL;
 		parseNamedDecl(cursor, decl);
 		decl.full_qualified_name = fullQualifiedParameterName(cursor, index);
-		decl.id = fullQualifiedParameterName(cursor, index);
+		decl.id = decl.full_qualified_name; // fullQualifiedParameterName(cursor, index);
 		decl.hash = algorithm::fnv1a(decl.id);
 	}
 
@@ -187,6 +187,10 @@ namespace lux::cxx::dref
 		auto spelling = cursor.displayName().to_std();
 		if (const std::string res = fullQualifiedName(cursor.getCursorSemanticParent()); !res.empty())
 		{
+			if (cursor.cursorKind().kindEnum() == CXCursor_LinkageSpec)
+			{
+				return res;
+			}
 			return res + "::" + spelling;
 		}
 		return spelling;
@@ -332,7 +336,8 @@ namespace lux::cxx::dref
 					return CXChildVisit_Continue;
 				}
 
-				if (const CursorKind cursor_kind = cursor.cursorKind(); cursor_kind.isNamespace())
+				// CXCursor_LinkageSpec for some thing like extern "C"
+				if (const CursorKind cursor_kind = cursor.cursorKind(); cursor_kind.isNamespace() || cursor_kind == CXCursor_LinkageSpec)
 				{
 					if (const auto ns_name = cursor.cursorSpelling().to_std(); ns_name == "std")
 						return CXChildVisit_Continue;
@@ -355,8 +360,6 @@ namespace lux::cxx::dref
 						{
 							return CXChildVisit_Continue;
 						}
-
-						std::string mark_name(attr_c_name + 10);
 
 						cursor_list.push_back(parent_cursor);
 

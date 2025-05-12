@@ -380,9 +380,6 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
 // The process includes loading the configuration, validating files, building compile options,
 // parsing target source files, optionally writing out intermediate meta JSON files (dry run mode),
 // and finally rendering the final output using template files.
-//
-// Returns:
-//   0 on success, 1 on errors.
 //---------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
