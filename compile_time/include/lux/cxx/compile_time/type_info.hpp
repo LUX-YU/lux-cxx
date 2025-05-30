@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <limits>
 #include "extended_type_traits.hpp"
 
 namespace lux::cxx
@@ -71,12 +72,12 @@ namespace lux::cxx
             return base;
         }
 
-        static inline consteval std::size_t combine_hashes_impl(std::size_t seed, std::size_t hash) noexcept {
+        inline consteval std::size_t combine_hashes_impl(std::size_t seed, std::size_t hash) noexcept {
             return seed * 16777619u + hash;
         }
     }
 
-    constexpr static inline std::string_view erase_elaborated_specifier(std::string_view sv) noexcept
+    constexpr inline std::string_view erase_elaborated_specifier(std::string_view sv) noexcept
     {
         constexpr std::string_view kw[] = { "struct ", "class ", "enum ", "union " };
         for (auto k : kw)
@@ -106,6 +107,11 @@ namespace lux::cxx
         using hash_str_t = detail::hash_string<char>;
 		using id_t       = hash_str_t::hash_type;
 
+        constexpr basic_type_info() {
+			_id   = std::numeric_limits<id_t>::max();
+			_name = "";
+        }
+
 		template<typename T>
         constexpr basic_type_info(std::in_place_type_t<T>) noexcept
 			: _id(type_hash<T>()),
@@ -122,6 +128,10 @@ namespace lux::cxx
             return _name;
         }
 
+		constexpr bool isValid() const noexcept {
+			return _id != std::numeric_limits<id_t>::max();
+		}
+
 	private:
         id_t             _id;
         std::string_view _name;
@@ -135,7 +145,7 @@ namespace lux::cxx
         return !(lhs == rhs);
     }
 
-    template<typename T> constexpr static inline basic_type_info make_basic_type_info() noexcept {
+    template<typename T> constexpr inline basic_type_info make_basic_type_info() noexcept {
         return basic_type_info(std::in_place_type<T>);
     }
 

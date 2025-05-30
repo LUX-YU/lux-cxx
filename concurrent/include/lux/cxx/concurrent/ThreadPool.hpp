@@ -30,10 +30,12 @@
 #include "BlockingQueue.hpp"
 #include <lux/cxx/compile_time/move_only_function.hpp>
 
-#define ENABLE_EXCEPTIONS 1
+#ifndef ENABLE_EXCEPTIONS
+#   define ENABLE_EXCEPTIONS 1
+#endif
 
 #ifdef ENABLE_EXCEPTIONS
-#include <exception>
+#   include <exception>
 #endif
 
 namespace lux::cxx
