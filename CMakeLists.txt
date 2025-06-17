@@ -16,20 +16,24 @@ generate_visibility_header(
 )
 
 add_subdirectory(container)
+add_subdirectory(memory)
 add_subdirectory(concurrent)
 add_subdirectory(static_reflection)
 add_subdirectory(compile_time)
 add_subdirectory(subprogram)
 add_subdirectory(arguments)
 add_subdirectory(algorithm)
+add_subdirectory(archtype)
 
 set(ENABLE_COMPONENTS 
     container
+    memory
     concurrent
     subprogram 
     arguments
     compile_time
     algorithm
+    archtype
     static_reflection
 )
 

@@ -1,342 +1,454 @@
+/*************************************************
+*  argument parser ‑ exception‑free ver.
+*  Author : Chenhui Yu, 2025  (refactored 2025‑06)
+**************************************************/
 #pragma once
-/*
- * Copyright (c) 2025 Chenhui Yu
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- */
-
-#include <vector>
-#include <unordered_map>
-#include <variant>
-#include <string>
-#include <cstdint>
-#include <string_view>
 #include <charconv>
-#include <stdexcept>
-#include "lux/cxx/container/HeterogeneousLookup.hpp"
-#include "lux/cxx/compile_time/expected.hpp"
+#include <concepts>
+#include <cctype>
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <sstream>
+#include <span>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
+#include <cassert>
 
-// TODO Code here is so bad
+#include <lux/cxx/compile_time/expected.hpp>
+
 namespace lux::cxx
 {
-	using VSupportedArgTypes = std::variant <
-		bool,
-		int8_t,
-		int16_t,
-		int32_t,
-		int64_t,
-		uint8_t,
-		uint16_t,
-		uint32_t,
-		uint64_t,
-		float,
-		double,
-		std::string_view,
+    // ---------- transparent hash / equal ----------------------------------------
+    using sv = std::string_view;
 
-		std::vector<bool>,
-		std::vector<int8_t>,
-		std::vector<int16_t>,
-		std::vector<int32_t>,
-		std::vector<int64_t>,
-		std::vector<uint8_t>,
-		std::vector<uint16_t>,
-		std::vector<uint32_t>,
-		std::vector<uint64_t>,
-		std::vector<float>,
-		std::vector<double>,
-		std::vector<std::string_view>
-	> ;
+    struct sv_hash {
+        using is_transparent = void;
+        std::size_t operator()(sv s)                   const noexcept { return std::hash<sv>{}(s); }
+        std::size_t operator()(const std::string& s)   const noexcept { return std::hash<sv>{}(s); }
+    };
+    using sv_equal = std::equal_to<>;
 
-	template<typename T>
-	concept IsVector = requires(T t) {
-		typename T::value_type;
-		requires std::is_same_v<T, std::vector<typename T::value_type>>;
-	};
+    using token_id = std::uint32_t;
 
-	template<typename T>
-	concept IsString = std::is_same_v<T, std::string>;
+    // ---------- error code -------------------------------------------------------
+    enum class errc {
+        ok = 0,
+        invalid_integer, invalid_float, invalid_boolean,
+        unknown_option, value_missing, missing_required_option, no_tokens,
+        option_not_present,
+    };
 
-	template<typename T>
-	concept IsArithmetic = std::is_arithmetic_v<T>;
+    constexpr std::string_view to_string(errc e) noexcept
+    {
+        using enum errc;
+        switch (e) {
+        case ok:                        return "no error";
+        case invalid_integer:           return "invalid integer value";
+        case invalid_float:             return "invalid float value";
+        case invalid_boolean:           return "invalid boolean value";
+        case unknown_option:            return "unknown option";
+        case value_missing:             return "value missing for option";
+        case missing_required_option:   return "missing required option";
+        case no_tokens:                 return "no command tokens";
+        case option_not_present:        return "option not present";
+        }
+        return "unknown error";
+    }
 
-	template<typename T>
-	concept IsStringView = std::is_same_v<T, std::string_view>;
+    template <typename T>
+    using expected_t = lux::cxx::expected<T, errc>;
 
-	class Argument
-	{
-		friend class ArgumentParser;
-		template<typename T> friend class TArgument;
-	public:
-		Argument() = default;
+    // ---------- concepts ---------------------------------------------------------
+    template <typename T>
+    concept Arithmetic = std::integral<T> || std::floating_point<T>;
 
-		Argument(std::string short_name, std::string long_name)
-			: _short_name(std::move(short_name)), _long_name(std::move(long_name)) { }
+    template <typename T>
+    concept StringLike =
+        std::same_as<std::remove_cvref_t<T>, std::string> ||
+        std::same_as<std::remove_cvref_t<T>, sv>;
 
-		template<typename U>
-		U& as()
-		{
-			return std::get<U>(_value);
-		}
+    template <typename T>
+    concept Sequence =
+        std::ranges::input_range<T> && (!StringLike<T>) &&
+        requires(T c, typename T::value_type v) { c.push_back(v); };
 
-		template<typename U>
-		const U& as() const
-		{
-			return std::get<U>(_value);
-		}
+    // ---------- value_parser (extensible) ---------------------------------------
+    template <typename T, typename = void> struct value_parser;
 
-	private:
+    /* arithmetic */
+    template <Arithmetic T>
+    struct value_parser<T>
+    {
+        static expected_t<T> parse(sv s)
+        {
+            T v{};
+            if constexpr (std::integral<T>)
+            {
+                auto r = std::from_chars(s.data(), s.data() + s.size(), v);
+                if (r.ec != std::errc{}) return lux::cxx::unexpected(errc::invalid_integer);
+            }
+            else
+            {
+                auto r = std::from_chars(s.data(), s.data() + s.size(), v);
+                if (r.ec != std::errc{}) return lux::cxx::unexpected(errc::invalid_float);
+            }
+            return v;
+        }
+    };
 
-		template<typename T>
-		static void convertVector(const std::vector<std::string_view>& inputs, VSupportedArgTypes& value) {
-			std::vector<T> vec;
-			for (const auto& input : inputs) {
-				T elem;
-				if (auto result = std::from_chars(input.data(), input.data() + input.size(), elem); result.ec == std::errc())
-				{
-					vec.push_back(elem);
-				}
-				else
-				{
-					throw std::runtime_error("Conversion failed for vector element");
-				}
-			}
-			value = std::move(vec);
-		}
+    /* bool */
+    template <> struct value_parser<bool>
+    {
+        static expected_t<bool> parse(sv s)
+        {
+            if (s.empty() || s == "1" || s == "true" || s == "yes")  return true;
+            if (s == "0" || s == "false" || s == "no")               return false;
+            return lux::cxx::unexpected(errc::invalid_boolean);
+        }
+    };
 
-		template<typename T>
-		static void convertArithmetic(const std::vector<std::string_view>& inputs, VSupportedArgTypes& value)
-		{
-			T num;
-			auto result = std::from_chars(inputs.front().data(), inputs.front().data() + inputs.front().size(), num);
-			if (result.ec == std::errc()) {
-				value = num;
-			}
-			else {
-				throw std::runtime_error("Conversion failed for numeric type");
-			}
-		}
+    /* string */
+    template <StringLike T>
+    struct value_parser<T> { static expected_t<T> parse(sv s) { return T{ s }; } };
 
-		template<typename T>
-		Argument& setConverter() {
-			if constexpr (IsVector<T>)
-			{
-				_convert_and_assign = &Argument::convertVector<typename T::value_type>;
-				_multiple_values    = true;
-			}
-			else if constexpr(std::is_same_v<T, bool>)
-			{
-				_convert_and_assign =
-				[](const std::vector<std::string_view>&, VSupportedArgTypes& v)
-				{
-					v = true;
-				};
-				_value = false;
-			}
-			else if constexpr (IsArithmetic<T>)
-			{
-				_convert_and_assign = &Argument::convertArithmetic<T>;
-			}
-			else if constexpr (IsStringView<T>)
-			{
-				_convert_and_assign =
-				[](const std::vector<std::string_view>& s, VSupportedArgTypes& v)
-				{
-					v = s.front();
-				};
-			}
-			return *this;
-		}
+    /* sequences */
+    template <Sequence Seq>
+    struct value_parser<Seq>
+    {
+        using elem_t = typename Seq::value_type;
+        static expected_t<Seq> parse(std::span<const sv> parts)
+        {
+            Seq seq{};
+            for (sv t : parts) {
+                auto r = value_parser<elem_t>::parse(t);
+                if (!r) return lux::cxx::unexpected(r.error());
+                seq.push_back(*r);
+            }
+            return seq;
+        }
+    };
 
-		using AssignFunc = void(*)(const std::vector<std::string_view>&, VSupportedArgTypes&);
+    // ---------- option_spec ------------------------------------------------------
+    struct option_spec
+    {
+        std::string              long_name, short_name, description;
+        bool                     required = false;
+        bool                     multi_value = false;
+        bool                     is_flag = false;
+        std::vector<std::string> defaults;
+    };
 
-		VSupportedArgTypes		_value;
-		AssignFunc				_convert_and_assign{};
-		std::string				_description;
-		std::string				_short_name;
-		std::string				_long_name;
-		bool					_multiple_values{ false };
-		bool					_required{ false };
-	};
+    class ParsedOptions;            // fwd‑decl
 
-	template<typename T>
-	class TArgument
-	{
-	public:
-		explicit TArgument(Argument& arg) : _arg(arg) {}
+    // ---------- Parser -----------------------------------------------------------
+    class Parser
+    {
+    public:
+        explicit Parser(std::string prog, bool allow_unknown = false)
+            : prog_(std::move(prog)), allow_unknown_(allow_unknown) {
+        }
+        explicit Parser(bool allow_unknown = false)
+            : prog_(""), allow_unknown_(allow_unknown) {
+        }
 
-		TArgument& setRequired(const bool required)
-		{
-			_arg._required = required;
-			return *this;
-		}
+        // ---- builder -----------------------------------------------------------
+        template <typename T>
+        class builder
+        {
+        public:
+            builder(Parser& p, option_spec& s) : par_(p), spec_(s) {}
+            builder& desc(std::string d) { spec_.description = std::move(d); return *this; }
+            builder& required(bool v = true) { spec_.required = v;            return *this; }
+            builder& multi(bool v = true) { spec_.multi_value = v;            return *this; }
 
-		TArgument& setDescription(std::string description)
-		{
-			_arg._description = std::move(description);
-			return *this;
-		}
+            builder& def(const T& v) { add_one(v); return *this; }
+            builder& def(const Sequence auto& seq)
+                requires std::same_as<T, decltype(seq)>
+            {
+                for (auto&& e : seq) add_one(e);
+                return *this;
+            }
 
-		TArgument& setDefaultValue(const T& default_value)
-		{
-			_arg._value = default_value;
-			return *this;
-		}
+        private:
+            Parser& par_;
+            option_spec& spec_;
+            template<typename X>
+            static std::string to_str(const X& x)
+            {
+                if constexpr (StringLike<X>)      return std::string{ x };
+                else if constexpr (Arithmetic<X>) return std::to_string(x);
+                else                              return "<custom>";
+            }
+            template<typename X>
+            void add_one(const X& v) { spec_.defaults.emplace_back(to_str(v)); }
+        };
 
-	private:
-		Argument& _arg;
-	};
+        template <typename T>
+        builder<T> add(std::string long_name, std::string short_name = {})
+        {
+            // 重复注册是编程期错误，直接 assert（不进入运行时 errc）
+            assert(!specs_.contains(long_name) && "duplicate option long name");
+            option_spec s;
+            s.long_name = std::move(long_name);
+            s.short_name = std::move(short_name);
+            s.is_flag = std::same_as<T, bool>;
 
-	enum class EArgumentParseError
-	{
-		SUCCESS,
-		ARGUMENT_NOT_FOUND,
-		ARGUMENT_TYPE_MISMATCH,
-	};
+            auto& ref = specs_.emplace(s.long_name, std::move(s)).first->second;
+            if (!ref.short_name.empty()) short2long_[ref.short_name] = ref.long_name;
+            return { *this, ref };
+        }
 
-	class ArgumentParser
-	{
-	public:
-		explicit ArgumentParser(const bool allow_unrecognized = false)
-			: _allow_unrecognized(allow_unrecognized) { }
+        expected_t<ParsedOptions> parse(int argc, char* argv[])      const;
+        expected_t<ParsedOptions> parse(const std::string& cmdline) const;
 
-		template<typename T>
-		TArgument<T> addArgument(std::string short_name, std::string long_name)
-		{
-			Argument arg{ std::move(short_name), std::move(long_name) };
-			arg.setConverter<T>();
-			if (!arg._short_name.empty()) {
-				_short_name_map[arg._short_name] = arg._long_name;
-			}
-			return TArgument<T>{_arguments[arg._long_name] = std::move(arg)};
-		}
+        std::string         usage()      const;
+        const std::string& prog_name()  const noexcept { return prog_; }
 
-		template<typename T>
-		TArgument<T> addArgument(std::string long_name) {
-			return addArgument<T>("", std::move(long_name));
-		}
+    private:
+        expected_t<ParsedOptions> parse_tokens(std::vector<std::string>&& toks) const;
 
-		template<typename U>
-		bool getArgument(const std::string_view name, U& result)
-		{
-			if (const auto iter = _arguments.find(name); iter != _arguments.end())
-			{
-				result = iter->second.as<U>();
-				return true;
-			}
-			if (const auto iter = _short_name_map.find(name); iter != _short_name_map.end())
-			{
-				const auto iter_long = _arguments.find(iter->second);
-				result = iter_long->second.as<U>();
-				return true;
-			}
-			return false;
-		}
+        using spec_map = std::unordered_map<std::string, option_spec, sv_hash, sv_equal>;
+        using s2l_map = std::unordered_map<std::string, std::string, sv_hash, sv_equal>;
 
-		Argument& operator[](const std::string_view key)
-		{
-			if (const auto iter = _arguments.find(key); iter != _arguments.end())
-			{
-				return iter->second;
-			}
-			throw std::runtime_error("Argument not found");
-		}
+        std::string prog_;
+        bool        allow_unknown_;
+        spec_map    specs_;
+        s2l_map     short2long_;
+    };
 
-		expected<void, EArgumentParseError> parse(int argc, char* argv[])
-		{
-			std::unordered_map<std::string_view, std::vector<std::string_view>> parsed_args;
+    // ---------- ParsedOptions ----------------------------------------------------
+    class ParsedOptions
+    {
+        using idx_map = std::unordered_map<std::string,
+            std::vector<token_id>,
+            sv_hash, sv_equal>;
+        friend class Parser;
 
-			for (int i = 1; i < argc; ++i)
-			{
-				std::string_view key(argv[i]);
+    public:
+        bool contains(sv name) const noexcept { return indices_.contains(name); }
 
-				if (key[0] == '-') // check if it's a flag
-				{
-					// Remove leading dashes for uniformity
-					if (key[1] == '-')
-					{
-						// long name
-						key.remove_prefix(2);
-					}
-					else
-					{
-						// short name
-						key.remove_prefix(1);
-						// get long name from short name
-						auto iter = _short_name_map.find(key);
-						if (iter == _short_name_map.end() && !_allow_unrecognized)
-						{
-							return unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);
-						}
-						key = iter->second;
-					}
+        class option_ref
+        {
+            friend class ParsedOptions;
+        public:
+            explicit operator bool() const noexcept { return present_; }
 
-					if (auto iter = _arguments.find(key); iter == _arguments.end() && !_allow_unrecognized)
-					{
-						return unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);
-					}
+            template<typename T>
+            expected_t<T> as() const
+            {
+                if (!present_) return lux::cxx::unexpected(errc::option_not_present);
 
-					// Support for flags without values or with multiple values
-					if (i + 1 < argc && argv[i + 1][0] != '-')
-					{
-						++i;
-						while (i < argc && argv[i][0] != '-') // support for multiple values
-						{
-							parsed_args[key].emplace_back(argv[i]);
-							if (auto iter = _arguments.find(key); iter != _arguments.end())
-							{
-								if (!iter->second._multiple_values) break;
-							}
-							++i;
-						}
-						--i; // adjust index because the for loop will increment it
-					}
-					else
-					{
-						// This means it's a flag-type argument that doesn't require values, 
-						// we add an empty vector
-						parsed_args[key];
-					}
-				}
-			}
+                if constexpr (std::same_as<T, bool>)
+                {
+                    if (idxs_->empty())                     // 纯 flag，无显式值
+                        return true;
+                    return value_parser<bool>::parse((*pool_)[idxs_->front()]);
+                }
+                else if constexpr (Sequence<T>)
+                {
+                    std::vector<sv> views; views.reserve(idxs_->size());
+                    for (auto id : *idxs_) views.emplace_back((*pool_)[id]);
+                    return value_parser<T>::parse(std::span<const sv>(views));
+                }
+                else
+                {
+                    if (idxs_->empty()) return lux::cxx::unexpected(errc::value_missing);
+                    return value_parser<T>::parse((*pool_)[idxs_->front()]);
+                }
+            }
 
-			// Assign values to arguments or report errors
-			for (auto& [key, arg] : _arguments) {
-				if (parsed_args.contains(key)) {
-					try {
-						arg._convert_and_assign(parsed_args[key], arg._value);
-					}
-					catch (const std::exception& e) {
-						return unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_TYPE_MISMATCH);
-					}
-				}
-				else if (arg._required) {
-					return unexpected<EArgumentParseError>(EArgumentParseError::ARGUMENT_NOT_FOUND);
-				}
-			}
+        private:
+            option_ref(std::string k,
+                const std::vector<token_id>* v,
+                const std::vector<std::string>* pool,
+                bool p)
+                : key_(std::move(k)), idxs_(v), pool_(pool), present_(p) {
+            }
 
-			return ::lux::cxx::expected<void, EArgumentParseError>{};
-		}
+            std::string                              key_;
+            const std::vector<token_id>* idxs_{};
+            const std::vector<std::string>* pool_{};
+            bool                                     present_{ false };
+        };
 
-	private:
+        option_ref get(sv name) const
+        {
+            auto it = indices_.find(name);
+            bool pr = it != indices_.end();
+            const std::vector<token_id>* vec = pr ? &it->second : nullptr;
+            return option_ref{ std::string{name}, vec, &pool_, pr };
+        }
 
-		bool	                       _allow_unrecognized{ false };
-		heterogeneous_map<Argument>    _arguments;
-		heterogeneous_map<std::string> _short_name_map;
-	};
-}
+    private:
+        ParsedOptions(std::vector<std::string>&& p, idx_map&& m)
+            : pool_(std::move(p)), indices_(std::move(m)) {
+        }
+
+        std::vector<std::string>  pool_;
+        idx_map                   indices_;
+    };
+
+    // ===== implementation ========================================================
+
+    inline expected_t<ParsedOptions> Parser::parse(int argc, char* argv[]) const
+    {
+        std::vector<std::string> toks; toks.reserve(static_cast<std::size_t>(argc));
+        for (int i = 0; i < argc; ++i) toks.emplace_back(argv[i]);
+        return parse_tokens(std::move(toks));
+    }
+
+    inline expected_t<ParsedOptions> Parser::parse(const std::string& cmdline) const
+    {
+        std::vector<std::string> toks;
+        std::string cur; bool in_q = false;
+        auto flush = [&] { if (!cur.empty()) { toks.push_back(std::move(cur)); cur.clear(); } };
+        for (char ch : cmdline) {
+            if (ch == '"') { in_q = !in_q; continue; }
+            if (std::isspace(static_cast<unsigned char>(ch)) && !in_q) flush();
+            else cur.push_back(ch);
+        } flush();
+        if (toks.empty()) toks.emplace_back(prog_);
+        return parse_tokens(std::move(toks));
+    }
+
+    // ------------- usage() -------------------------------------------------------
+    inline std::string Parser::usage() const
+    {
+        constexpr sv indent = "  ";
+        std::ostringstream os;
+        os << "Usage: " << prog_ << " [options]\n\nOptions:\n";
+        for (auto const& [_, s] : specs_) {
+            os << indent;
+            if (!s.short_name.empty()) os << '-' << s.short_name << ", ";
+            os << "--" << s.long_name;
+            int pad = 24 - int(s.long_name.size() + (s.short_name.empty() ? 2 : 4));
+            if (pad > 0) os << std::string(pad, ' ');
+            os << s.description;
+            if (s.required)           os << " (required)";
+            if (!s.defaults.empty())  os << " [default: " << s.defaults.front() << ']';
+            os << '\n';
+        }
+        os << indent << "-h, --help              Show this help and exit\n";
+        return os.str();
+    }
+
+    // ------------- parse_tokens() -----------------------------------------------
+    inline expected_t<ParsedOptions> Parser::parse_tokens(std::vector<std::string>&& pool) const
+    {
+        if (pool.empty()) return lux::cxx::unexpected(errc::no_tokens);
+
+        ParsedOptions::idx_map idxs;
+        idxs.reserve(specs_.size());
+
+        // ---------- helpers -----------------------------------------------------
+        auto push_token = [&](sv s) -> token_id {
+            pool.emplace_back(s);                         // 可能触发 reallocation
+            return static_cast<token_id>(pool.size() - 1);
+            };
+
+        auto add_index = [&](sv key, token_id id)
+            {
+                auto it = idxs.find(key);
+                if (it == idxs.end())
+                    it = idxs.emplace(std::string{ key }, std::vector<token_id>{}).first;
+                it->second.push_back(id);
+            };
+
+        auto mark_flag_present = [&](sv key)
+            {
+                if (!idxs.contains(key))
+                    idxs.emplace(std::string{ key }, std::vector<token_id>{});
+            };
+
+        // ---- 判断 token 是否为已注册选项 --------------------------------------
+        auto looks_option = [&](sv tok) -> bool {
+            if (!tok.starts_with('-')) return false;
+
+            bool longf = tok.starts_with("--");
+            sv   key = tok.substr(longf ? 2 : 1);
+
+            if (auto eq = key.find('='); eq != sv::npos)
+                key = key.substr(0, eq);
+
+            if (!longf)
+                if (auto it = short2long_.find(key); it != short2long_.end())
+                    key = it->second;
+
+            return specs_.contains(key);
+            };
+
+        const std::size_t n_orig = pool.size();   // 初始 token 数
+
+        for (std::size_t i = 1; i < n_orig; ++i)
+        {
+            sv tok = pool[i];
+            if (tok == "-h" || tok == "--help") continue;
+            if (!tok.starts_with('-'))           continue;
+
+            bool longf = tok.starts_with("--");
+            sv   key = tok.substr(longf ? 2 : 1);
+
+            sv inline_val{};
+            if (auto eq = key.find('='); eq != sv::npos) {
+                inline_val = key.substr(eq + 1);
+                key = key.substr(0, eq);
+            }
+
+            if (!longf)
+                if (auto it = short2long_.find(key); it != short2long_.end())
+                    key = it->second;
+
+            auto spec_it = specs_.find(key);
+            if (spec_it == specs_.end()) {
+                if (!allow_unknown_) return lux::cxx::unexpected(errc::unknown_option);
+                continue;
+            }
+            const option_spec& spec = spec_it->second;
+
+            // ---- 带内联值 -----------------------------------------------------
+            if (!inline_val.empty())
+            {
+                std::string key_copy{ key };// 先拷贝，避免 push_token 失效
+                token_id id = push_token(inline_val);
+                add_index(key_copy, id);
+                continue;
+            }
+
+            // ---- flag（无值） --------------------------------------------------
+            if (spec.is_flag) { mark_flag_present(key); continue; }
+
+            // ---- 普通 / multi-value 选项 --------------------------------------
+            std::size_t j = i + 1;
+            while (j < n_orig && !looks_option(pool[j]))
+            {
+                add_index(key, static_cast<token_id>(j));
+                ++j;
+                if (!spec.multi_value) break;
+            }
+            if (idxs.find(key)->second.empty())
+                return lux::cxx::unexpected(errc::value_missing);
+
+            i = j - 1;      // for‑loop 末尾 ++i
+        }
+
+        // ---- 处理缺省值 / required -------------------------------------------
+        for (auto const& [name, spec] : specs_)
+        {
+            if (!idxs.contains(name))
+            {
+                if (!spec.defaults.empty())
+                    for (auto const& d : spec.defaults)
+                        add_index(name, push_token(d));
+                else if (spec.required)
+                    return lux::cxx::unexpected(errc::missing_required_option);
+            }
+        }
+        return ParsedOptions{ std::move(pool), std::move(idxs) };
+    }
+
+} // namespace lux::cxx
