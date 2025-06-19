@@ -29,6 +29,10 @@
 #include <cassert>
 #include <utility>
 #include <queue>
+#include <memory>
+#include <new>
+#include <type_traits>
+#include <cstring>
 
 namespace lux::cxx
 {
@@ -42,13 +46,27 @@ namespace lux::cxx
     template <typename T>
     class BlockingRingQueue
     {
+    private:
+        using storage_t = std::aligned_storage_t<sizeof(T), alignof(T)>;
+
+        // Helper to get pointer to element slot
+        inline T* ptr_at(std::size_t index) noexcept
+        {
+            return std::launder(reinterpret_cast<T*>(&_buffer[index]));
+        }
+        inline const T* ptr_at(std::size_t index) const noexcept
+        {
+            return std::launder(reinterpret_cast<const T*>(&_buffer[index]));
+        }
+
     public:
         /**
          * @desc Constructs a BlockingRingQueue with a specified capacity.
          * @param capacity Maximum number of elements the queue can hold. Default is 64.
          */
         explicit BlockingRingQueue(std::size_t capacity = 64)
-            : _capacity(capacity), _buffer(capacity), _head(0), _tail(0), _size(0), _exit(false)
+            : _capacity(capacity), _buffer(capacity ? new storage_t[capacity] : nullptr),
+            _head(0), _tail(0), _size(0), _exit(false)
         {
             assert(capacity > 0);
         }
@@ -59,12 +77,23 @@ namespace lux::cxx
         ~BlockingRingQueue()
         {
             close();
+            // Destroy any remaining constructed objects
+            if (_buffer)
+            {
+                while (_size > 0)
+                {
+                    std::destroy_at(ptr_at(_head));
+                    _head = (_head + 1) % _capacity;
+                    --_size;
+                }
+                delete[] _buffer;
+            }
         }
 
-        BlockingRingQueue(const BlockingRingQueue &) = delete;
-        BlockingRingQueue &operator=(const BlockingRingQueue &) = delete;
-        BlockingRingQueue(BlockingRingQueue &&) = default;
-        BlockingRingQueue &operator=(BlockingRingQueue &&) = default;
+        BlockingRingQueue(const BlockingRingQueue&) = delete;
+        BlockingRingQueue& operator=(const BlockingRingQueue&) = delete;
+        BlockingRingQueue(BlockingRingQueue&&) = delete;
+        BlockingRingQueue& operator=(BlockingRingQueue&&) = delete;
 
         /**
          * @desc Closes the queue. Further push operations are disallowed,
@@ -97,19 +126,20 @@ namespace lux::cxx
          * @return True if the element is successfully pushed; false if the queue is closed.
          */
         template <class U>
-        bool push(U &&value)
+        bool push(U&& value)
         {
             std::unique_lock<std::mutex> lock(_mutex);
             _not_full.wait(lock, [this]
-                           { return _exit || (_size < _capacity); });
+                { return _exit || (_size < _capacity); });
 
             if (_exit)
                 return false;
 
-            _buffer[_tail] = std::forward<U>(value);
+            std::construct_at(ptr_at(_tail), std::forward<U>(value));
             _tail = (_tail + 1) % _capacity;
             ++_size;
 
+            lock.unlock();
             _not_empty.notify_one();
             return true;
         }
@@ -123,11 +153,11 @@ namespace lux::cxx
          * @return True if the element is successfully pushed; false on timeout or if the queue is closed.
          */
         template <class U, class Rep, class Period>
-        bool push(U &&value, const std::chrono::duration<Rep, Period> &timeout)
+        bool push(U&& value, const std::chrono::duration<Rep, Period>& timeout)
         {
             std::unique_lock<std::mutex> lock(_mutex);
             if (!_not_full.wait_for(lock, timeout, [this]
-                                    { return _exit || (_size < _capacity); }))
+                { return _exit || (_size < _capacity); }))
             {
                 return false;
             }
@@ -135,10 +165,11 @@ namespace lux::cxx
             if (_exit)
                 return false;
 
-            _buffer[_tail] = std::forward<U>(value);
+            std::construct_at(ptr_at(_tail), std::forward<U>(value));
             _tail = (_tail + 1) % _capacity;
             ++_size;
 
+            lock.unlock();
             _not_empty.notify_one();
             return true;
         }
@@ -154,15 +185,16 @@ namespace lux::cxx
         {
             std::unique_lock<std::mutex> lock(_mutex);
             _not_full.wait(lock, [this]
-                           { return _exit || (_size < _capacity); });
+                { return _exit || (_size < _capacity); });
 
             if (_exit)
                 return false;
 
-            _buffer[_tail] = T(std::forward<Args>(args)...);
+            std::construct_at(ptr_at(_tail), T(std::forward<Args>(args)...));
             _tail = (_tail + 1) % _capacity;
             ++_size;
 
+            lock.unlock();
             _not_empty.notify_one();
             return true;
         }
@@ -176,11 +208,11 @@ namespace lux::cxx
          * @return True if the element is successfully constructed; false on timeout or if the queue is closed.
          */
         template <class Rep, class Period, class... Args>
-        bool emplace(const std::chrono::duration<Rep, Period> &timeout, Args &&...args)
+        bool emplace(const std::chrono::duration<Rep, Period>& timeout, Args &&...args)
         {
             std::unique_lock<std::mutex> lock(_mutex);
             if (!_not_full.wait_for(lock, timeout, [this]
-                                    { return _exit || (_size < _capacity); }))
+                { return _exit || (_size < _capacity); }))
             {
                 return false;
             }
@@ -188,10 +220,11 @@ namespace lux::cxx
             if (_exit)
                 return false;
 
-            _buffer[_tail] = T(std::forward<Args>(args)...);
+            std::construct_at(ptr_at(_tail), T(std::forward<Args>(args)...));
             _tail = (_tail + 1) % _capacity;
             ++_size;
 
+            lock.unlock();
             _not_empty.notify_one();
             return true;
         }
@@ -201,21 +234,24 @@ namespace lux::cxx
          * @param out Reference to the variable where the popped element will be stored.
          * @return True if an element is successfully popped; false if the queue is closed and empty.
          */
-        bool pop(T &out)
+        bool pop(T& out)
         {
             std::unique_lock<std::mutex> lock(_mutex);
             _not_empty.wait(lock, [this]
-                            { return _exit || (_size > 0); });
+                { return _exit || (_size > 0); });
 
             if (_size == 0)
             {
                 return false;
             }
 
-            out = std::move(_buffer[_head]);
+            T* elemPtr = ptr_at(_head);
+            out = std::move(*elemPtr);
+            std::destroy_at(elemPtr);
             _head = (_head + 1) % _capacity;
             --_size;
 
+            lock.unlock();
             _not_full.notify_one();
             return true;
         }
@@ -228,11 +264,11 @@ namespace lux::cxx
          * @return True if an element is successfully popped; false on timeout or if the queue is closed and empty.
          */
         template <class Rep, class Period>
-        bool pop(T &out, const std::chrono::duration<Rep, Period> &timeout)
+        bool pop(T& out, const std::chrono::duration<Rep, Period>& timeout)
         {
             std::unique_lock<std::mutex> lock(_mutex);
             if (!_not_empty.wait_for(lock, timeout, [this]
-                                     { return _exit || (_size > 0); }))
+                { return _exit || (_size > 0); }))
             {
                 return false;
             }
@@ -242,10 +278,13 @@ namespace lux::cxx
                 return false;
             }
 
-            out = std::move(_buffer[_head]);
+            T* elemPtr = ptr_at(_head);
+            out = std::move(*elemPtr);
+            std::destroy_at(elemPtr);
             _head = (_head + 1) % _capacity;
             --_size;
 
+            lock.unlock();
             _not_full.notify_one();
             return true;
         }
@@ -260,20 +299,27 @@ namespace lux::cxx
         template <class InputIterator>
         bool push_bulk(InputIterator first, size_t count)
         {
+            if (count == 0)
+                return true; // No-op branch for zero elements
+
+            if (count > _capacity)
+                return false; // Impossible to fit even if empty
+
             std::unique_lock<std::mutex> lock(_mutex);
             _not_full.wait(lock, [this, count]
-                           { return _exit || (_size + count <= _capacity); });
+                { return _exit || (_size + count <= _capacity); });
 
             if (_exit)
                 return false;
 
             for (size_t i = 0; i < count; ++i)
             {
-                _buffer[_tail] = *first++;
+                std::construct_at(ptr_at(_tail), *first++);
                 _tail = (_tail + 1) % _capacity;
             }
             _size += count;
 
+            lock.unlock();
             _not_empty.notify_all();
             return true;
         }
@@ -289,11 +335,17 @@ namespace lux::cxx
          */
         template <class InputIterator, class Rep, class Period>
         bool push_bulk(InputIterator first, size_t count,
-                       const std::chrono::duration<Rep, Period> &timeout)
+            const std::chrono::duration<Rep, Period>& timeout)
         {
+            if (count == 0)
+                return true;
+
+            if (count > _capacity)
+                return false;
+
             std::unique_lock<std::mutex> lock(_mutex);
             if (!_not_full.wait_for(lock, timeout, [this, count]
-                                    { return _exit || (_size + count <= _capacity); }))
+                { return _exit || (_size + count <= _capacity); }))
             {
                 return false;
             }
@@ -303,11 +355,12 @@ namespace lux::cxx
 
             for (size_t i = 0; i < count; ++i)
             {
-                _buffer[_tail] = *first++;
+                std::construct_at(ptr_at(_tail), *first++);
                 _tail = (_tail + 1) % _capacity;
             }
             _size += count;
 
+            lock.unlock();
             _not_empty.notify_all();
             return true;
         }
@@ -322,9 +375,12 @@ namespace lux::cxx
         template <class OutputIterator>
         size_t pop_bulk(OutputIterator dest, size_t maxCount)
         {
+            if (maxCount == 0)
+                return 0; // No-op
+
             std::unique_lock<std::mutex> lock(_mutex);
             _not_empty.wait(lock, [this]
-                            { return _exit || (_size > 0); });
+                { return _exit || (_size > 0); });
 
             if (_size == 0)
             {
@@ -334,11 +390,14 @@ namespace lux::cxx
             size_t toPop = (maxCount < _size) ? maxCount : _size;
             for (size_t i = 0; i < toPop; ++i)
             {
-                *dest++ = std::move(_buffer[_head]);
+                T* elemPtr = ptr_at(_head);
+                *dest++ = std::move(*elemPtr);
+                std::destroy_at(elemPtr);
                 _head = (_head + 1) % _capacity;
             }
             _size -= toPop;
 
+            lock.unlock();
             _not_full.notify_all();
             return toPop;
         }
@@ -354,11 +413,14 @@ namespace lux::cxx
          */
         template <class OutputIterator, class Rep, class Period>
         size_t pop_bulk(OutputIterator dest, size_t maxCount,
-                        const std::chrono::duration<Rep, Period> &timeout)
+            const std::chrono::duration<Rep, Period>& timeout)
         {
+            if (maxCount == 0)
+                return 0;
+
             std::unique_lock<std::mutex> lock(_mutex);
             if (!_not_empty.wait_for(lock, timeout, [this]
-                                     { return _exit || (_size > 0); }))
+                { return _exit || (_size > 0); }))
             {
                 return 0;
             }
@@ -371,11 +433,14 @@ namespace lux::cxx
             size_t toPop = (maxCount < _size) ? maxCount : _size;
             for (size_t i = 0; i < toPop; ++i)
             {
-                *dest++ = std::move(_buffer[_head]);
+                T* elemPtr = ptr_at(_head);
+                *dest++ = std::move(*elemPtr);
+                std::destroy_at(elemPtr);
                 _head = (_head + 1) % _capacity;
             }
             _size -= toPop;
 
+            lock.unlock();
             _not_full.notify_all();
             return toPop;
         }
@@ -387,14 +452,14 @@ namespace lux::cxx
          * @return True if the element is successfully pushed; false if the queue is full or closed.
          */
         template <class U>
-        bool try_push(U &&value)
+        bool try_push(U&& value)
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (_exit || _size >= _capacity)
             {
                 return false;
             }
-            _buffer[_tail] = std::forward<U>(value);
+            std::construct_at(ptr_at(_tail), std::forward<U>(value));
             _tail = (_tail + 1) % _capacity;
             ++_size;
 
@@ -407,7 +472,7 @@ namespace lux::cxx
          * @param out Reference to the variable where the popped element will be stored.
          * @return True if an element is successfully popped; false if the queue is empty.
          */
-        bool try_pop(T &out)
+        bool try_pop(T& out)
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (_size == 0)
@@ -415,12 +480,69 @@ namespace lux::cxx
                 return false;
             }
 
-            out = std::move(_buffer[_head]);
+            T* elemPtr = ptr_at(_head);
+            out = std::move(*elemPtr);
+            std::destroy_at(elemPtr);
             _head = (_head + 1) % _capacity;
             --_size;
 
             _not_full.notify_one();
             return true;
+        }
+
+        /**
+         * @desc Tries to push multiple elements without blocking.
+         * @tparam InputIterator Type of the input iterator.
+         * @param first Iterator to the first element.
+         * @param count Number of elements to push.
+         * @return True if all elements are pushed; false if capacity insufficient or closed.
+         */
+        template <class InputIterator>
+        bool try_push_bulk(InputIterator first, size_t count)
+        {
+            if (count == 0)
+                return true;
+            std::lock_guard<std::mutex> lock(_mutex);
+            if (_exit || (_size + count > _capacity))
+                return false;
+
+            for (size_t i = 0; i < count; ++i)
+            {
+                std::construct_at(ptr_at(_tail), *first++);
+                _tail = (_tail + 1) % _capacity;
+            }
+            _size += count;
+            _not_empty.notify_all();
+            return true;
+        }
+
+        /**
+         * @desc Tries to pop multiple elements without blocking.
+         * @tparam OutputIterator Output iterator type.
+         * @param dest Destination iterator.
+         * @param maxCount Maximum elements to pop.
+         * @return Actual number of elements popped.
+         */
+        template <class OutputIterator>
+        size_t try_pop_bulk(OutputIterator dest, size_t maxCount)
+        {
+            if (maxCount == 0)
+                return 0;
+            std::lock_guard<std::mutex> lock(_mutex);
+            if (_size == 0)
+                return 0;
+
+            size_t toPop = (maxCount < _size) ? maxCount : _size;
+            for (size_t i = 0; i < toPop; ++i)
+            {
+                T* elemPtr = ptr_at(_head);
+                *dest++ = std::move(*elemPtr);
+                std::destroy_at(elemPtr);
+                _head = (_head + 1) % _capacity;
+            }
+            _size -= toPop;
+            _not_full.notify_all();
+            return toPop;
         }
 
         /**
@@ -454,7 +576,7 @@ namespace lux::cxx
 
     private:
         std::size_t _capacity;  ///< Maximum capacity of the queue.
-        std::vector<T> _buffer; ///< Internal buffer to store elements.
+        storage_t* _buffer;     ///< Raw buffer to store elements (uninitialized).
         std::size_t _head;      ///< Index of the head of the queue.
         std::size_t _tail;      ///< Index of the tail of the queue.
         std::size_t _size;      ///< Current size of the queue.
@@ -490,10 +612,10 @@ namespace lux::cxx
             close();
         }
 
-        BlockingQueue(const BlockingQueue &) = delete;
-        BlockingQueue &operator=(const BlockingQueue &) = delete;
-        BlockingQueue(BlockingQueue &&) = default;
-        BlockingQueue &operator=(BlockingQueue &&) = default;
+        BlockingQueue(const BlockingQueue&) = delete;
+        BlockingQueue& operator=(const BlockingQueue&) = delete;
+        BlockingQueue(BlockingQueue&&) = delete;
+        BlockingQueue& operator=(BlockingQueue&&) = delete;
 
         /**
          * @brief Closes the queue.
@@ -528,13 +650,13 @@ namespace lux::cxx
          * @return True if the element was pushed, false if the queue is closed.
          */
         template <class U>
-        bool push(U &&value)
+        bool push(U&& value)
         {
             std::unique_lock<std::mutex> lock(_mutex);
             _not_full.wait(lock, [this]
-                           {
-                // Wait until the queue is not full or the queue is closed
-                return _exit || (_capacity == 0 || _size < _capacity); });
+                {
+                    // Wait until the queue is not full or the queue is closed
+                    return _exit || (_capacity == 0 || _size < _capacity); });
 
             if (_exit)
                 return false;
@@ -542,6 +664,7 @@ namespace lux::cxx
             _queue.push(std::forward<U>(value));
             ++_size;
 
+            lock.unlock();
             // Notify one thread that might be waiting to pop
             _not_empty.notify_one();
             return true;
@@ -558,11 +681,11 @@ namespace lux::cxx
          * @return True if the element was pushed successfully, false otherwise (timeout or closed).
          */
         template <class U, class Rep, class Period>
-        bool push(U &&value, const std::chrono::duration<Rep, Period> &timeout)
+        bool push(U&& value, const std::chrono::duration<Rep, Period>& timeout)
         {
             std::unique_lock<std::mutex> lock(_mutex);
             if (!_not_full.wait_for(lock, timeout, [this]
-                                    { return _exit || (_capacity == 0 || _size < _capacity); }))
+                { return _exit || (_capacity == 0 || _size < _capacity); }))
             {
                 // Timed out
                 return false;
@@ -574,6 +697,7 @@ namespace lux::cxx
             _queue.push(std::forward<U>(value));
             ++_size;
 
+            lock.unlock();
             _not_empty.notify_one();
             return true;
         }
@@ -591,7 +715,7 @@ namespace lux::cxx
         {
             std::unique_lock<std::mutex> lock(_mutex);
             _not_full.wait(lock, [this]
-                           { return _exit || (_capacity == 0 || _size < _capacity); });
+                { return _exit || (_capacity == 0 || _size < _capacity); });
 
             if (_exit)
                 return false;
@@ -599,6 +723,7 @@ namespace lux::cxx
             _queue.emplace(std::forward<Args>(args)...);
             ++_size;
 
+            lock.unlock();
             _not_empty.notify_one();
             return true;
         }
@@ -613,11 +738,11 @@ namespace lux::cxx
          * @return True if constructed and pushed, false otherwise (timeout or closed).
          */
         template <class Rep, class Period, class... Args>
-        bool emplace(const std::chrono::duration<Rep, Period> &timeout, Args &&...args)
+        bool emplace(const std::chrono::duration<Rep, Period>& timeout, Args &&...args)
         {
             std::unique_lock<std::mutex> lock(_mutex);
             if (!_not_full.wait_for(lock, timeout, [this]
-                                    { return _exit || (_capacity == 0 || _size < _capacity); }))
+                { return _exit || (_capacity == 0 || _size < _capacity); }))
             {
                 return false;
             }
@@ -628,6 +753,7 @@ namespace lux::cxx
             _queue.emplace(std::forward<Args>(args)...);
             ++_size;
 
+            lock.unlock();
             _not_empty.notify_one();
             return true;
         }
@@ -638,13 +764,13 @@ namespace lux::cxx
          * @param out Reference to store the popped element.
          * @return True if popped successfully, false if the queue is empty and closed.
          */
-        bool pop(T &out)
+        bool pop(T& out)
         {
             std::unique_lock<std::mutex> lock(_mutex);
             _not_empty.wait(lock, [this]
-                            {
-                // Wait until the queue is not empty or closed
-                return _exit || (_size > 0); });
+                {
+                    // Wait until the queue is not empty or closed
+                    return _exit || (_size > 0); });
 
             if (_size == 0)
                 return false; // closed and empty
@@ -653,6 +779,7 @@ namespace lux::cxx
             _queue.pop();
             --_size;
 
+            lock.unlock();
             _not_full.notify_one();
             return true;
         }
@@ -666,11 +793,11 @@ namespace lux::cxx
          * @return True if popped successfully, false if timeout or closed-and-empty.
          */
         template <class Rep, class Period>
-        bool pop(T &out, const std::chrono::duration<Rep, Period> &timeout)
+        bool pop(T& out, const std::chrono::duration<Rep, Period>& timeout)
         {
             std::unique_lock<std::mutex> lock(_mutex);
             if (!_not_empty.wait_for(lock, timeout, [this]
-                                     { return _exit || (_size > 0); }))
+                { return _exit || (_size > 0); }))
             {
                 // Timed out
                 return false;
@@ -683,6 +810,7 @@ namespace lux::cxx
             _queue.pop();
             --_size;
 
+            lock.unlock();
             _not_full.notify_one();
             return true;
         }
@@ -699,9 +827,14 @@ namespace lux::cxx
         template <class InputIterator>
         bool push_bulk(InputIterator first, size_t count)
         {
+            if (count == 0)
+                return true;
+            if (_capacity != 0 && count > _capacity)
+                return false;
+
             std::unique_lock<std::mutex> lock(_mutex);
             _not_full.wait(lock, [this, count]
-                           { return _exit || (_capacity == 0 || _size + count <= _capacity); });
+                { return _exit || (_capacity == 0 || _size + count <= _capacity); });
 
             if (_exit)
                 return false;
@@ -712,6 +845,7 @@ namespace lux::cxx
                 ++_size;
             }
 
+            lock.unlock();
             _not_empty.notify_all();
             return true;
         }
@@ -728,11 +862,16 @@ namespace lux::cxx
          */
         template <class InputIterator, class Rep, class Period>
         bool push_bulk(InputIterator first, size_t count,
-                       const std::chrono::duration<Rep, Period> &timeout)
+            const std::chrono::duration<Rep, Period>& timeout)
         {
+            if (count == 0)
+                return true;
+            if (_capacity != 0 && count > _capacity)
+                return false;
+
             std::unique_lock<std::mutex> lock(_mutex);
             if (!_not_full.wait_for(lock, timeout, [this, count]
-                                    { return _exit || (_capacity == 0 || _size + count <= _capacity); }))
+                { return _exit || (_capacity == 0 || _size + count <= _capacity); }))
             {
                 return false; // Timed out
             }
@@ -746,6 +885,7 @@ namespace lux::cxx
                 ++_size;
             }
 
+            lock.unlock();
             _not_empty.notify_all();
             return true;
         }
@@ -761,9 +901,11 @@ namespace lux::cxx
         template <class OutputIterator>
         size_t pop_bulk(OutputIterator dest, size_t maxCount)
         {
+            if (maxCount == 0)
+                return 0;
             std::unique_lock<std::mutex> lock(_mutex);
             _not_empty.wait(lock, [this]
-                            { return _exit || (_size > 0); });
+                { return _exit || (_size > 0); });
 
             if (_size == 0)
                 return 0;
@@ -776,6 +918,7 @@ namespace lux::cxx
                 --_size;
             }
 
+            lock.unlock();
             _not_full.notify_all();
             return toPop;
         }
@@ -792,11 +935,13 @@ namespace lux::cxx
          */
         template <class OutputIterator, class Rep, class Period>
         size_t pop_bulk(OutputIterator dest, size_t maxCount,
-                        const std::chrono::duration<Rep, Period> &timeout)
+            const std::chrono::duration<Rep, Period>& timeout)
         {
+            if (maxCount == 0)
+                return 0;
             std::unique_lock<std::mutex> lock(_mutex);
             if (!_not_empty.wait_for(lock, timeout, [this]
-                                     { return _exit || (_size > 0); }))
+                { return _exit || (_size > 0); }))
             {
                 return 0;
             }
@@ -812,6 +957,7 @@ namespace lux::cxx
                 --_size;
             }
 
+            lock.unlock();
             _not_full.notify_all();
             return toPop;
         }
@@ -825,7 +971,7 @@ namespace lux::cxx
          * @return True if pushed successfully, false if full or closed.
          */
         template <class U>
-        bool try_push(U &&value)
+        bool try_push(U&& value)
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (_exit || (_capacity > 0 && _size >= _capacity))
@@ -833,7 +979,6 @@ namespace lux::cxx
 
             _queue.push(std::forward<U>(value));
             ++_size;
-
             _not_empty.notify_one();
             return true;
         }
@@ -845,7 +990,7 @@ namespace lux::cxx
          * @param out Reference to store the popped element.
          * @return True if popped successfully, false if empty.
          */
-        bool try_pop(T &out)
+        bool try_pop(T& out)
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (_size == 0)
@@ -854,9 +999,63 @@ namespace lux::cxx
             out = std::move(_queue.front());
             _queue.pop();
             --_size;
-
             _not_full.notify_one();
             return true;
+        }
+
+        /**
+         * @brief Non-blocking bulk push.
+         *        Immediately returns false if capacity insufficient or closed.
+         *
+         * @tparam InputIterator Iterator type.
+         * @param first Iterator to first element.
+         * @param count Elements to push.
+         * @return True if all elements pushed, false otherwise.
+         */
+        template <class InputIterator>
+        bool try_push_bulk(InputIterator first, size_t count)
+        {
+            if (count == 0)
+                return true;
+            std::lock_guard<std::mutex> lock(_mutex);
+            if (_exit || (_capacity > 0 && _size + count > _capacity))
+                return false;
+
+            for (size_t i = 0; i < count; ++i)
+            {
+                _queue.push(*first++);
+                ++_size;
+            }
+            _not_empty.notify_all();
+            return true;
+        }
+
+        /**
+         * @brief Non-blocking bulk pop.
+         *
+         * @tparam OutputIterator Output iterator.
+         * @param dest Destination iterator.
+         * @param maxCount Maximum elements to pop.
+         * @return Actual elements popped.
+         */
+        template <class OutputIterator>
+        size_t try_pop_bulk(OutputIterator dest, size_t maxCount)
+        {
+            if (maxCount == 0)
+                return 0;
+            std::lock_guard<std::mutex> lock(_mutex);
+            if (_size == 0)
+                return 0;
+
+            size_t toPop = (maxCount < _size) ? maxCount : _size;
+            for (size_t i = 0; i < toPop; ++i)
+            {
+                *dest++ = std::move(_queue.front());
+                _queue.pop();
+                --_size;
+            }
+            _not_full.notify_all();
+            return toPop;
         }
 
         /**
@@ -904,4 +1103,4 @@ namespace lux::cxx
         std::condition_variable _not_full;  ///< Condition variable to wait if the queue is full.
         std::condition_variable _not_empty; ///< Condition variable to wait if the queue is empty.
     };
-}
+} // namespace lux::cxx
