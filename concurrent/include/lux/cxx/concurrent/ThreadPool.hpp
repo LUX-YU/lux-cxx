@@ -32,9 +32,6 @@
 
 #ifndef ENABLE_EXCEPTIONS
 #   define ENABLE_EXCEPTIONS 1
-#endif
-
-#ifdef ENABLE_EXCEPTIONS
 #   include <exception>
 #endif
 
@@ -97,7 +94,11 @@ namespace lux::cxx
         {
 			std::promise<RetType> promise;
 			std::future<RetType> future = promise.get_future();
-			Task wrapper_task = [promise = std::move(promise), func = std::forward<Func>(func), args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+			Task wrapper_task = 
+            [promise = std::move(promise), 
+             func = std::forward<Func>(func), 
+             args = std::forward_as_tuple(std::forward<Args>(args)...)]() mutable 
+            {
 #ifdef ENABLE_EXCEPTIONS
                 try {
 					if constexpr (std::is_void_v<RetType>) {

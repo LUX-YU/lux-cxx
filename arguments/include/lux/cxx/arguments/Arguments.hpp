@@ -162,7 +162,7 @@ namespace lux::cxx
         {
         public:
             builder(Parser& p, option_spec& s) : par_(p), spec_(s) {}
-            builder& desc(std::string d) { spec_.description = std::move(d); return *this; }
+            builder& desc(std::string d) { spec_.description = std::move(d);  return *this; }
             builder& required(bool v = true) { spec_.required = v;            return *this; }
             builder& multi(bool v = true) { spec_.multi_value = v;            return *this; }
 
