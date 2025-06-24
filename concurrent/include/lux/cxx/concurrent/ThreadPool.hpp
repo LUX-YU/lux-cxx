@@ -38,6 +38,7 @@
 
 #ifndef ENABLE_EXCEPTIONS
 #   define ENABLE_EXCEPTIONS 1
+#   include <exception>
 #endif
 
 namespace lux::cxx
