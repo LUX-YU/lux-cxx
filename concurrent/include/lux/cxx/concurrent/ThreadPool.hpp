@@ -21,12 +21,18 @@
  * SOFTWARE.
  */
 
-#include <vector>
-#include <thread>
-#include <future>
+#include <concepts>
+#include <exception>
 #include <functional>
+#include <future>
 #include <memory>
+#include <stop_token>
+#include <thread>      // std::jthread
+#include <tuple>
 #include <type_traits>
+#include <utility>
+#include <vector>
+
 #include "BlockingQueue.hpp"
 #include <lux/cxx/compile_time/move_only_function.hpp>
 
@@ -34,111 +40,264 @@
 #   define ENABLE_EXCEPTIONS 1
 #endif
 
-#ifdef ENABLE_EXCEPTIONS
-#   include <exception>
-#endif
-
 namespace lux::cxx
 {
+    /**
+     * @brief A handle for a submitted task that allows tracking and control
+     * 
+     * @tparam T The return type of the task
+     * 
+     * This structure couples a std::future (for getting the task result) with a
+     * std::stop_source (for requesting cancellation of the task). This enables
+     * more control over tasks than a traditional thread pool implementation.
+     */
+    template <typename T>
+    struct task_handle
+    {
+        std::future<T>   fut;  ///< Future to retrieve the task's result
+        std::stop_source src;  ///< Stop source to request cancellation
+
+        /**
+         * @brief Gets the result of the task (blocks until completion)
+         * @return The result of the task
+         * @throws Any exception thrown by the task
+         */
+        T    get() { return fut.get(); }
+
+        /**
+         * @brief Checks if the future contains a valid shared state
+         * @return True if the future is valid
+         */
+        bool valid()        const { return fut.valid(); }
+
+        /**
+         * @brief Requests cancellation of the task
+         * 
+         * This signals to the task that it should stop execution, but it's up to
+         * the task to check for the stop token's state and respond appropriately.
+         */
+        void request_stop() { src.request_stop(); }
+
+        /**
+         * @brief Checks if stop has been requested for this task
+         * @return True if cancellation has been requested
+         */
+        bool stop_requested() const { return src.stop_requested(); }
+    };
+
+    /**
+     * @class ThreadPool
+     * @brief A flexible thread pool implementation with task cancellation support
+     * 
+     * This thread pool manages a collection of worker threads that process
+     * tasks from a shared queue. It supports both regular task submission and
+     * cancellable tasks via stop tokens. Tasks can return values and throw
+     * exceptions safely.
+     */
     class ThreadPool
     {
-    public:
-        // 使用 move_only_function<void()> 作为任务类型
-        using Task = move_only_function<void()>;
+        using RawTask = move_only_function<void()>;  ///< Type-erased task function
 
-        explicit ThreadPool(size_t threadCount = 10, size_t queueCapacity = 64)
-            : _tasks(queueCapacity)
+    public:
+        /**
+         * @brief Constructs a ThreadPool with the specified number of threads
+         * 
+         * @param thread_count Number of worker threads to create (defaults to hardware concurrency)
+         * @param queue_cap Maximum capacity of the task queue (defaults to 64)
+         * 
+         * The ThreadPool will immediately create and start the worker threads,
+         * which will begin processing tasks as they are submitted.
+         */
+        explicit ThreadPool(
+            std::size_t thread_count = std::jthread::hardware_concurrency(),
+            std::size_t queue_cap = 64)
+            : _tasks(queue_cap)
         {
-            // 启动工作线程
-            for (size_t i = 0; i < threadCount; ++i)
+            for (std::size_t i = 0; i < thread_count; ++i)
             {
-                _workers.emplace_back([this] {
-                    workerThreadFunc();
-                });
+                _workers.emplace_back([this](std::stop_token st) {
+                    worker_loop(st);
+                    }
+                );
             }
         }
 
-        // 不允许拷贝或移动
+        // Disable copying and moving
         ThreadPool(const ThreadPool&) = delete;
         ThreadPool& operator=(const ThreadPool&) = delete;
         ThreadPool(ThreadPool&&) = delete;
         ThreadPool& operator=(ThreadPool&&) = delete;
 
-        ~ThreadPool()
+        /**
+         * @brief Destructor that closes the thread pool and joins all worker threads
+         * 
+         * This will automatically close the task queue and stop all worker threads,
+         * waiting for them to complete their current tasks.
+         */
+        ~ThreadPool() { close(); }
+
+        /**
+         * @brief Submits a cancellable task to the thread pool
+         * 
+         * @tparam Func Type of the callable
+         * @tparam Args Types of the arguments
+         * @param func Function to execute that accepts a stop_token as first argument
+         * @param args Additional arguments to pass to the function
+         * @return task_handle containing both the future result and a stop source
+         * @throws std::runtime_error if the thread pool is closed
+         * 
+         * This overload is for functions that explicitly accept a stop_token as their
+         * first parameter, enabling cooperative cancellation.
+         */
+        template <typename Func, typename... Args>
+        requires std::invocable<Func, std::stop_token, Args...>
+        auto submit(Func&& func, Args&&... args)
         {
-            close();
+            using Ret = std::invoke_result_t<Func, std::stop_token, Args...>;
+
+            std::promise<Ret> pr;
+            auto fut = pr.get_future();
+
+            std::stop_source src;
+            std::stop_token  tok = src.get_token();
+
+            RawTask wrapped =
+                [pr = std::move(pr), func = std::forward<Func>(func), tup = std::make_tuple(std::forward<Args>(args)...), tok] () mutable
+                {
+#if ENABLE_EXCEPTIONS
+                    try {
+#endif
+                        if constexpr (std::is_void_v<Ret>)
+                        {
+                            std::apply(
+                                [&](auto&&... xs)
+                                {
+                                    func(tok, std::forward<decltype(xs)>(xs)...);
+                                },
+                                tup
+                            );
+                            pr.set_value();
+                        }
+                        else
+                        {
+                            pr.set_value(
+                                std::apply(
+                                    [&](auto&&... xs)
+                                    {
+                                        return func(tok, std::forward<decltype(xs)>(xs)...);
+                                    },
+                                    tup
+                                )
+                            );
+                        }
+#if ENABLE_EXCEPTIONS
+                    }
+                    catch (...) { pr.set_exception(std::current_exception()); }
+#endif
+                };
+
+            if (!_tasks.push(std::move(wrapped)))
+                throw std::runtime_error("ThreadPool queue closed");
+
+            return task_handle<Ret>{ std::move(fut), std::move(src) };
         }
 
-        void join()
+        /**
+         * @brief Submits a non-cancellable task to the thread pool
+         * 
+         * @tparam Func Type of the callable
+         * @tparam Args Types of the arguments
+         * @param func Function to execute
+         * @param args Additional arguments to pass to the function
+         * @return std::future containing the result of the task
+         * @throws std::runtime_error if the thread pool is closed
+         * 
+         * This overload is for regular functions that don't accept a stop_token.
+         * These tasks cannot be cancelled once submitted.
+         */
+        template <typename Func, typename... Args>
+        requires (!std::invocable<Func, std::stop_token, Args...>) &&
+        std::invocable<Func, Args...>
+        auto submit(Func&& func, Args&&... args)
         {
-            for (auto& th : _workers)
-            {
-                if (th.joinable()) {
-                    th.join();
-                }
-            }
+            using Ret = std::invoke_result_t<Func, Args...>;
+            std::promise<Ret> pr;
+            auto fut = pr.get_future();
+
+            RawTask wrapped =
+                [pr = std::move(pr),
+                func = std::forward<Func>(func),
+                tup = std::make_tuple(std::forward<Args>(args)...)]() mutable
+                {
+#if ENABLE_EXCEPTIONS
+                    try {
+#endif
+                        if constexpr (std::is_void_v<Ret>)
+                        {
+                            std::apply(func, tup);
+                            pr.set_value();
+                        }
+                        else
+                        {
+                            pr.set_value(std::apply(func, tup));
+                        }
+#if ENABLE_EXCEPTIONS
+                    }
+                    catch (...) { pr.set_exception(std::current_exception()); }
+#endif
+                };
+
+            if (!_tasks.push(std::move(wrapped)))
+                throw std::runtime_error("ThreadPool queue closed");
+
+            return fut;
         }
 
+        /**
+         * @brief Closes the thread pool, preventing new tasks from being submitted
+         * 
+         * This method closes the task queue and requests all worker threads to stop
+         * after they finish their current tasks. It then waits for all workers to join.
+         */
         void close()
         {
             _tasks.close();
+            for (auto& w : _workers)
+                w.request_stop();
             join();
         }
 
         /**
-         * @brief 提交一个可调用对象到线程池，返回 std::future 用于获取结果
-         * @tparam Func  函数或可调用对象
-         * @tparam Args  参数类型
-         * @return std::future<RetType> 用于获取任务执行结果
+         * @brief Waits for all worker threads to complete
+         * 
+         * This method joins all worker threads, blocking until they have all finished.
+         * It should typically be called after close() or when shutting down the thread pool.
          */
-        template <typename Func, typename... Args,
-                  typename RetType = std::invoke_result_t<Func, Args...>>
-        std::future<RetType> submit(Func&& func, Args&&... args)
+        void join()
         {
-			std::promise<RetType> promise;
-			std::future<RetType> future = promise.get_future();
-			Task wrapper_task = [promise = std::move(promise), func = std::forward<Func>(func), args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
-#ifdef ENABLE_EXCEPTIONS
-                try {
-					if constexpr (std::is_void_v<RetType>) {
-						std::apply(func, args);
-						promise.set_value();
-					} else {
-						promise.set_value(std::apply(func, args));
-					}
-				} catch (...) {
-					promise.set_exception(std::current_exception());
-				}
-#else
-                if constexpr (std::is_void_v<RetType>) {
-                    std::apply(func, args);
-                    promise.set_value();
-                }
-                else {
-                    promise.set_value(std::apply(func, args));
-                }
-#endif
-			};
-
-    		if(! _tasks.push(std::move(wrapper_task)))
-        		throw std::runtime_error("ThreadPool queue may closed.");
-
-            return future;
+            for (auto& th : _workers)
+                if (th.joinable()) th.join();
         }
 
     private:
-        void workerThreadFunc()
+        /**
+         * @brief Main worker thread function that processes tasks from the queue
+         * 
+         * @param st Stop token that signals when the worker should terminate
+         * 
+         * This function continuously pulls tasks from the queue and executes them
+         * until either the stop token is activated or the queue is closed and empty.
+         */
+        void worker_loop(std::stop_token st)
         {
-            Task task; // move_only_function<void()>
-            while (_tasks.pop(task))
+            RawTask task;
+            while (!st.stop_requested() && _tasks.pop(task))
             {
-                // 调用任务
                 task();
             }
         }
 
-    private:
-        std::vector<std::thread> _workers;
-        BlockingQueue<Task>      _tasks; // 队列里存放 move_only_function<void()>
+        std::vector<std::jthread> _workers;  ///< Collection of worker threads
+        BlockingQueue<RawTask>    _tasks;    ///< Thread-safe queue of pending tasks
     };
-} // namespace lux::cxx
+}

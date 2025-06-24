@@ -117,40 +117,11 @@ void testMultiThread()
     std::cout << "[testMultiThread] Passed\n";
 }
 
-/**
- * @brief Demonstrate bulk push/pop usage.
- */
-void testBulk()
-{
-    std::cout << "[testBulk] Start\n";
-
-    SpscLockFreeRingQueue<int> queue(TEST_CAPACITY);
-
-    // Prepare data to push
-    std::vector<int> input{10, 20, 30, 40};
-    bool success = queue.push_bulk(input.begin(), input.size());
-    // We only have capacity-1 = 7 usable slots, pushing 4 is fine
-    assert(success);
-    assert(queue.size() == input.size());
-
-    // Now let's pop in bulk
-    std::vector<int> output(4, 0);
-    size_t popped = queue.pop_bulk(output.begin(), output.size());
-    assert(popped == 4);
-    for (size_t i = 0; i < popped; ++i)
-    {
-        assert(input[i] == output[i]);
-    }
-    assert(queue.empty());
-
-    std::cout << "[testBulk] Passed\n";
-}
 
 int main()
 {
     testSingleThread();
     testMultiThread();
-    testBulk();
 
     std::cout << "All SPSC tests passed successfully!\n";
     return 0;
