@@ -163,7 +163,7 @@ namespace lux::cxx
             std::stop_token  tok = src.get_token();
 
             RawTask wrapped =
-                [pr = std::move(pr), func = std::forward<Func>(func), tup = std::make_tuple(std::forward<Args>(args)...), tok] () mutable
+                [pr = std::move(pr), func = std::forward<Func>(func), tup = std::forward_as_tuple(std::forward<Args>(args)...), tok] () mutable
                 {
 #if ENABLE_EXCEPTIONS
                     try {
@@ -228,7 +228,7 @@ namespace lux::cxx
             RawTask wrapped =
                 [pr = std::move(pr),
                 func = std::forward<Func>(func),
-                tup = std::make_tuple(std::forward<Args>(args)...)]() mutable
+                tup = std::forward_as_tuple(std::forward<Args>(args)...)]() mutable
                 {
 #if ENABLE_EXCEPTIONS
                     try {
