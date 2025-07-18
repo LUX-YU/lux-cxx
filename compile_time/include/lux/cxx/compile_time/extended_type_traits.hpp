@@ -22,7 +22,6 @@
  */
 
 #include <string_view>
-#include <array>
 #include <utility>
 #include "function_name.hpp"
 

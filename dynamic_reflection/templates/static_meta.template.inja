@@ -7,6 +7,8 @@
 
 namespace lux::cxx::dref{
 
+    template<typename T> class type_meta;
+
     {% for decl_index in marked_record_decls -%}{% set decl=decl_from_index(decl_index) %}{% set type=type_from_id(decl.type_id) %}{%if decl.__kind=="CXXRecordDecl" %}
     template<>
     class type_meta<{{ decl.fq_name }}>
@@ -15,8 +17,8 @@ namespace lux::cxx::dref{
         using type = {{ decl.fq_name }};
         static constexpr size_t size = {{ type.size }};
         static constexpr size_t align = {{ type.align }};
-        static constexpr string_view full_qualified_name = "{{ decl.fq_name }}";
-        static constexpr string_view name = "{{ decl.name }}";
+        static constexpr std::string_view full_qualified_name = "{{ decl.fq_name }}";
+        static constexpr std::string_view name = "{{ decl.name }}";
         static constexpr bool is_abstract = {{ decl.is_abstract }};
 
         using field_types = std::tuple<

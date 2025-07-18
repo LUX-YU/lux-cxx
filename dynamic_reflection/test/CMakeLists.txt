@@ -67,7 +67,7 @@ if(LUX_GENERATOR)
 		TARGET			generator_test
 		NAME			test_meta
 		ALWAYS_REGENERATE
-		ARGS_DONT_ADD_TO_SOURCE
+		DONT_ADD_TO_SOURCE
 		ECHO
 	)
 

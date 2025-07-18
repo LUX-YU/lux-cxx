@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/cxx/dref/runtime/Attribute.hpp>
+#include <lux/cxx/dref/runtime/Marker.hpp>
 #include <string>
 
 struct LUX_META(static_reflection;dynamic_reflection) TestClass

@@ -653,10 +653,14 @@ namespace lux::cxx
         bool push(U&& value)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            _not_full.wait(lock, [this]
+            _not_full.wait(
+                lock, 
+                [this]
                 {
                     // Wait until the queue is not full or the queue is closed
-                    return _exit || (_capacity == 0 || _size < _capacity); });
+                    return _exit || (_capacity == 0 || _size < _capacity); 
+                }
+            );
 
             if (_exit)
                 return false;
@@ -767,10 +771,14 @@ namespace lux::cxx
         bool pop(T& out)
         {
             std::unique_lock<std::mutex> lock(_mutex);
-            _not_empty.wait(lock, [this]
+            _not_empty.wait(
+                lock, 
+                [this]
                 {
                     // Wait until the queue is not empty or closed
-                    return _exit || (_size > 0); });
+                    return _exit || (_size > 0);
+                }
+            );
 
             if (_size == 0)
                 return false; // closed and empty
