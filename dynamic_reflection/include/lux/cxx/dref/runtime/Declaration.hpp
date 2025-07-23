@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 #include <cstddef>
+#include <cstdint>
 
 namespace lux::cxx::dref {
     enum class EVisibility {
