@@ -114,7 +114,9 @@ namespace lux::cxx
 
     /* string */
     template <StringLike T>
-    struct value_parser<T> { static expected_t<T> parse(sv s) { return T{ s }; } };
+    struct value_parser<T> { 
+        static expected_t<T> parse(sv s) noexcept { return T{ s }; } 
+    };
 
     /* sequences */
     template <Sequence Seq>
@@ -152,8 +154,7 @@ namespace lux::cxx
         explicit Parser(std::string prog, bool allow_unknown = false)
             : prog_(std::move(prog)), allow_unknown_(allow_unknown) {
         }
-        explicit Parser(bool allow_unknown = false)
-            : prog_(""), allow_unknown_(allow_unknown) {
+        Parser() : prog_(""), allow_unknown_(false) {
         }
 
         // ---- builder -----------------------------------------------------------
@@ -161,7 +162,7 @@ namespace lux::cxx
         class builder
         {
         public:
-            builder(Parser& p, option_spec& s) : par_(p), spec_(s) {}
+            explicit builder(option_spec& s) : spec_(s) {}
             builder& desc(std::string d) { spec_.description = std::move(d);  return *this; }
             builder& required(bool v = true) { spec_.required = v;            return *this; }
             builder& multi(bool v = true) { spec_.multi_value = v;            return *this; }
@@ -170,12 +171,12 @@ namespace lux::cxx
             builder& def(const Sequence auto& seq)
                 requires std::same_as<T, decltype(seq)>
             {
+                spec_.defaults.reserve(spec_.defaults.size() + std::ranges::size(seq));
                 for (auto&& e : seq) add_one(e);
                 return *this;
             }
 
         private:
-            Parser& par_;
             option_spec& spec_;
             template<typename X>
             static std::string to_str(const X& x)
@@ -200,7 +201,7 @@ namespace lux::cxx
 
             auto& ref = specs_.emplace(s.long_name, std::move(s)).first->second;
             if (!ref.short_name.empty()) short2long_[ref.short_name] = ref.long_name;
-            return { *this, ref };
+            return builder<T>{ ref };
         }
 
         expected_t<ParsedOptions> parse(int argc, char* argv[])      const;
@@ -263,14 +264,12 @@ namespace lux::cxx
             }
 
         private:
-            option_ref(std::string k,
-                const std::vector<token_id>* v,
+            option_ref(const std::vector<token_id>* v,
                 const std::vector<std::string>* pool,
                 bool p)
-                : key_(std::move(k)), idxs_(v), pool_(pool), present_(p) {
+                : idxs_(v), pool_(pool), present_(p) {
             }
 
-            std::string                              key_;
             const std::vector<token_id>* idxs_{};
             const std::vector<std::string>* pool_{};
             bool                                     present_{ false };
@@ -281,7 +280,7 @@ namespace lux::cxx
             auto it = indices_.find(name);
             bool pr = it != indices_.end();
             const std::vector<token_id>* vec = pr ? &it->second : nullptr;
-            return option_ref{ std::string{name}, vec, &pool_, pr };
+            return option_ref{ vec, &pool_, pr };
         }
 
     private:
@@ -305,13 +304,27 @@ namespace lux::cxx
     inline expected_t<ParsedOptions> Parser::parse(const std::string& cmdline) const
     {
         std::vector<std::string> toks;
-        std::string cur; bool in_q = false;
-        auto flush = [&] { if (!cur.empty()) { toks.push_back(std::move(cur)); cur.clear(); } };
+        std::string cur; 
+        bool in_q = false;
+        
+        auto flush = [&] { 
+            toks.push_back(std::move(cur)); 
+            cur.clear(); 
+        };
+        
         for (char ch : cmdline) {
-            if (ch == '"') { in_q = !in_q; continue; }
-            if (std::isspace(static_cast<unsigned char>(ch)) && !in_q) flush();
-            else cur.push_back(ch);
-        } flush();
+            if (ch == '"') { 
+                in_q = !in_q; 
+                continue; 
+            }
+            if (std::isspace(static_cast<unsigned char>(ch)) && !in_q) {
+                if (!cur.empty()) flush();
+            } else {
+                cur.push_back(ch);
+            }
+        } 
+        if (!cur.empty()) flush();
+        
         if (toks.empty()) toks.emplace_back(prog_);
         return parse_tokens(std::move(toks));
     }
@@ -351,7 +364,7 @@ namespace lux::cxx
             return static_cast<token_id>(pool.size() - 1);
             };
 
-        auto add_index = [&](sv key, token_id id)
+        auto add_index = [&](const auto& key, token_id id)
             {
                 auto it = idxs.find(key);
                 if (it == idxs.end())
@@ -359,7 +372,7 @@ namespace lux::cxx
                 it->second.push_back(id);
             };
 
-        auto mark_flag_present = [&](sv key)
+        auto mark_flag_present = [&](const auto& key)
             {
                 if (!idxs.contains(key))
                     idxs.emplace(std::string{ key }, std::vector<token_id>{});
@@ -394,9 +407,11 @@ namespace lux::cxx
             sv   key = tok.substr(longf ? 2 : 1);
 
             sv inline_val{};
+            bool has_inline_val = false;
             if (auto eq = key.find('='); eq != sv::npos) {
                 inline_val = key.substr(eq + 1);
                 key = key.substr(0, eq);
+                has_inline_val = true;
             }
 
             if (!longf)
@@ -411,11 +426,10 @@ namespace lux::cxx
             const option_spec& spec = spec_it->second;
 
             // ---- 带内联值 -----------------------------------------------------
-            if (!inline_val.empty())
+            if (has_inline_val)
             {
-                std::string key_copy{ key };// 先拷贝，避免 push_token 失效
                 token_id id = push_token(inline_val);
-                add_index(key_copy, id);
+                add_index(key, id);
                 continue;
             }
 
@@ -430,7 +444,8 @@ namespace lux::cxx
                 ++j;
                 if (!spec.multi_value) break;
             }
-            if (idxs.find(key)->second.empty())
+            auto idx_it = idxs.find(key);
+            if (idx_it == idxs.end() || idx_it->second.empty())
                 return lux::cxx::unexpected(errc::value_missing);
 
             i = j - 1;      // for‑loop 末尾 ++i
