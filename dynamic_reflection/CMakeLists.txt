@@ -1,5 +1,8 @@
-# import target libclang
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_libclang.cmake)
+# Add cmake module path for custom Find modules
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# Find required packages
+find_package(LibClang REQUIRED)
 find_package(inja          CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
@@ -26,7 +29,6 @@ component_include_directories(
         include
     PRIVATE
         pinclude
-        ${LIBCLANG_INCLUDE_DIR}
 )
 
 target_link_libraries(
@@ -74,13 +76,12 @@ component_include_directories(
         include
     PRIVATE
         pinclude
-        ${LIBCLANG_INCLUDE_DIR}
 )
 
 target_link_libraries(
     dynamic_reflection_parser
     PUBLIC
-        libclang
+        LibClang::LibClang
 )  
 
 component_add_internal_dependencies(
@@ -97,7 +98,8 @@ target_compile_definitions(
 
 component_add_transitive_commands(
     dynamic_reflection_parser
-    "find_package(Clang REQUIRED)"
+    "list(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}\")"
+    "find_package(LibClang REQUIRED)"
 )
 
 #[[==========================
@@ -124,7 +126,6 @@ component_include_directories(
         include
     PRIVATE
         pinclude
-        ${CLANG_INCLUDE_DIRS}
 )
 
 component_add_internal_dependencies(
@@ -136,6 +137,7 @@ component_add_internal_dependencies(
 component_add_cmake_scripts(
 	dynamic_reflection_generator
 	${CMAKE_CURRENT_SOURCE_DIR}/cmake/meta.cmake
+	${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindLibClang.cmake
 )
 
 target_compile_definitions(

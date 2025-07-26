@@ -404,7 +404,13 @@ namespace lux::cxx
             if (!tok.starts_with('-'))           continue;
 
             bool longf = tok.starts_with("--");
-            sv   key = tok.substr(longf ? 2 : 1);
+            
+            // 添加边界检查以避免越界
+            if ((longf && tok.size() <= 2) || (!longf && tok.size() <= 1)) {
+                continue; // 跳过无效的选项（如单独的 "-" 或 "--"）
+            }
+            
+            sv key = tok.substr(longf ? 2 : 1);
 
             sv inline_val{};
             bool has_inline_val = false;

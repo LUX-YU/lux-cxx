@@ -180,14 +180,15 @@ namespace lux::cxx::dref
 
 	std::string CxxParserImpl::fullQualifiedName(const Cursor& cursor)
 	{
-		if (cursor.cursorKind().kindEnum() == CXCursor_TranslationUnit)
+		auto cursor_kind = cursor.cursorKind().kindEnum();
+		if (cursor_kind == CXCursor_TranslationUnit)
 		{
 			return std::string{};
 		}
 		auto spelling = cursor.displayName().to_std();
 		if (const std::string res = fullQualifiedName(cursor.getCursorSemanticParent()); !res.empty())
 		{
-			if (cursor.cursorKind().kindEnum() == CXCursor_LinkageSpec)
+			if (cursor_kind == CXCursor_LinkageSpec)
 			{
 				return res;
 			}
