@@ -38,6 +38,10 @@ The following cache variables may be set:
 
 #]=======================================================================]
 
+if(TARGET LibClang::LibClang)
+    return()
+endif()
+
 # Try to find libclang using pkg-config first
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
