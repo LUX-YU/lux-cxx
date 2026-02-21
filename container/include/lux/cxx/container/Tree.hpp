@@ -51,8 +51,8 @@ namespace lux::cxx
     public:
         using value_type = T;
 
-        /// Virtual destructor to allow polymorphic deletion.
-        virtual ~TreeNodeBase() = default;
+        /// destructor to allow polymorphic deletion.
+        ~TreeNodeBase() = default;
 
         // ---------------------- Constructors / Assignment ---------------------- //
 
@@ -189,7 +189,7 @@ namespace lux::cxx
         }
 
         /// Virtual destructor; inherited from base.
-        ~StaticTreeNode() override = default;
+        ~StaticTreeNode() = default;
 
         // ---------------------- Child Management ---------------------- //
 

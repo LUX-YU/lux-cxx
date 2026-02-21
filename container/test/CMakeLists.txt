@@ -19,3 +19,14 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::container
 )
+
+add_executable(
+	orth_tree_test
+	orth_tree_test.cpp
+)
+
+target_link_libraries(
+	orth_tree_test
+	PRIVATE
+	lux::cxx::container
+)

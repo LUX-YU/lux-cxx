@@ -42,6 +42,7 @@
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace lux::cxx
 {
@@ -426,6 +427,41 @@ namespace lux::cxx
                 rhs._size = 0;
                 rhs._cap = kStackCapacity;
             }
+            return *this;
+        }
+
+        /**
+         * @brief Converting copy-constructor from std::vector.
+         */
+        template <typename Alloc>
+        SmallVector(const std::vector<T, Alloc>& vec)
+            : SmallVector(vec.begin(), vec.end()) {}
+
+        /**
+         * @brief Converting move-constructor from std::vector.
+         */
+        template <typename Alloc>
+        SmallVector(std::vector<T, Alloc>&& vec) {
+            assign(std::make_move_iterator(vec.begin()),
+                   std::make_move_iterator(vec.end()));
+        }
+
+        /**
+         * @brief Converting copy-assignment from std::vector.
+         */
+        template <typename Alloc>
+        SmallVector& operator=(const std::vector<T, Alloc>& vec) {
+            assign(vec.begin(), vec.end());
+            return *this;
+        }
+
+        /**
+         * @brief Converting move-assignment from std::vector.
+         */
+        template <typename Alloc>
+        SmallVector& operator=(std::vector<T, Alloc>&& vec) {
+            assign(std::make_move_iterator(vec.begin()),
+                   std::make_move_iterator(vec.end()));
             return *this;
         }
 
