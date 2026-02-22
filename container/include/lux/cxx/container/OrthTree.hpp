@@ -388,6 +388,70 @@ namespace lux::cxx
         }
 
         /**
+         * @brief Constructs a @c PointT from @p args and inserts it via move.
+         *
+         * The point is constructed on the stack from the forwarded arguments (one
+         * construction, zero copies), the position is extracted for tree routing, and
+         * the object is then **moved** into the target leaf's storage (one move).
+         *
+         * This is cheaper than @c insert when the position accessor returns by reference
+         * (avoids one copy of PointT), but it is *not* in-place construction directly
+         * into the leaf vector storage — the point lives on the stack until the target
+         * leaf is found. For true in-place construction use @c emplaceAt.
+         *
+         * Returns false if the point lies outside the root bounds.
+         * Increments the version counter on success.
+         *
+         * @tparam Args Constructor argument types for @c PointT.
+         * @param args  Arguments forwarded to @c PointT's constructor.
+         * @return True if the point was inserted, false otherwise.
+         */
+        template <class... Args>
+        bool emplace(Args&&... args)
+        {
+            if (root_ == kInvalidNode) return false;
+            PointT p(std::forward<Args>(args)...);
+            bool inserted = emplaceInternal(root_, std::move(p), 0);
+            if (inserted) ++version_;
+            return inserted;
+        }
+
+        /**
+         * @brief True in-place construction: routes via @p pos then constructs directly
+         *        inside the target leaf's @c points vector via @c emplace_back.
+         *
+         * Because the position is provided separately, the tree can locate the correct
+         * leaf *before* constructing the @c PointT object at all. This means the point
+         * is constructed exactly once, directly in the vector's storage (no intermediate
+         * object, no move). Only a vector reallocation can trigger a subsequent
+         * move/copy, governed by @c PointT's move constructor.
+         *
+         * @code
+         * // Typical usage:
+         * tree.emplaceAt(pt.position, pt.position, pt.id, pt.payload);
+         * @endcode
+         *
+         * Returns false if @p pos lies outside the root bounds.
+         * Increments the version counter on success.
+         *
+         * @tparam VecLike A vector-like type accessible via @c operator[] (e.g.
+         *                 @c std::array<float,Dim>).
+         * @tparam Args    Constructor argument types for @c PointT.
+         * @param pos  Position used solely for tree routing (not stored separately).
+         * @param args Arguments forwarded directly to @c PointT's constructor at the
+         *             target leaf via @c emplace_back.
+         * @return True if the point was inserted, false otherwise.
+         */
+        template <class VecLike, class... Args>
+        bool emplaceAt(const VecLike& pos, Args&&... args)
+        {
+            if (root_ == kInvalidNode) return false;
+            bool inserted = emplaceAtInternal(root_, pos, 0, std::forward<Args>(args)...);
+            if (inserted) ++version_;
+            return inserted;
+        }
+
+        /**
          * @brief Inserts multiple points in bulk.
          * @tparam Range Any range whose value type is @c PointT.
          * @param pts The range of points to insert.
@@ -776,6 +840,120 @@ namespace lux::cxx
             }
 
             return insertInternal(child_id, p, depth + 1);
+        }
+
+        /**
+         * @brief Move-insertion recursive helper used by @c emplace.
+         *
+         * Identical in logic to @c insertInternal but takes @p p by rvalue reference so
+         * that no copy of the point is made when it is stored in a leaf.
+         * The position is copied upfront (typically a small array) to avoid a dangling
+         * reference after the point is moved.
+         *
+         * @param node_id_value Root of the subtree.
+         * @param p             Point to move-insert.
+         * @param depth         Current depth of @p node_id_value.
+         * @return True if the point was inserted.
+         */
+        bool emplaceInternal(node_id node_id_value, PointT&& p, std::uint32_t depth)
+        {
+            // Copy the position now; p will be moved into a leaf before the call unwinds.
+            auto pos = get_pos_(p);
+
+            if (!nodes_[node_id_value].bounds.contains(pos))
+                return false;
+
+            if (nodes_[node_id_value].is_leaf)
+            {
+                nodes_[node_id_value].points.push_back(std::move(p));
+                nodes_[node_id_value].alive.push_back(1);
+                nodes_[node_id_value].dirty = true;
+
+                if (depth < config_.max_depth)
+                {
+                    std::size_t alive_cnt = 0;
+                    for (std::uint8_t f : nodes_[node_id_value].alive) if (f) ++alive_cnt;
+                    if (alive_cnt > config_.max_points_per_leaf)
+                        splitLeaf(node_id_value, depth);
+                }
+                return true;
+            }
+
+            // Internal node: delegate to the appropriate child.
+            const std::size_t child_idx = childIndexForPosition(nodes_[node_id_value].bounds, pos);
+            node_id child_id = nodes_[node_id_value].children[child_idx];
+            if (child_id == kInvalidNode)
+            {
+                const box_type parent_bounds = nodes_[node_id_value].bounds;
+                child_id = allocateNode();
+                nodes_[node_id_value].children[child_idx] = child_id;
+
+                Node& child = nodes_[child_id];
+                child.bounds = computeChildBounds(parent_bounds, child_idx);
+                child.is_leaf = true;
+                child.depth = depth + 1;
+            }
+
+            return emplaceInternal(child_id, std::move(p), depth + 1);
+        }
+
+        /**
+         * @brief In-place construction recursive helper used by @c emplaceAt.
+         *
+         * Routes through the tree using the caller-provided @p pos, then calls
+         * @c emplace_back(std::forward<Args>(args)...) directly on the target leaf's
+         * @c points vector. The @c PointT object is constructed exactly once, directly
+         * in the vector's allocated storage — no intermediate object, no move.
+         *
+         * @tparam VecLike  Vector-like type for the position.
+         * @tparam Args     Constructor argument types for @c PointT.
+         * @param node_id_value  Root of the subtree.
+         * @param pos            Position used for routing (must remain valid for the
+         *                       duration of the call).
+         * @param depth          Current depth of @p node_id_value.
+         * @param args           Constructor arguments forwarded to @c PointT.
+         * @return True if the point was inserted.
+         */
+        template <class VecLike, class... Args>
+        bool emplaceAtInternal(node_id node_id_value, const VecLike& pos,
+                               std::uint32_t depth, Args&&... args)
+        {
+            if (!nodes_[node_id_value].bounds.contains(pos))
+                return false;
+
+            if (nodes_[node_id_value].is_leaf)
+            {
+                // Construct the point directly inside the vector's storage.
+                nodes_[node_id_value].points.emplace_back(std::forward<Args>(args)...);
+                nodes_[node_id_value].alive.push_back(1);
+                nodes_[node_id_value].dirty = true;
+
+                if (depth < config_.max_depth)
+                {
+                    std::size_t alive_cnt = 0;
+                    for (std::uint8_t f : nodes_[node_id_value].alive) if (f) ++alive_cnt;
+                    if (alive_cnt > config_.max_points_per_leaf)
+                        splitLeaf(node_id_value, depth);
+                }
+                return true;
+            }
+
+            // Internal node: delegate to the appropriate child.
+            const std::size_t child_idx = childIndexForPosition(nodes_[node_id_value].bounds, pos);
+            node_id child_id = nodes_[node_id_value].children[child_idx];
+            if (child_id == kInvalidNode)
+            {
+                const box_type parent_bounds = nodes_[node_id_value].bounds;
+                child_id = allocateNode();
+                nodes_[node_id_value].children[child_idx] = child_id;
+
+                Node& child = nodes_[child_id];
+                child.bounds = computeChildBounds(parent_bounds, child_idx);
+                child.is_leaf = true;
+                child.depth = depth + 1;
+            }
+
+            return emplaceAtInternal(child_id, pos, depth + 1, std::forward<Args>(args)...);
         }
 
         /**

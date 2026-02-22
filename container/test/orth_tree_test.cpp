@@ -53,6 +53,10 @@ namespace
         std::array<float, 3> position{};
         std::uint32_t id = 0;
         std::uint32_t payload = 0;
+
+        Point3f() = default;
+        Point3f(std::array<float, 3> pos, std::uint32_t i, std::uint32_t pl)
+            : position(pos), id(i), payload(pl) {}
     };
 
     struct Point2f
@@ -60,6 +64,10 @@ namespace
         std::array<float, 2> xy{};
         std::uint32_t id = 0;
         std::uint32_t payload = 0;
+
+        Point2f() = default;
+        Point2f(std::array<float, 2> pos, std::uint32_t i, std::uint32_t pl)
+            : xy(pos), id(i), payload(pl) {}
     };
 
     struct GetXY
@@ -675,6 +683,114 @@ namespace
         double snap_ms = t.ms();
         std::cout << "Snapshot: leaves=" << snap.leaves.size() << ", " << snap_ms << " ms\n";
     }
+
+    // ============================================================
+    // insert vs emplace comparison: Orthtree 3D
+    //
+    // Measures the wall-clock time of inserting N points via:
+    //   - insert(const PointT&)  — copies each point into the leaf.
+    //   - emplace(PointT&&)      — moves each point into the leaf (zero copy).
+    //
+    // For trivially-copyable point types the difference is small; the test
+    // is more meaningful for types with heap-allocated members.
+    // ============================================================
+    void perf_insert_vs_emplace_3d(const Args& a)
+    {
+        std::cout << "\n[Performance] insert vs emplace — Orthtree 3D\n";
+
+        using Tree = lux::cxx::Orthtree<Point3f, 3, float>;
+        Tree::Config cfg;
+        cfg.root_bounds = make_root_bounds<3>(-1.0f, 1.0f);
+        cfg.max_depth = 10;
+        cfg.max_points_per_leaf = 512;
+
+        auto pts = gen_points3(a.n_points, a.seed + 500);
+
+        Timer t;
+
+        // --- insert (copy) ---
+        {
+            Tree tree(cfg);
+            t.start();
+            for (const auto& p : pts) tree.insert(p);
+            double ms = t.ms();
+            std::cout << "insert (copy): " << a.n_points << " points, " << ms << " ms, "
+                      << (double(a.n_points) / (ms / 1000.0)) << " pts/s\n";
+        }
+
+        // --- emplace (construct on stack, then move-insert) ---
+        // Duplicate the data so both tests consume equal amounts of memory traffic.
+        {
+            auto pts_copy = pts; // copy once for a fair comparison
+            Tree tree(cfg);
+            t.start();
+            for (auto& p : pts_copy) tree.emplace(std::move(p));
+            double ms = t.ms();
+            std::cout << "emplace (move): " << a.n_points << " points, " << ms << " ms, "
+                      << (double(a.n_points) / (ms / 1000.0)) << " pts/s\n";
+        }
+
+        // --- emplaceAt (true in-place: routes via pos, constructs directly in leaf vector) ---
+        {
+            Tree tree(cfg);
+            t.start();
+            for (const auto& p : pts)
+                tree.emplaceAt(p.position, p.position, p.id, p.payload);
+            double ms = t.ms();
+            std::cout << "emplaceAt (in-place): " << a.n_points << " points, " << ms << " ms, "
+                      << (double(a.n_points) / (ms / 1000.0)) << " pts/s\n";
+        }
+    }
+
+    // ============================================================
+    // insert vs emplace comparison: Orthtree 2D
+    // ============================================================
+    void perf_insert_vs_emplace_2d(const Args& a)
+    {
+        std::cout << "\n[Performance] insert vs emplace — Orthtree 2D\n";
+
+        using Tree = lux::cxx::Orthtree<Point2f, 2, float, GetXY>;
+        Tree::Config cfg;
+        cfg.root_bounds = make_root_bounds<2>(-1.0f, 1.0f);
+        cfg.max_depth = 12;
+        cfg.max_points_per_leaf = 256;
+
+        auto pts = gen_points2(a.n_points, a.seed + 510);
+
+        Timer t;
+
+        // --- insert (copy) ---
+        {
+            Tree tree(cfg, GetXY{});
+            t.start();
+            for (const auto& p : pts) tree.insert(p);
+            double ms = t.ms();
+            std::cout << "insert (copy): " << a.n_points << " points, " << ms << " ms, "
+                      << (double(a.n_points) / (ms / 1000.0)) << " pts/s\n";
+        }
+
+        // --- emplace (construct on stack, then move-insert) ---
+        {
+            auto pts_copy = pts;
+            Tree tree(cfg, GetXY{});
+            t.start();
+            for (auto& p : pts_copy) tree.emplace(std::move(p));
+            double ms = t.ms();
+            std::cout << "emplace (move): " << a.n_points << " points, " << ms << " ms, "
+                      << (double(a.n_points) / (ms / 1000.0)) << " pts/s\n";
+        }
+
+        // --- emplaceAt (true in-place: routes via pos, constructs directly in leaf vector) ---
+        {
+            Tree tree(cfg, GetXY{});
+            t.start();
+            for (const auto& p : pts)
+                tree.emplaceAt(p.xy, p.xy, p.id, p.payload);
+            double ms = t.ms();
+            std::cout << "emplaceAt (in-place): " << a.n_points << " points, " << ms << " ms, "
+                      << (double(a.n_points) / (ms / 1000.0)) << " pts/s\n";
+        }
+    }
 }
 
 int main(int argc, char** argv)
@@ -710,6 +826,10 @@ int main(int argc, char** argv)
         perf_orthtree_2d(args);
         perf_orthtree_pmr_2d(args);
     }
+
+    // -------- insert vs emplace --------
+    if (args.run_3d) perf_insert_vs_emplace_3d(args);
+    if (args.run_2d) perf_insert_vs_emplace_2d(args);
 
     std::cout << "\nDone.\n";
     return 0;
