@@ -47,11 +47,58 @@ namespace lux::cxx::dref
     std::vector<std::string> GeneratorHelper::splitCommand(const std::string& cmd)
     {
         std::vector<std::string> tokens;
-        std::istringstream iss(cmd);
-        std::string token;
-        while (iss >> token) {
-            tokens.push_back(token);
+        std::string current;
+        bool in_single_quote = false;
+        bool in_double_quote = false;
+        bool escaped = false;
+
+        for (size_t i = 0; i < cmd.size(); ++i)
+        {
+            char c = cmd[i];
+
+            if (escaped)
+            {
+                current += c;
+                escaped = false;
+                continue;
+            }
+
+            if (c == '\\' && !in_single_quote)
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (c == '\'' && !in_double_quote)
+            {
+                in_single_quote = !in_single_quote;
+                continue;
+            }
+
+            if (c == '"' && !in_single_quote)
+            {
+                in_double_quote = !in_double_quote;
+                continue;
+            }
+
+            if (std::isspace(static_cast<unsigned char>(c)) && !in_single_quote && !in_double_quote)
+            {
+                if (!current.empty())
+                {
+                    tokens.push_back(std::move(current));
+                    current.clear();
+                }
+                continue;
+            }
+
+            current += c;
         }
+
+        if (!current.empty())
+        {
+            tokens.push_back(std::move(current));
+        }
+
         return tokens;
     }
 
@@ -220,8 +267,18 @@ namespace lux::cxx::dref
     void GeneratorHelper::loadGeneratorConfig(const std::string& filename, GeneratorConfig& config)
     {
         std::ifstream ifs(filename);
+        if (!ifs.is_open())
+        {
+            throw std::runtime_error("Failed to open config file: " + filename);
+        }
 
-        nlohmann::json j; ifs >> j;
+        nlohmann::json j;
+        try {
+            ifs >> j;
+        }
+        catch (const nlohmann::json::parse_error& e) {
+            throw std::runtime_error("Failed to parse config file '" + filename + "': " + e.what());
+        }
 		config.marker                   = j.at("marker").get<std::string>();
 		config.template_path            = j.at("template_path").get<std::string>();
         config.out_dir                  = j.at("out_dir").get<std::string>();
@@ -242,5 +299,9 @@ namespace lux::cxx::dref
         }
 		config.serial_meta              = j.value("serial_meta", true);
 		config.dry_run                  = j.value("dry_run", false);
+		config.cxx_standard             = j.value("cxx_standard", std::string("c++20"));
+		if (j.contains("preprocessor_defines") && j["preprocessor_defines"].is_array()) {
+			config.preprocessor_defines = j["preprocessor_defines"].get<std::vector<std::string>>();
+		}
     }
 }

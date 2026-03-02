@@ -371,13 +371,44 @@ namespace lux::cxx::dref {
     //==================================================================
 
     /**
+     * TemplateArgument: Represents a single template argument of a template
+     * specialization (e.g., `int` in `std::vector<int>` or `5` in `std::array<int, 5>`).
+     */
+    struct TemplateArgument
+    {
+        enum class Kind
+        {
+            Type,       ///< A type argument (e.g., `int` in `vector<int>`)
+            Integral,   ///< A non-type integral argument (e.g., `5` in `array<int, 5>`)
+        };
+
+        Kind         kind = Kind::Type;
+        Type*        type = nullptr;     ///< The type, for Kind::Type arguments.
+        int64_t      integral_value = 0; ///< The value, for Kind::Integral arguments.
+        std::string  type_id;            ///< Serialization helper: the type id string.
+        std::string  spelling;           ///< Human-readable spelling of this argument.
+    };
+
+    /**
      * RecordType: Represents a class/struct/union type.
      * It references the corresponding RecordDecl or CXXRecordDecl via TagDecl.
+     * For template specializations (e.g., `std::vector<int>`), it also stores
+     * the template name and template arguments.
      */
     class RecordType final : public TagType
     {
     public:
         static constexpr auto static_kind = ETypeKinds::Record;
+
+        /// The template name without arguments (e.g., "std::vector").
+        /// Empty if this is not a template specialization.
+        std::string template_name;
+
+        /// The list of template arguments. Empty if not a template specialization.
+        std::vector<TemplateArgument> template_arguments;
+
+        /// Returns true if this record type is a template specialization.
+        bool isTemplateSpecialization() const { return !template_arguments.empty(); }
 
         void accept(TypeVisitor* visitor) override {
             visitor->visit(this);

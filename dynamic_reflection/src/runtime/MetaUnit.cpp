@@ -22,6 +22,7 @@
 
 #include <lux/cxx/dref/runtime/MetaUnit.hpp>
 #include <lux/cxx/dref/runtime/MetaUnitImpl.hpp>
+#include <stdexcept>
 
 namespace lux::cxx::dref
 {
@@ -56,46 +57,55 @@ namespace lux::cxx::dref
 
 	size_t MetaUnit::id() const
 	{
+		if (!_impl) throw std::runtime_error("MetaUnit: accessing uninitialized instance");
 		return _impl->_id;
 	}
 
 	const std::string& MetaUnit::name() const
 	{
+		if (!_impl) throw std::runtime_error("MetaUnit: accessing uninitialized instance");
 		return _impl->_name;
 	}
 
 	const std::string& MetaUnit::version() const
 	{
+		if (!_impl) throw std::runtime_error("MetaUnit: accessing uninitialized instance");
 		return _impl->_version;
 	}
 
 	const std::vector<CXXRecordDecl*>& MetaUnit::markedRecordDecls() const
 	{
+		if (!_impl) throw std::runtime_error("MetaUnit: accessing uninitialized instance");
 		return _impl->_data->marked_record_decls;
 	}
 
 	const std::vector<FunctionDecl*>& MetaUnit::markedFunctionDecls() const
 	{
+		if (!_impl) throw std::runtime_error("MetaUnit: accessing uninitialized instance");
 		return _impl->_data->marked_function_decls;
 	}
 
 	const std::vector<EnumDecl*>& MetaUnit::markedEnumDecls() const
 	{
+		if (!_impl) throw std::runtime_error("MetaUnit: accessing uninitialized instance");
 		return _impl->_data->marked_enum_decls;
 	}
 
 	const Decl* MetaUnit::findDeclById(const std::string& id) const
 	{
+		if (!_impl) return nullptr;
 		return _impl->findDeclById(id);
 	}
 
 	const Type* MetaUnit::findTypeById(const std::string& id) const
 	{
+		if (!_impl) return nullptr;
 		return _impl->findTypeById(id);
 	}
 
 	nlohmann::json MetaUnit::toJson() const
 	{
+		if (!_impl) throw std::runtime_error("MetaUnit: accessing uninitialized instance");
 		return _impl->toJson();
 	}
 

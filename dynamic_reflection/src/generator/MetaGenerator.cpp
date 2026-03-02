@@ -74,11 +74,13 @@ static std::vector<std::string> buildCompileOptions(const GeneratorConfig& gener
 
     std::vector<std::string> options;
     // Preallocate the container's memory for efficiency.
-    options.reserve(include_options.size() + generator_config.extra_compile_options.size() + 2);
-    // Add a flag for C++20 standard.
-    options.push_back("--std=c++20");
-    // Define a macro to enable parse-time facilities (specific to this project).
-    options.push_back("-D__LUX_PARSE_TIME__=1");
+    options.reserve(include_options.size() + generator_config.extra_compile_options.size() + generator_config.preprocessor_defines.size() + 2);
+    // Add a flag for C++ standard (configurable, defaults to c++20).
+    options.push_back("--std=" + generator_config.cxx_standard);
+    // Add preprocessor defines from configuration.
+    for (const auto& define : generator_config.preprocessor_defines) {
+        options.push_back("-D" + define);
+    }
 
     // Append each include directory flag.
     for (const auto& inc : include_options) {

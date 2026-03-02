@@ -245,6 +245,10 @@ namespace lux::cxx::dref
         raw->index = j["index"].get<size_t>();
 		std::string hash_tr = j["hash"].get<std::string>();
         auto [p, ec] = std::from_chars(hash_tr.data(), hash_tr.data() + hash_tr.size(), raw->hash);
+        if (ec != std::errc())
+        {
+            raw->hash = 0; // fallback on parse failure
+        }
         
         // NamedDecl common?
         if (auto* nd = asNamedDecl(raw))
@@ -311,6 +315,7 @@ namespace lux::cxx::dref
         {
             auto* method = static_cast<CXXMethodDecl*>(raw);
             method->mangling = j.value("mangling", "");
+            method->invoke_name = j.value("invoke_name", "");
             method->is_variadic = j.value("is_variadic", false);
             method->visibility = (EVisibility)j.value("visibility", (int)EVisibility::INVALID);
             method->is_static = j.value("is_static", false);
@@ -582,6 +587,27 @@ namespace lux::cxx::dref
         {
             auto* rt = static_cast<const RecordType*>(t);
             j["decl_id"] = (rt->decl ? rt->decl->id : "");
+            if (!rt->template_name.empty())
+            {
+                j["template_name"] = rt->template_name;
+                nlohmann::json targs = nlohmann::json::array();
+                for (const auto& targ : rt->template_arguments)
+                {
+                    nlohmann::json ta;
+                    ta["kind"] = (targ.kind == TemplateArgument::Kind::Type) ? "type" : "integral";
+                    ta["spelling"] = targ.spelling;
+                    if (targ.kind == TemplateArgument::Kind::Type)
+                    {
+                        ta["type_id"] = targ.type ? targ.type->id : "";
+                    }
+                    else
+                    {
+                        ta["integral_value"] = targ.integral_value;
+                    }
+                    targs.push_back(std::move(ta));
+                }
+                j["template_arguments"] = std::move(targs);
+            }
         }
         break;
 		case ETypeKinds::ScopedEnum: [[fallthrough]];
@@ -725,6 +751,33 @@ namespace lux::cxx::dref
                     auto itd = declMap.find(did);
                     if (itd != declMap.end())
                         rt->decl = static_cast<TagDecl*>(itd->second);
+                }
+            }
+            rt->template_name = j.value("template_name", "");
+            if (j.contains("template_arguments"))
+            {
+                for (const auto& ta : j["template_arguments"])
+                {
+                    TemplateArgument targ;
+                    auto kind_str = ta.value("kind", "type");
+                    targ.spelling = ta.value("spelling", "");
+                    if (kind_str == "integral")
+                    {
+                        targ.kind = TemplateArgument::Kind::Integral;
+                        targ.integral_value = ta.value("integral_value", (int64_t)0);
+                    }
+                    else
+                    {
+                        targ.kind = TemplateArgument::Kind::Type;
+                        auto type_id = ta.value("type_id", "");
+                        if (!type_id.empty())
+                        {
+                            auto it = typeMap.find(type_id);
+                            if (it != typeMap.end())
+                                targ.type = it->second;
+                        }
+                    }
+                    rt->template_arguments.push_back(std::move(targ));
                 }
             }
         }

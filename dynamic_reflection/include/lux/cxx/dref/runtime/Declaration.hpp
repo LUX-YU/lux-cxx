@@ -116,18 +116,17 @@ namespace lux::cxx::dref {
         virtual ~DeclVisitor() = default;
 
         // Visit methods for each concrete decl type.
-        virtual void visit(EnumDecl*) {};
-        virtual void visit(RecordDecl*) {};
-        virtual void visit(CXXRecordDecl*) {};
-        virtual void visit(FieldDecl*) {};
-        virtual void visit(FunctionDecl*) {};
-        virtual void visit(CXXMethodDecl*) {};
-        virtual void visit(ParmVarDecl*) {};
-
-        virtual void visit(CXXConstructorDecl* decl) {};
-        virtual void visit(CXXConversionDecl* decl) {};
-        virtual void visit(CXXDestructorDecl* decl) {};
-        virtual void visit(VarDecl* decl) {};
+        virtual void visit(EnumDecl*) {}
+        virtual void visit(RecordDecl*) {}
+        virtual void visit(CXXRecordDecl*) {}
+        virtual void visit(FieldDecl*) {}
+        virtual void visit(FunctionDecl*) {}
+        virtual void visit(CXXMethodDecl*) {}
+        virtual void visit(ParmVarDecl*) {}
+        virtual void visit(CXXConstructorDecl*) {}
+        virtual void visit(CXXConversionDecl*) {}
+        virtual void visit(CXXDestructorDecl*) {}
+        virtual void visit(VarDecl*) {}
     };
 
     /**
@@ -352,17 +351,38 @@ namespace lux::cxx::dref {
     /**
      * CXXConstructorDecl: Represents a constructor in a C++ class.
      */
-    class CXXConstructorDecl final : public CXXMethodDecl {};
+    class CXXConstructorDecl final : public CXXMethodDecl
+    {
+    public:
+        void accept(DeclVisitor* visitor) override
+        {
+            visitor->visit(this);
+        }
+    };
 
     /**
      * CXXConversionDecl: Represents a user-defined conversion function in C++ (e.g. operator int()).
      */
-    class CXXConversionDecl final : public CXXMethodDecl {};
+    class CXXConversionDecl final : public CXXMethodDecl
+    {
+    public:
+        void accept(DeclVisitor* visitor) override
+        {
+            visitor->visit(this);
+        }
+    };
 
     /**
      * CXXDestructorDecl: Represents a destructor in a C++ class.
      */
-    class CXXDestructorDecl final : public CXXMethodDecl {};
+    class CXXDestructorDecl final : public CXXMethodDecl
+    {
+    public:
+        void accept(DeclVisitor* visitor) override
+        {
+            visitor->visit(this);
+        }
+    };
 
     /**
      * VarDecl: Represents a variable declaration (non-parameter) in C/C++,

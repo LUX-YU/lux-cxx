@@ -70,7 +70,22 @@ namespace lux::cxx::dref
         decl.is_virtual     = cursor.isMethodVirtual();
         decl.is_static      = cursor.isMethodStatic();
         decl.is_const       = cursor.isMethodConst();
-		decl.is_volatile    = cursor.cursorType().isVolatileQualifiedType();
+        // libclang doesn't expose clang_CXXMethod_isVolatile, so we check the type spelling
+        {
+            auto type_spelling = cursor.cursorType().typeSpelling().to_std();
+            // The type spelling for a volatile method ends with "volatile" or "const volatile"
+            // e.g. "void () volatile", "void () const volatile"
+            auto pos = type_spelling.rfind(')');
+            if (pos != std::string::npos)
+            {
+                auto suffix = type_spelling.substr(pos);
+                decl.is_volatile = (suffix.find("volatile") != std::string::npos);
+            }
+            else
+            {
+                decl.is_volatile = false;
+            }
+        }
         // Delegate to the generic function declaration parser for additional parsing
         parseFunctionDecl(cursor, decl);
     }
@@ -167,6 +182,16 @@ namespace lux::cxx::dref
                     // Store the destructor declaration (assuming one destructor per record)
                     decl.destructor_decl = method_decl.get();
                     // Register the destructor declaration
+                    registerDeclaration(std::move(method_decl));
+                }
+                else if (cursor_kind == CXCursor_ConversionFunction)
+                {
+                    // Parse a conversion operator (e.g. operator int(), operator bool())
+                    auto method_decl = std::make_unique<CXXConversionDecl>();
+                    method_decl->kind = EDeclKind::CXX_CONVERSION_DECL;
+                    parseCxxMethodDecl(cursor, *method_decl);
+                    method_decl->parent_class = &decl;
+                    decl.method_decls.push_back(method_decl.get());
                     registerDeclaration(std::move(method_decl));
                 }
                 else if (cursor_kind == CXCursor_CXXBaseSpecifier)

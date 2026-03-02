@@ -24,6 +24,7 @@ int main(int argc, char* argv[])
 
 	std::vector<std::string> compile_commands = {
 		"-D__LUX_PARSE_TIME__=1",
+		"-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH",
 		"-std=c++20",
 		"-I" + (dref_project_dir / "include").string(),
 	};

@@ -1,6 +1,7 @@
 /.vs
 /.vscode
 /.idea
+/.internal
 /cpp.hint
 /cmake-build-*
 /build

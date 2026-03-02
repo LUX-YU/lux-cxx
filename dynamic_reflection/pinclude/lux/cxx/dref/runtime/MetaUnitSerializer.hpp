@@ -8,7 +8,7 @@
 
 namespace lux::cxx::dref
 {
-    static inline std::string declKindToString(EDeclKind k)
+    inline std::string declKindToString(EDeclKind k)
     {
         switch (k)
         {
@@ -28,7 +28,7 @@ namespace lux::cxx::dref
         }
     }
 
-    static inline EDeclKind stringToDeclKind(const std::string& s)
+    inline EDeclKind stringToDeclKind(const std::string& s)
     {
         // 简单示意
         if (s == "EnumDecl")                 return EDeclKind::ENUM_DECL;
@@ -46,7 +46,7 @@ namespace lux::cxx::dref
     }
 
     // 同理给 TypeKinds
-    static inline std::string typeKindToString(ETypeKinds k)
+    inline std::string typeKindToString(ETypeKinds k)
     {
         switch (k)
         {
@@ -68,7 +68,7 @@ namespace lux::cxx::dref
         }
     }
 
-    static inline ETypeKinds stringToTypeKind(const std::string& s)
+    inline ETypeKinds stringToTypeKind(const std::string& s)
     {
         if (s == "BuiltinType")              return ETypeKinds::Builtin;
         else if (s == "PointerType")         return ETypeKinds::Pointer;
@@ -86,7 +86,7 @@ namespace lux::cxx::dref
         return ETypeKinds::Unknown;
     }
 
-    static inline NamedDecl* asNamedDecl(Decl* d)
+    inline NamedDecl* asNamedDecl(Decl* d)
     {
         if (!d) return nullptr;
 
@@ -110,7 +110,7 @@ namespace lux::cxx::dref
         }
     }
 
-    static inline const NamedDecl* asNamedDecl(const Decl* d)
+    inline const NamedDecl* asNamedDecl(const Decl* d)
     {
         return asNamedDecl(const_cast<Decl*>(d));
     }

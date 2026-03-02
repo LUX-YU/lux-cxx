@@ -25,6 +25,17 @@ target_link_libraries(
 		lux::cxx::dynamic_reflection_runtime
 )
 
+add_executable(
+	extended_coverage_test
+	${CMAKE_CURRENT_SOURCE_DIR}/extended_coverage_test.cpp
+)
+
+target_link_libraries(
+	extended_coverage_test
+	PRIVATE
+		lux::cxx::dynamic_reflection_parser
+)
+
 get_filename_component(DYNAMIC_REFLECTION_BINARAY_DIR ${CMAKE_CURRENT_BINARY_DIR}/.. ABSOLUTE)
 message(STATUS "DYNAMIC_REFLECTION_BINARAY_DIR: ${DYNAMIC_REFLECTION_BINARAY_DIR}")
 find_program(

@@ -60,10 +60,12 @@ namespace lux::cxx::dref
 
 			std::vector<std::string> error_list;
 			for (unsigned int currentDiag = 0; currentDiag < nbDiag; ++currentDiag) {
-				const CXDiagnostic diagnostic = clang_getDiagnostic(_unit, currentDiag);
-				const CXString errorString = clang_formatDiagnostic(diagnostic, clang_defaultDiagnosticDisplayOptions());
+				CXDiagnostic diagnostic = clang_getDiagnostic(_unit, currentDiag);
+				CXString errorString = clang_formatDiagnostic(diagnostic, clang_defaultDiagnosticDisplayOptions());
 				std::string tmp{clang_getCString(errorString)};
 				error_list.push_back(std::move(tmp));
+				clang_disposeString(errorString);
+				clang_disposeDiagnostic(diagnostic);
 			}
 			return error_list;
 		}

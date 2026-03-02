@@ -6,6 +6,7 @@
 #include <numeric>
 #include <iostream>
 #include <sstream>
+#include <algorithm>
 
 namespace lux::cxx::dref
 {
@@ -27,7 +28,8 @@ namespace lux::cxx::dref
 
 	[[nodiscard]] Decl* CxxParserImpl::getDeclaration(const std::string& id) const
 	{
-		return _meta_unit_data->declaration_map[id];
+		auto it = _meta_unit_data->declaration_map.find(id);
+		return it != _meta_unit_data->declaration_map.end() ? it->second : nullptr;
 	}
 
 	[[nodiscard]] bool CxxParserImpl::hasType(const std::string& id) const
@@ -36,18 +38,19 @@ namespace lux::cxx::dref
 	}
 	[[nodiscard]] Type* CxxParserImpl::getType(const std::string& id) const
 	{
-		return _meta_unit_data->type_map[id];
+		auto it = _meta_unit_data->type_map.find(id);
+		return it != _meta_unit_data->type_map.end() ? it->second : nullptr;
 	}
 
 	Type* CxxParserImpl::registerType(std::unique_ptr<Type> type)
 	{
-		if (_meta_unit_data->type_map.contains(type->id))
+		auto [it, inserted] = _meta_unit_data->type_map.try_emplace(type->id, type.get());
+		if (!inserted)
 		{
-			return _meta_unit_data->type_map[type->id];
+			return it->second;
 		}
 
 		const auto raw_ptr = type.get();
-		_meta_unit_data->type_map[type->id] = raw_ptr;
 		_meta_unit_data->types.emplace_back(std::move(type));
 
 		return raw_ptr;
@@ -55,12 +58,12 @@ namespace lux::cxx::dref
 
 	Decl* CxxParserImpl::registerDeclaration(std::unique_ptr<Decl> decl, const bool is_marked)
 	{
-		if (_meta_unit_data->declaration_map.contains(decl->id))
+		auto [it, inserted] = _meta_unit_data->declaration_map.try_emplace(decl->id, decl.get());
+		if (!inserted)
 		{
-			return _meta_unit_data->declaration_map[decl->id];
+			return it->second;
 		}
 		const auto raw_ptr = decl.get();
-		_meta_unit_data->declaration_map[decl->id] = raw_ptr;
 		_meta_unit_data->declarations.push_back(std::move(decl));
 
 		if (is_marked)
@@ -224,6 +227,18 @@ namespace lux::cxx::dref
 		 * @param excludeDeclarationsFromPCH
 		 */
 		_clang_index = clang_createIndex(0, 1);
+
+		// Automatically inject MSVC STL compatibility flags so that libclang
+		// (which may report an older Clang version) can parse MSVC STL headers
+		// without triggering the STL1000 static_assert version check.
+#ifdef _MSC_VER
+		auto& cmds = _options.commands;
+		const std::string mismatch_flag = "-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH";
+		if (std::find(cmds.begin(), cmds.end(), mismatch_flag) == cmds.end())
+		{
+			cmds.push_back(mismatch_flag);
+		}
+#endif
 	}
 
 	CxxParserImpl::~CxxParserImpl()
@@ -234,6 +249,12 @@ namespace lux::cxx::dref
 	ParseResult CxxParserImpl::parse(std::string_view file)
 	{
 		auto translate_unit = translate(file, _options.commands);
+		if (!translate_unit.isValid())
+		{
+			if (_callback) _callback("Failed to parse translation unit: " + std::string(file));
+			return std::make_pair(EParseResult::FAILED, MetaUnit{});
+		}
+
 		auto error_list = translate_unit.diagnostics();
 		for (auto& str : error_list)
 		{
@@ -295,6 +316,7 @@ namespace lux::cxx::dref
 		switch(cursor.cursorKind().kindEnum())
 		{
 			case CXCursor_StructDecl: [[fallthrough]];
+			case CXCursor_UnionDecl: [[fallthrough]];
 			case CXCursor_ClassDecl: // implement
 			{
 				auto class_decl = std::make_unique<CXXRecordDecl>();
@@ -382,26 +404,22 @@ namespace lux::cxx::dref
 		CXTranslationUnit translation_unit;
 
 		const int commands_size = static_cast<int>(commands.size());
-		// +1 for add definition
-		const char** _c_commands = new const char*[commands_size];
-
+		std::vector<const char*> c_commands(commands_size);
 		for (size_t i = 0; i < commands_size; i++)
 		{
-			_c_commands[i] = commands[i].data();
+			c_commands[i] = commands[i].data();
 		}
 
 		CXErrorCode error_code = clang_parseTranslationUnit2(
 			_clang_index,           // CXIndex
 			file_path.data(),       // source_filename
-			_c_commands,            // command line args
+			c_commands.data(),      // command line args
 			commands_size,          // num_command_line_args
 			nullptr,                // unsaved_files
 			0,                      // num_unsaved_files
 			CXTranslationUnit_None, // option
 			&translation_unit       // CXTranslationUnit
 		);
-
-		delete[] _c_commands;
 
 		return TranslationUnit(error_code == CXErrorCode::CXError_Success ? translation_unit : nullptr);
 	}
@@ -416,11 +434,6 @@ namespace lux::cxx::dref
 		type.name = clang_type.typeSpelling().to_std();
 		type.size = clang_type.typeSizeof();
 		type.align = clang_type.typeAlignOf();
-
-		if (type.is_const)
-		{
-			clang_type;
-		}
 	}
 
 	void CxxParserImpl::parseBuiltinType(const ClangType& clang_type, BuiltinType::EBuiltinKind kind, BuiltinType& type)
@@ -436,12 +449,12 @@ namespace lux::cxx::dref
 		if (type.is_pointer_to_member)
 		{
 			type.kind = type.pointee->kind == ETypeKinds::Function
-				? ETypeKinds::PointerToFunction : ETypeKinds::PointerToObject;
+				? ETypeKinds::PointerToMemberFunction : ETypeKinds::PointerToDataMember;
 		}
 		else
 		{
 			type.kind = type.pointee->kind == ETypeKinds::Function
-				? ETypeKinds::PointerToMemberFunction : ETypeKinds::PointerToDataMember;
+				? ETypeKinds::PointerToFunction : ETypeKinds::PointerToObject;
 		}
 		parseBasicType(clang_type, type);
 	}
@@ -456,6 +469,105 @@ namespace lux::cxx::dref
 	{
 		type.kind = ETypeKinds::Record;
 		parseBasicType(clang_type, type);
+
+		// Extract template argument information
+		const int num_template_args = clang_type.canonicalType().getNumTemplateArguments();
+		if (num_template_args > 0)
+		{
+			// Extract template name by stripping "<...>" from the type spelling
+			const auto& type_name = type.name;
+			auto angle_pos = type_name.find('<');
+			if (angle_pos != std::string::npos)
+			{
+				type.template_name = type_name.substr(0, angle_pos);
+			}
+			else
+			{
+				// Canonical name might have the angle brackets
+				const auto& canonical_name = type.id;
+				auto cangle_pos = canonical_name.find('<');
+				type.template_name = (cangle_pos != std::string::npos)
+					? canonical_name.substr(0, cangle_pos)
+					: type_name;
+			}
+
+			const auto canonical_type = clang_type.canonicalType();
+			for (int i = 0; i < num_template_args; i++)
+			{
+				TemplateArgument targ;
+				auto arg_type = canonical_type.getTemplateArgumentAsType(i);
+				if (arg_type.kind() != CXType_Invalid)
+				{
+					// Type template argument
+					targ.kind = TemplateArgument::Kind::Type;
+					targ.type = createOrFindType(arg_type);
+					targ.spelling = arg_type.typeSpelling().to_std();
+				}
+				else
+				{
+					// Non-type template argument (e.g., integral value)
+					// libclang C API doesn't expose non-type arg values directly,
+					// so we extract from the type spelling
+					targ.kind = TemplateArgument::Kind::Integral;
+					targ.spelling = "";
+					targ.integral_value = 0;
+
+					// Try to extract the integral value from the canonical spelling
+					// e.g., "std::array<int, 5>" -> find "5" after the last comma in template args
+					const auto& canonical_spelling = type.id;
+					// Parse the i-th non-type argument from the spelling
+					size_t depth = 0;
+					int current_arg = 0;
+					size_t arg_start = 0;
+					bool found_start = false;
+					for (size_t ci = 0; ci < canonical_spelling.size(); ci++)
+					{
+						char ch = canonical_spelling[ci];
+						if (ch == '<')
+						{
+							if (depth == 0 && !found_start)
+							{
+								arg_start = ci + 1;
+								found_start = true;
+							}
+							depth++;
+						}
+						else if (ch == '>')
+						{
+							depth--;
+							if (depth == 0 && current_arg == i)
+							{
+								auto arg_str = canonical_spelling.substr(arg_start, ci - arg_start);
+								// Trim whitespace
+								targ.spelling = std::string(lux::cxx::algorithm::trim(arg_str));
+								break;
+							}
+						}
+						else if (ch == ',' && depth == 1)
+						{
+							if (current_arg == i)
+							{
+								auto arg_str = canonical_spelling.substr(arg_start, ci - arg_start);
+								targ.spelling = std::string(lux::cxx::algorithm::trim(arg_str));
+								break;
+							}
+							current_arg++;
+							arg_start = ci + 1;
+						}
+					}
+
+					// Try to parse as integer
+					if (!targ.spelling.empty())
+					{
+						const char* begin = targ.spelling.data();
+						const char* end = begin + targ.spelling.size();
+						auto [ptr, ec] = std::from_chars(begin, end, targ.integral_value);
+						(void)ptr; (void)ec; // If parsing fails, integral_value stays 0
+					}
+				}
+				type.template_arguments.push_back(std::move(targ));
+			}
+		}
 	}
 
 	void CxxParserImpl::parseEnumType(const ClangType& clang_type, EnumType& type)
@@ -634,7 +746,7 @@ namespace lux::cxx::dref
 		}
 		case CXType_Typedef:
 		{
-			return createOrFindType(clang_type);
+			return createOrFindType(canonical_type);
 		}
 		/* for obj - c
 		// case CXType_ObjCInterface:
@@ -661,7 +773,7 @@ namespace lux::cxx::dref
 		}
 		// case CXType_Auto:
 		case CXType_Elaborated:
-			return createOrFindType(clang_type);
+			return createOrFindType(canonical_type);
 			// case CXType_Attributed:
 		default:
 		{

@@ -30,6 +30,10 @@ namespace lux::cxx::dref
 		bool					 serial_meta;
 		// 是否不生成任何文件
 		bool                     dry_run;
+		// C++ 标准版本，默认 c++20
+		std::string              cxx_standard = "c++20";
+		// 预处理宏定义，默认 __LUX_PARSE_TIME__=1
+		std::vector<std::string> preprocessor_defines = {"__LUX_PARSE_TIME__=1"};
 	};
 
 	class LUX_CXX_PUBLIC GeneratorHelper
