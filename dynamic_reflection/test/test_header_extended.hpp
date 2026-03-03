@@ -324,3 +324,19 @@ struct LUX_META(marked) ECSComponent
     // Vector of vectors: std::vector<std::vector<float>>
     std::vector<std::vector<float>> matrix;
 };
+
+// ============================================================
+// 23. Member exclusion via LUX_META(no_reflect)
+// ============================================================
+struct LUX_META(marked) SelectiveReflectStruct
+{
+    int visible_field_1;
+    float visible_field_2;
+    LUX_META(no_reflect) int hidden_field;
+    LUX_META(no_reflect) double another_hidden;
+
+    void visible_method() {}
+    LUX_META(no_reflect) void hidden_method() {}
+    int visible_getter() { return 0; }
+    LUX_META(no_reflect) void hidden_setter(int v) {}
+};

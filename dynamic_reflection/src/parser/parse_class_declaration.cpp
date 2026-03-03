@@ -122,6 +122,17 @@ namespace lux::cxx::dref
      * @param cursor A Cursor object representing the record declaration.
      * @param decl A reference to a CXXRecordDecl object that will be populated with the parsed record information.
      */
+    bool CxxParserImpl::shouldExcludeMember(const Cursor& cursor) const
+    {
+        if (_options.exclude_symbol.empty()) return false;
+        auto annotations = parseAnnotations(cursor);
+        for (const auto& attr : annotations)
+        {
+            if (attr == _options.exclude_symbol) return true;
+        }
+        return false;
+    }
+
     void CxxParserImpl::parseCXXRecordDecl(const Cursor& cursor, CXXRecordDecl& decl)
     {
         // Iterate over each child element in the record declaration
@@ -131,6 +142,8 @@ namespace lux::cxx::dref
                 // Determine the kind of the child cursor and handle accordingly
                 if (const auto cursor_kind = cursor.cursorKind(); cursor_kind == CXCursor_FieldDecl)
                 {
+                    // Skip members annotated with the exclude symbol
+                    if (shouldExcludeMember(cursor)) return CXChildVisit_Continue;
                     // Parse a field declaration
                     auto field_decl = std::make_unique<FieldDecl>();
                     parseFieldDecl(cursor, *field_decl);
@@ -143,6 +156,8 @@ namespace lux::cxx::dref
                 }
                 else if (cursor_kind == CXCursor_CXXMethod)
                 {
+                    // Skip methods annotated with the exclude symbol
+                    if (shouldExcludeMember(cursor)) return CXChildVisit_Continue;
                     // Parse a non-constructor/non-destructor method declaration
                     auto method_decl = std::make_unique<CXXMethodDecl>();
                     method_decl->kind = EDeclKind::CXX_METHOD_DECL;
@@ -186,6 +201,8 @@ namespace lux::cxx::dref
                 }
                 else if (cursor_kind == CXCursor_ConversionFunction)
                 {
+                    // Skip conversion operators annotated with the exclude symbol
+                    if (shouldExcludeMember(cursor)) return CXChildVisit_Continue;
                     // Parse a conversion operator (e.g. operator int(), operator bool())
                     auto method_decl = std::make_unique<CXXConversionDecl>();
                     method_decl->kind = EDeclKind::CXX_CONVERSION_DECL;

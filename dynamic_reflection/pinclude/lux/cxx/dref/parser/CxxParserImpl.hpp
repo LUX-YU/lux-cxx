@@ -66,6 +66,7 @@ namespace lux::cxx::dref
         void parseCxxMethodDecl(const Cursor& cursor,    CXXMethodDecl& decl);
         void parseFieldDecl(const Cursor& cursor, FieldDecl& decl) ;
         void parseCXXRecordDecl(const Cursor& cursor, CXXRecordDecl& decl);
+        bool shouldExcludeMember(const Cursor& cursor) const;
     	void parseEnumDecl(const Cursor& cursor, EnumDecl& decl);
         static void parseBasicType(const ClangType& clang_type, Type& type);
         static void parseBuiltinType(const ClangType& clang_type, BuiltinType::EBuiltinKind kind, BuiltinType& type);

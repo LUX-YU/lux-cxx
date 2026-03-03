@@ -581,6 +581,58 @@ int main(int argc, char* argv[])
         check(found, "ECSComponent found");
     }
 
+    // 23. Member exclusion via LUX_META(no_reflect)
+    {
+        bool found = false;
+        for (auto* r : records) {
+            if (r->full_qualified_name == "SelectiveReflectStruct") {
+                found = true;
+                // Should have only 2 visible fields (visible_field_1, visible_field_2)
+                // hidden_field and another_hidden are excluded
+                check(r->field_decls.size() == 2, 
+                      "SelectiveReflectStruct has 2 visible fields (hidden excluded)");
+                
+                // Verify the visible fields are the right ones
+                bool has_visible_1 = false, has_visible_2 = false;
+                bool has_hidden = false;
+                for (auto* f : r->field_decls) {
+                    if (f->spelling == "visible_field_1") has_visible_1 = true;
+                    if (f->spelling == "visible_field_2") has_visible_2 = true;
+                    if (f->spelling == "hidden_field" || f->spelling == "another_hidden") 
+                        has_hidden = true;
+                }
+                check(has_visible_1, "visible_field_1 is present");
+                check(has_visible_2, "visible_field_2 is present");
+                check(!has_hidden, "hidden fields are NOT present");
+
+                // Should have only 2 visible methods (visible_method, visible_getter)
+                // hidden_method and hidden_setter are excluded
+                check(r->method_decls.size() == 2,
+                      "SelectiveReflectStruct has 2 visible methods (hidden excluded)");
+                
+                bool has_visible_method = false, has_visible_getter = false;
+                bool has_hidden_method = false;
+                for (auto* m : r->method_decls) {
+                    if (m->spelling == "visible_method") has_visible_method = true;
+                    if (m->spelling == "visible_getter") has_visible_getter = true;
+                    if (m->spelling == "hidden_method" || m->spelling == "hidden_setter")
+                        has_hidden_method = true;
+                }
+                check(has_visible_method, "visible_method is present");
+                check(has_visible_getter, "visible_getter is present");
+                check(!has_hidden_method, "hidden methods are NOT present");
+
+                std::cout << "  SelectiveReflectStruct fields: " << r->field_decls.size() << std::endl;
+                for (auto* f : r->field_decls) 
+                    std::cout << "    field: " << f->spelling << std::endl;
+                std::cout << "  SelectiveReflectStruct methods: " << r->method_decls.size() << std::endl;
+                for (auto* m : r->method_decls)
+                    std::cout << "    method: " << m->spelling << std::endl;
+            }
+        }
+        check(found, "SelectiveReflectStruct found");
+    }
+
     // Round-trip serialization test
     {
         std::string json_str = meta_json_str;

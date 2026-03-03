@@ -49,6 +49,9 @@ namespace lux::cxx::dref
         // version The version of the library
 		std::string              version;
 		std::string              marker_symbol;
+		// Symbol used to exclude individual members from reflection.
+		// Members annotated with LUX_META(<exclude_symbol>) will be skipped.
+		std::string              exclude_symbol = "no_reflect";
         // commands The commands to pass to the parser
 		std::vector<std::string> commands;
 		std::string              pch_file;
