@@ -30,3 +30,14 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::container
 )
+
+add_executable(
+	slot_map_test
+	slot_map_test.cpp
+)
+
+target_link_libraries(
+	slot_map_test
+	PRIVATE
+	lux::cxx::container
+)

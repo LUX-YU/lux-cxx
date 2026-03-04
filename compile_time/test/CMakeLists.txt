@@ -52,3 +52,25 @@ target_link_libraries(
     PRIVATE
     compile_time
 )
+
+add_executable(
+    fixed_string_test
+    fixed_string_test.cpp
+)
+
+target_link_libraries(
+    fixed_string_test
+    PRIVATE
+    compile_time
+)
+
+add_executable(
+    type_map_test
+    type_map_test.cpp
+)
+
+target_link_libraries(
+    type_map_test
+    PRIVATE
+    compile_time
+)
