@@ -9,8 +9,9 @@
  *
  * Two thread-safety modes are available via the @c ThreadSafe template parameter:
  * - @c false (default): zero-overhead single-threaded path (no atomics).
- * - @c true : lock-free free list using tagged-pointer CAS to avoid ABA problems.
- *   Multiple threads may call @c acquire() and @c release() concurrently.
+ * - @c true : lock-free free list with per-thread cache to minimise CAS
+ *   contention. Multiple threads may call @c acquire() and @c release()
+ *   concurrently with near-zero contention in the common case.
  *
  * @copyright
  * Copyright (c) 2025 Chenhui Yu
@@ -188,9 +189,13 @@ namespace lux::cxx
      * Uses a plain intrusive free list — no atomic operations at all.
      *
      * @par Lock-free mode (`ThreadSafe = true`)
-     * Uses a lock-free intrusive free list with a tagged-pointer CAS
-     * to prevent ABA. Chunk allocation (which only happens when the
-     * free list is empty) is serialised with a lightweight @c std::mutex.
+     * Each thread maintains a **thread-local cache** of free slots.
+     * When the local cache is empty, the thread refills it by popping a
+     * batch from the global lock-free free list (one CAS). When the local
+     * cache exceeds a high-water mark, excess slots are flushed back to
+     * the global list (one CAS). This amortises CAS operations over many
+     * acquire/release calls, achieving near-single-threaded throughput
+     * under contention.
      *
      * @tparam T          Element type. Must satisfy @c std::is_destructible.
      * @tparam ChunkSize  Number of elements per chunk (default 64).
@@ -357,36 +362,67 @@ namespace lux::cxx
             free_head_st_ = node;
         }
 
-        // ═══ Lock-free free list (tagged-pointer CAS) ═══════════════════
+        // ═══ Lock-free free list with thread-local cache ════════════════
 
         /**
-         * @brief Allocates one slot from the lock-free free list.
-         *
-         * Uses a CAS loop on the tagged head pointer. If the free list is
-         * empty, falls back to @c grow() under a mutex to allocate a new
-         * chunk (this is the slow path and only happens O(N/ChunkSize) times).
+         * @brief Number of slots to transfer between thread-local cache
+         *        and the global free list in a single CAS batch.
          */
-        void* allocate_slot_lf()
+        static constexpr size_type LOCAL_CACHE_REFILL  = ChunkSize;
+        static constexpr size_type LOCAL_CACHE_HIGH_WATER = ChunkSize * 2;
+
+        /**
+         * @brief Per-thread cache: a plain (non-atomic) singly-linked list
+         *        of free slots private to each thread. Access is contention-free.
+         */
+        struct ThreadLocalCache
         {
-            // Fast path: pop from the lock-free free list.
+            detail::FreeNode* head  = nullptr;
+            size_type         count = 0;
+        };
+
+        /**
+         * @brief Returns the thread-local cache for this pool instance.
+         *
+         * Uses a static thread_local vector indexed by pool id to avoid
+         * cross-pool interference. The cache is lazily initialised.
+         */
+        ThreadLocalCache& get_tl_cache()
+        {
+            // Each pool instance gets a unique id for indexing into the
+            // thread-local array. This avoids the cost of a hash map.
+            thread_local std::vector<ThreadLocalCache> tl_caches;
+
+            auto id = pool_id_;
+            if (id >= tl_caches.size())
+                tl_caches.resize(id + 1);
+            return tl_caches[id];
+        }
+
+        /**
+         * @brief Pops up to @p count nodes from the global free list as a
+         *        linked batch in a single CAS.
+         * @return Head of the popped chain, or nullptr if the list is empty.
+         */
+        detail::FreeNode* global_pop_batch(size_type count)
+        {
             while (true)
             {
                 detail::TaggedPtr old_head = free_head_lf_.load(std::memory_order_acquire);
-
                 if (!old_head.ptr)
+                    return nullptr;
+
+                // Walk up to `count` nodes to find the split point.
+                detail::FreeNode* tail = old_head.ptr;
+                size_type walked = 1;
+                while (walked < count && tail->next)
                 {
-                    // Free list exhausted — grow under lock.
-                    std::lock_guard<std::mutex> lock(grow_mutex_);
-                    // Re-check after acquiring the lock (another thread may have grown).
-                    old_head = free_head_lf_.load(std::memory_order_acquire);
-                    if (!old_head.ptr)
-                        grow();
-                    // Retry the CAS loop with the fresh free list.
-                    continue;
+                    tail = tail->next;
+                    ++walked;
                 }
 
                 detail::TaggedPtr new_head;
-                new_head.ptr = old_head.ptr->next;
+                new_head.ptr = tail->next;
                 new_head.tag = old_head.tag + 1;
 
                 if (free_head_lf_.compare_exchange_weak(
@@ -394,32 +430,104 @@ namespace lux::cxx
                         std::memory_order_acq_rel,
                         std::memory_order_acquire))
                 {
-                    return static_cast<void*>(old_head.ptr);
+                    tail->next = nullptr; // terminate the batch chain
+                    return old_head.ptr;
                 }
-                // CAS failed — another thread raced us. Retry.
+                // CAS failed — retry.
             }
         }
 
         /**
-         * @brief Returns a slot to the lock-free free list.
+         * @brief Pushes a chain [first … last] onto the global free list
+         *        in a single CAS.
          */
-        void deallocate_slot_lf(void* ptr) noexcept
+        void global_push_batch(detail::FreeNode* first, detail::FreeNode* last) noexcept
         {
-            auto* node = static_cast<detail::FreeNode*>(ptr);
-
             detail::TaggedPtr old_head = free_head_lf_.load(std::memory_order_acquire);
             detail::TaggedPtr new_head;
-
             do
             {
-                node->next   = old_head.ptr;
-                new_head.ptr = node;
+                last->next   = old_head.ptr;
+                new_head.ptr = first;
                 new_head.tag = old_head.tag + 1;
             }
             while (!free_head_lf_.compare_exchange_weak(
                         old_head, new_head,
                         std::memory_order_acq_rel,
                         std::memory_order_acquire));
+        }
+
+        /**
+         * @brief Allocates one slot (lock-free path with thread-local cache).
+         */
+        void* allocate_slot_lf()
+        {
+            auto& cache = get_tl_cache();
+
+            // Fast path: pop from thread-local cache (no atomic).
+            if (cache.head)
+            {
+                detail::FreeNode* node = cache.head;
+                cache.head = node->next;
+                --cache.count;
+                return static_cast<void*>(node);
+            }
+
+            // Slow path: refill local cache from global list.
+            detail::FreeNode* batch = global_pop_batch(LOCAL_CACHE_REFILL);
+            if (!batch)
+            {
+                // Global list is also empty — grow.
+                std::lock_guard<std::mutex> lock(grow_mutex_);
+                // Double-check after lock.
+                batch = global_pop_batch(LOCAL_CACHE_REFILL);
+                if (!batch)
+                {
+                    grow();
+                    batch = global_pop_batch(LOCAL_CACHE_REFILL);
+                }
+            }
+
+            // Pop the first node for the caller, rest goes to local cache.
+            detail::FreeNode* result = batch;
+            cache.head = batch->next;
+            // Count the remaining nodes.
+            size_type cnt = 0;
+            for (auto* n = cache.head; n; n = n->next) ++cnt;
+            cache.count = cnt;
+
+            return static_cast<void*>(result);
+        }
+
+        /**
+         * @brief Returns a slot to the pool (lock-free path).
+         *        Pushes to thread-local cache; flushes excess to global if
+         *        the cache exceeds the high-water mark.
+         */
+        void deallocate_slot_lf(void* ptr) noexcept
+        {
+            auto& cache = get_tl_cache();
+
+            auto* node = static_cast<detail::FreeNode*>(ptr);
+            node->next = cache.head;
+            cache.head = node;
+            ++cache.count;
+
+            // If the local cache is too large, flush half back to the global list.
+            if (cache.count > LOCAL_CACHE_HIGH_WATER)
+            {
+                size_type to_flush = cache.count / 2;
+                detail::FreeNode* first = cache.head;
+                detail::FreeNode* prev  = first;
+                for (size_type i = 1; i < to_flush; ++i)
+                    prev = prev->next;
+
+                cache.head   = prev->next;
+                cache.count -= to_flush;
+
+                // prev is the last node in the batch to flush.
+                global_push_batch(first, prev);
+            }
         }
 
         // ═══ Dispatchers ════════════════════════════════════════════════
@@ -508,11 +616,19 @@ namespace lux::cxx
         // ─── single-threaded free list ──────────────────────────────────
         detail::FreeNode* free_head_st_ = nullptr;
 
-        // ─── lock-free free list ────────────────────────────────────────
+        // ─── lock-free free list + thread-local cache ───────────────────
         // alignas(64) avoids false sharing with adjacent members.
         alignas(64) std::atomic<detail::TaggedPtr> free_head_lf_{};
 
         std::mutex grow_mutex_;  ///< Serialises chunk allocation in lock-free mode.
+
+        /// Unique id for this pool instance, used to index thread-local caches.
+        static std::atomic<size_type>& next_pool_id()
+        {
+            static std::atomic<size_type> id{0};
+            return id;
+        }
+        size_type pool_id_ = next_pool_id().fetch_add(1, std::memory_order_relaxed);
     };
 
 } // namespace lux::cxx

@@ -19,3 +19,14 @@ target_link_libraries(
     PRIVATE
     lux::cxx::memory
 )
+
+add_executable(
+    object_pool_benchmark
+    object_pool_benchmark.cpp
+)
+
+target_link_libraries(
+    object_pool_benchmark
+    PRIVATE
+    lux::cxx::memory
+)
