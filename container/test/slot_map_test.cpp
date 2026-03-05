@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <unordered_set>
 
 using namespace lux::cxx;
 
@@ -116,7 +117,7 @@ void test_generation_invalidation()
 
     // Same slot index, different generation
     TEST_ASSERT(k1.index == k2.index);
-    TEST_ASSERT(k1.generation != k2.generation);
+    TEST_ASSERT(k1.gen != k2.gen);
 
     std::cout << "  generation invalidation tests passed" << std::endl;
 }
@@ -290,6 +291,92 @@ void test_interleaved_insert_erase()
     std::cout << "  interleaved insert/erase tests passed" << std::endl;
 }
 
+// ---- new API tests ----------------------------------------------------------
+
+void test_slotkey_valid_and_invalid()
+{
+    using Key = SlotKey<>;
+    Key null_key;
+    TEST_ASSERT(null_key.is_null());
+    TEST_ASSERT(!null_key.valid());
+
+    Key inv = Key::invalid();
+    TEST_ASSERT(inv.is_null());
+    TEST_ASSERT(!inv.valid());
+
+    SlotMap<int> map;
+    auto k = map.insert(42);
+    TEST_ASSERT(k.valid());
+    TEST_ASSERT(!k.is_null());
+
+    std::cout << "  valid()/invalid() tests passed" << std::endl;
+}
+
+void test_slotkey_hash()
+{
+    SlotMap<int> map;
+    auto k1 = map.insert(10);
+    auto k2 = map.insert(20);
+    auto k3 = map.insert(30);
+
+    using Key = decltype(k1);
+    std::unordered_set<Key, Key::Hash> key_set;
+    key_set.insert(k1);
+    key_set.insert(k2);
+    key_set.insert(k3);
+    TEST_ASSERT(key_set.size() == 3);
+    TEST_ASSERT(key_set.count(k1) == 1);
+    TEST_ASSERT(key_set.count(k2) == 1);
+    TEST_ASSERT(key_set.count(k3) == 1);
+
+    std::cout << "  SlotKey::Hash tests passed" << std::endl;
+}
+
+void test_slotkey_tag_discrimination()
+{
+    struct TagA;
+    struct TagB;
+    // SlotKey<TagA> and SlotKey<TagB> are different types — compile-time safety.
+    using KeyA = SlotKey<TagA>;
+    using KeyB = SlotKey<TagB>;
+    static_assert(!std::is_same_v<KeyA, KeyB>, "Tagged keys must be distinct types");
+
+    std::cout << "  tag discrimination tests passed" << std::endl;
+}
+
+void test_generation_starts_at_one()
+{
+    SlotMap<int> map;
+    auto k = map.insert(99);
+    // First allocation should have generation 1 (not 0).
+    TEST_ASSERT(k.gen == 1);
+
+    // Default-constructed key has gen 0 — can never match.
+    SlotMap<int>::key_type null_key;
+    TEST_ASSERT(null_key.gen == 0);
+    TEST_ASSERT(!map.is_valid(null_key));
+
+    std::cout << "  generation starts at 1 tests passed" << std::endl;
+}
+
+void test_capacity_and_shrink()
+{
+    SlotMap<int> map;
+    map.reserve(1000);
+    TEST_ASSERT(map.capacity() >= 1000);
+
+    for (int i = 0; i < 100; i++)
+        map.insert(i);
+    TEST_ASSERT(map.size() == 100);
+
+    map.shrink_to_fit();
+    // After shrink, capacity should be closer to size (implementation-dependent).
+    // Just ensure it doesn't crash and size is preserved.
+    TEST_ASSERT(map.size() == 100);
+
+    std::cout << "  capacity/shrink_to_fit tests passed" << std::endl;
+}
+
 int main()
 {
     std::cout << "slot_map tests:" << std::endl;
@@ -305,6 +392,11 @@ int main()
     test_reserve();
     test_move_only_values();
     test_interleaved_insert_erase();
+    test_slotkey_valid_and_invalid();
+    test_slotkey_hash();
+    test_slotkey_tag_discrimination();
+    test_generation_starts_at_one();
+    test_capacity_and_shrink();
     std::cout << "All slot_map tests passed!" << std::endl;
     return 0;
 }
