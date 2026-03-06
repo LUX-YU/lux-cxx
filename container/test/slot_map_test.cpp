@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <memory>
 #include <unordered_set>
 
 using namespace lux::cxx;
