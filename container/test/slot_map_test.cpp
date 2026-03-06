@@ -51,7 +51,7 @@ void test_find()
     TEST_ASSERT(*ptr == 42);
 
     // Null key
-    SlotMap<int>::key_type null_key;
+    SlotMap<int>::key_t null_key;
     TEST_ASSERT(null_key.is_null());
     TEST_ASSERT(map.find(null_key) == nullptr);
 
@@ -125,7 +125,7 @@ void test_generation_invalidation()
 void test_erase_all_and_reinsert()
 {
     SlotMap<int> map;
-    std::vector<SlotMap<int>::key_type> keys;
+    std::vector<SlotMap<int>::key_t> keys;
 
     for (int i = 0; i < 100; i++)
         keys.push_back(map.insert(i));
@@ -144,7 +144,7 @@ void test_erase_all_and_reinsert()
         TEST_ASSERT(!map.is_valid(k));
 
     // Reinsert — should reuse slots
-    std::vector<SlotMap<int>::key_type> new_keys;
+    std::vector<SlotMap<int>::key_t> new_keys;
     for (int i = 0; i < 50; i++)
         new_keys.push_back(map.insert(i * 10));
 
@@ -352,7 +352,7 @@ void test_generation_starts_at_one()
     TEST_ASSERT(k.gen == 1);
 
     // Default-constructed key has gen 0 — can never match.
-    SlotMap<int>::key_type null_key;
+    SlotMap<int>::key_t null_key;
     TEST_ASSERT(null_key.gen == 0);
     TEST_ASSERT(!map.is_valid(null_key));
 
