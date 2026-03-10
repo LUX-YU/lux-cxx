@@ -1,43 +1,75 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <set>
+#include <algorithm>
+#include <cctype>
 #include <lux/cxx/dref/generator/GeneratorHelper.hpp>
 
 namespace lux::cxx::dref
 {
+    static std::filesystem::path normalizedPath(const std::filesystem::path& in)
+    {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+
+        fs::path p = fs::weakly_canonical(in, ec);
+        if (ec)
+        {
+            ec.clear();
+            p = fs::absolute(in, ec);
+            if (ec)
+            {
+                p = in;
+            }
+        }
+
+        return p.lexically_normal();
+    }
+
+    static std::string normalizedPathKey(const std::filesystem::path& in)
+    {
+        auto p = normalizedPath(in);
+
+        std::string key = p.generic_string();
+
+#ifdef _WIN32
+        std::transform(key.begin(), key.end(), key.begin(),
+            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+#endif
+
+        return key;
+    }
+
     std::optional<std::filesystem::path> GeneratorHelper::findRelativeIncludePath(
         const std::filesystem::path& metaFile,
         const std::vector<std::filesystem::path>& includeList)
     {
         namespace fs = std::filesystem;
         std::error_code ec;
-        // Normalize the metaFile path
-        fs::path absFile = fs::canonical(metaFile, ec);
-        if (ec) {
-            // fallback to absolute
-            ec.clear();
-            absFile = fs::absolute(metaFile, ec);
-            if (ec) {
-                return std::nullopt;
-            }
-        }
+        const fs::path absFile = normalizedPath(metaFile);
+        const std::string absFileKey = normalizedPathKey(absFile);
 
         for (const auto& incPath : includeList)
         {
-            ec.clear();
-            fs::path absInc = fs::canonical(incPath, ec);
-            if (ec) {
-                ec.clear();
-                absInc = fs::absolute(incPath, ec);
-                if (ec) {
-                    // skip if we fail
-                    continue;
-                }
+            const fs::path absInc = normalizedPath(incPath);
+            std::string absIncKey = normalizedPathKey(absInc);
+
+            // Ensure a strict directory boundary: "x/y" should not match "x/yz".
+            if (!absIncKey.empty() && absIncKey.back() != '/')
+            {
+                absIncKey.push_back('/');
+            }
+
+            const bool is_same_path = absFileKey == normalizedPathKey(absInc);
+            const bool is_child_path = !absIncKey.empty() && absFileKey.rfind(absIncKey, 0) == 0;
+            if (!is_same_path && !is_child_path)
+            {
+                continue;
             }
 
             fs::path rel = fs::relative(absFile, absInc, ec);
-            if (!ec && !rel.empty() && *rel.begin() != "..") {
-                return rel; // e.g. "subdir/foo.hpp"
+            if (!ec && !rel.empty()) {
+                return rel.lexically_normal(); // e.g. "subdir/foo.hpp"
             }
         }
         return std::nullopt;
@@ -169,6 +201,7 @@ namespace lux::cxx::dref
         }
 
         std::set<fs::path> includes;
+        const std::string source_file_key = normalizedPathKey(source_file_path);
         for (const auto& entry : j)
         {
             if (!entry.is_object())
@@ -178,7 +211,7 @@ namespace lux::cxx::dref
                 continue;
 
             std::string fileStr = entry["file"].get<std::string>();
-            if (fs::path(fileStr) != source_file_path)
+            if (normalizedPathKey(fs::path(fileStr)) != source_file_key)
                 continue;
 
             fs::path baseDir = entry["directory"].get<std::string>();
