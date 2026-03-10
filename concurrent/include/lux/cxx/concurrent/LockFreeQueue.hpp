@@ -41,7 +41,7 @@ namespace lux::cxx
             return ++v;
         }
 
-        using Storage = std::aligned_storage_t<sizeof(T), alignof(T)>;
+        struct alignas(alignof(T)) Storage { unsigned char data[sizeof(T)]; };
 
     public:
         // ------------------------------------------------------------------

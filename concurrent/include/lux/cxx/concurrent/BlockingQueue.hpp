@@ -47,7 +47,7 @@ namespace lux::cxx
     class BlockingRingQueue
     {
     private:
-        using storage_t = std::aligned_storage_t<sizeof(T), alignof(T)>;
+        struct alignas(alignof(T)) storage_t { unsigned char data[sizeof(T)]; };
 
         // Helper to get pointer to element slot
         inline T* ptr_at(std::size_t index) noexcept
