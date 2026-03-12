@@ -47,6 +47,7 @@ component_add_internal_dependencies(
     dynamic_reflection_runtime
         lux::cxx::algorithm
         lux::cxx::static_reflection
+        lux::cxx::compile_time
 )
 
 component_add_transitive_commands(

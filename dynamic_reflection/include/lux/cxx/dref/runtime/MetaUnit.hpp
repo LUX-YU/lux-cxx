@@ -55,6 +55,15 @@ namespace lux::cxx::dref
 		const Decl* findDeclById(const std::string& id) const;
 		const Type* findTypeById(const std::string& id) const;
 
+		[[nodiscard]] Decl*  getDeclAt(size_t idx) const;
+		[[nodiscard]] Type*  getTypeAt(size_t idx) const;
+
+		template<typename T>
+		[[nodiscard]] T* getDeclAs(size_t idx) const
+		{
+			return dynamic_cast<T*>(getDeclAt(idx));
+		}
+
 		nlohmann::json toJson() const;
 		static void fromJson(const std::string& json, MetaUnit& unit);
 

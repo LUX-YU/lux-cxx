@@ -141,14 +141,14 @@ int main(int argc, char* argv[])
         for (auto* r : records) {
             if (r->full_qualified_name == "TestVolatileClass") {
                 found = true;
-                for (auto* m : r->method_decls) {
+                for (auto midx : r->method_decls) {
+                    auto* m = meta.getDeclAs<CXXMethodDecl>(midx);
+                    if (!m) continue;
                     if (m->spelling == "volatile_method") {
-                        auto* method = dynamic_cast<CXXMethodDecl*>(m);
-                        check(method && method->is_volatile, "volatile_method has volatile qualifier");
+                        check(m->is_volatile, "volatile_method has volatile qualifier");
                     }
                     if (m->spelling == "const_volatile_method") {
-                        auto* method = dynamic_cast<CXXMethodDecl*>(m);
-                        check(method && method->is_const && method->is_volatile,
+                        check(m->is_const && m->is_volatile,
                               "const_volatile_method has const+volatile");
                     }
                 }
@@ -175,9 +175,9 @@ int main(int argc, char* argv[])
         for (auto* r : records) {
             if (r->full_qualified_name == "VirtualBase") {
                 found_base = true;
-                check(r->destructor_decl != nullptr, "VirtualBase has destructor");
-                if (r->destructor_decl) {
-                    auto* dtor = dynamic_cast<CXXMethodDecl*>(r->destructor_decl);
+                check(r->destructor_decl != INVALID_DECL_INDEX, "VirtualBase has destructor");
+                if (r->destructor_decl != INVALID_DECL_INDEX) {
+                    auto* dtor = meta.getDeclAs<CXXMethodDecl>(r->destructor_decl);
                     check(dtor && dtor->is_virtual, "VirtualBase destructor is virtual");
                 }
                 check(r->is_abstract, "VirtualBase is abstract");
@@ -223,9 +223,11 @@ int main(int argc, char* argv[])
             if (r->full_qualified_name == "ConversionClass") {
                 found = true;
                 check(r->method_decls.size() == 2, "ConversionClass has 2 conversion operators");
-                for (auto* m : r->method_decls) {
-                    std::cout << "    method: " << m->full_qualified_name 
-                              << " kind=" << (int)m->kind << std::endl;
+                for (auto midx : r->method_decls) {
+                    auto* m = meta.getDeclAs<CXXMethodDecl>(midx);
+                    if (m)
+                        std::cout << "    method: " << m->full_qualified_name 
+                                  << " kind=" << (int)m->kind << std::endl;
                 }
             }
         }
@@ -240,8 +242,9 @@ int main(int argc, char* argv[])
                 found = true;
                 // instance_val should be the field, static_count may not appear
                 std::cout << "  StaticFieldStruct fields: " << r->field_decls.size() << std::endl;
-                for (auto* f : r->field_decls) {
-                    std::cout << "    field: " << f->spelling << std::endl;
+                for (auto fidx : r->field_decls) {
+                    auto* f = meta.getDeclAs<FieldDecl>(fidx);
+                    if (f) std::cout << "    field: " << f->spelling << std::endl;
                 }
             }
         }
@@ -257,7 +260,8 @@ int main(int argc, char* argv[])
                 check(r->field_decls.size() == 3, "ConstFieldStruct has 3 fields");
                 if (r->field_decls.size() >= 1) {
                     // First field should be const int
-                    auto* type = r->field_decls[0]->type;
+                    auto* fd   = meta.getDeclAs<FieldDecl>(r->field_decls[0]);
+                    auto* type = fd ? fd->type : nullptr;
                     check(type && type->is_const, "ConstFieldStruct::ci has const type");
                 }
             }
@@ -284,8 +288,8 @@ int main(int argc, char* argv[])
             if (r->full_qualified_name == "ComplexReturnTypes") {
                 found = true;
                 check(r->method_decls.size() == 5, "ComplexReturnTypes has 5 methods");
-                for (auto* m : r->method_decls) {
-                    auto* fn = dynamic_cast<FunctionDecl*>(m);
+                for (auto midx : r->method_decls) {
+                    auto* fn = meta.getDeclAs<FunctionDecl>(midx);
                     if (fn) {
                         std::cout << "    " << fn->spelling << " -> " 
                                   << (fn->result_type ? fn->result_type->name : "null") << std::endl;
@@ -368,9 +372,11 @@ int main(int argc, char* argv[])
             if (r->full_qualified_name == "ContainsAnonymous") {
                 found = true;
                 std::cout << "  ContainsAnonymous fields: " << r->field_decls.size() << std::endl;
-                for (auto* f : r->field_decls) {
-                    std::cout << "    field: " << f->spelling << " type: " 
-                              << (f->type ? f->type->name : "null") << std::endl;
+                for (auto fidx : r->field_decls) {
+                    auto* f = meta.getDeclAs<FieldDecl>(fidx);
+                    if (f)
+                        std::cout << "    field: " << f->spelling << " type: " 
+                                  << (f->type ? f->type->name : "null") << std::endl;
                 }
             }
         }
@@ -423,8 +429,9 @@ int main(int argc, char* argv[])
 
                 // Helper: get field type as RecordType
                 auto getFieldRecordType = [&](const char* fieldName) -> const RecordType* {
-                    for (auto* f : r->field_decls) {
-                        if (f->spelling == fieldName && f->type) {
+                    for (auto fidx : r->field_decls) {
+                        auto* f = meta.getDeclAs<FieldDecl>(fidx);
+                        if (f && f->spelling == fieldName && f->type) {
                             return dynamic_cast<const RecordType*>(f->type);
                         }
                     }
@@ -595,7 +602,9 @@ int main(int argc, char* argv[])
                 // Verify the visible fields are the right ones
                 bool has_visible_1 = false, has_visible_2 = false;
                 bool has_hidden = false;
-                for (auto* f : r->field_decls) {
+                for (auto fidx : r->field_decls) {
+                    auto* f = meta.getDeclAs<FieldDecl>(fidx);
+                    if (!f) continue;
                     if (f->spelling == "visible_field_1") has_visible_1 = true;
                     if (f->spelling == "visible_field_2") has_visible_2 = true;
                     if (f->spelling == "hidden_field" || f->spelling == "another_hidden") 
@@ -612,7 +621,9 @@ int main(int argc, char* argv[])
                 
                 bool has_visible_method = false, has_visible_getter = false;
                 bool has_hidden_method = false;
-                for (auto* m : r->method_decls) {
+                for (auto midx : r->method_decls) {
+                    auto* m = meta.getDeclAs<CXXMethodDecl>(midx);
+                    if (!m) continue;
                     if (m->spelling == "visible_method") has_visible_method = true;
                     if (m->spelling == "visible_getter") has_visible_getter = true;
                     if (m->spelling == "hidden_method" || m->spelling == "hidden_setter")
@@ -623,11 +634,15 @@ int main(int argc, char* argv[])
                 check(!has_hidden_method, "hidden methods are NOT present");
 
                 std::cout << "  SelectiveReflectStruct fields: " << r->field_decls.size() << std::endl;
-                for (auto* f : r->field_decls) 
-                    std::cout << "    field: " << f->spelling << std::endl;
+                for (auto fidx : r->field_decls) {
+                    auto* f = meta.getDeclAs<FieldDecl>(fidx);
+                    if (f) std::cout << "    field: " << f->spelling << std::endl;
+                }
                 std::cout << "  SelectiveReflectStruct methods: " << r->method_decls.size() << std::endl;
-                for (auto* m : r->method_decls)
-                    std::cout << "    method: " << m->spelling << std::endl;
+                for (auto midx : r->method_decls) {
+                    auto* m = meta.getDeclAs<CXXMethodDecl>(midx);
+                    if (m) std::cout << "    method: " << m->spelling << std::endl;
+                }
             }
         }
         check(found, "SelectiveReflectStruct found");

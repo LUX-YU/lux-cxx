@@ -95,9 +95,24 @@ namespace lux::cxx::dref
                 continue;
             }
 
+            // Only treat '\\' as an escape character when it is followed by a
+            // whitespace or quote. Windows paths (e.g. -IC:\foo\bar) use '\\'
+            // as a plain path separator; treating them as escapes would mangle
+            // include paths collected from compile_commands.
             if (c == '\\' && !in_single_quote)
             {
-                escaped = true;
+                if (i + 1 < cmd.size())
+                {
+                    char next = cmd[i + 1];
+                    if (next == ' ' || next == '\t' || next == '"')
+                    {
+                        escaped = true;
+                        continue;
+                    }
+                }
+
+                // Not a shell escape sequence; keep the literal separator.
+                current += c;
                 continue;
             }
 
@@ -177,7 +192,7 @@ namespace lux::cxx::dref
         return funcName;
     }
 
-    std::vector<std::filesystem::path> GeneratorHelper::fetchIncludePaths(
+    Result<std::vector<std::filesystem::path>> GeneratorHelper::fetchIncludePaths(
         const std::filesystem::path& compile_command_path,
         const std::filesystem::path& source_file_path)
     {
@@ -185,7 +200,8 @@ namespace lux::cxx::dref
 
         std::ifstream ifs(compile_command_path);
         if (!ifs) {
-            return {};
+            return make_error(EErrorCode::CompileCommandsNotFound,
+                "[GeneratorHelper] Cannot open compile_commands: " + compile_command_path.string());
         }
 
         nlohmann::json j;
@@ -193,11 +209,15 @@ namespace lux::cxx::dref
             ifs >> j;
         }
         catch (const nlohmann::json::parse_error& e) {
-            return {};
+            return make_error(EErrorCode::CompileCommandsParseError,
+                "[GeneratorHelper] Failed to parse compile_commands '"
+                + compile_command_path.string() + "': " + e.what());
         }
 
         if (!j.is_array()) {
-            return {};
+            return make_error(EErrorCode::CompileCommandsParseError,
+                "[GeneratorHelper] compile_commands is not a JSON array: "
+                + compile_command_path.string());
         }
 
         std::set<fs::path> includes;
@@ -312,14 +332,23 @@ namespace lux::cxx::dref
         catch (const nlohmann::json::parse_error& e) {
             throw std::runtime_error("Failed to parse config file '" + filename + "': " + e.what());
         }
-		config.marker                   = j.at("marker").get<std::string>();
-		config.template_path            = j.at("template_path").get<std::string>();
-        config.out_dir                  = j.at("out_dir").get<std::string>();
-        config.compile_commands         = j.at("compile_commands").get<std::string>();
-        config.target_files             = j.at("target_files").get<std::vector<std::string>>();
-        config.meta_suffix              = j.at("meta_suffix").get<std::string>();
-        config.source_file              = j.at("source_file").get<std::string>();
-        config.extra_compile_options    = j.at("extra_compile_options").get<std::vector<std::string>>();
+        // Helper: throws with clear field name when a required key is absent.
+        auto require_field = [&](const char* key) -> const nlohmann::json& {
+            if (!j.contains(key)) {
+                throw std::runtime_error(
+                    std::string("[Config] Missing required field '") + key + "' in '" + filename + "'");
+            }
+            return j[key];
+        };
+
+        config.marker                   = require_field("marker").get<std::string>();
+        config.template_path            = require_field("template_path").get<std::string>();
+        config.out_dir                  = require_field("out_dir").get<std::string>();
+        config.compile_commands         = require_field("compile_commands").get<std::string>();
+        config.target_files             = require_field("target_files").get<std::vector<std::string>>();
+        config.meta_suffix              = require_field("meta_suffix").get<std::string>();
+        config.source_file              = require_field("source_file").get<std::string>();
+        config.extra_compile_options    = require_field("extra_compile_options").get<std::vector<std::string>>();
         if (j.contains("custom_fields_json")) {
 			for (auto& [key, val] : j["custom_fields_json"].items()) {
 				if (val.is_string()) {

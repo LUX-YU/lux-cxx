@@ -4,6 +4,7 @@
 #include <vector>
 #include <lux/cxx/visibility.h>
 #include <lux/cxx/dref/runtime/Declaration.hpp>
+#include <lux/cxx/dref/Error.hpp>
 
 namespace lux::cxx::dref
 {
@@ -69,7 +70,7 @@ namespace lux::cxx::dref
 
 		static std::string truncateAtLastParen(const std::string& funcName);
 
-		static std::vector<std::filesystem::path> 
+		static Result<std::vector<std::filesystem::path>>
 		fetchIncludePaths(const std::filesystem::path& compile_command_path, const std::filesystem::path& source_file_path);
 
 		static std::vector<std::string> 

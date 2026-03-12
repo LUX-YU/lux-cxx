@@ -18,7 +18,7 @@ namespace lux::cxx::dref
             || k == EDeclKind::CXX_DESTRUCTOR_DECL);
     }
 
-    static void serializeFunctionCommon(const FunctionDecl* fn, nlohmann::json& j)
+    static void serializeFunctionCommon(const FunctionDecl* fn, nlohmann::json& j, const MetaUnitData& data)
     {
         j["result_type_id"] = (fn->result_type ? fn->result_type->id : "");
         j["mangling"] = fn->mangling;
@@ -26,8 +26,12 @@ namespace lux::cxx::dref
 		j["invoke_name"] = fn->invoke_name;
 
         nlohmann::json paramsArr = nlohmann::json::array();
-        for (auto* p : fn->params)
-            paramsArr.push_back(p ? p->id : "");
+        for (auto idx : fn->params) {
+            if (idx != INVALID_DECL_INDEX && idx < data.declarations.size())
+                paramsArr.push_back(data.declarations[idx]->id);
+            else
+                paramsArr.push_back("");
+        }
         j["params"] = paramsArr;
     }
 
@@ -46,19 +50,32 @@ namespace lux::cxx::dref
                 }
             }
         }
-        // params
+        // params — store indices now
         if (j.contains("params") && j["params"].is_array()) {
             for (auto& pIdJson : j["params"]) {
                 auto pId = pIdJson.get<std::string>();
                 if (!pId.empty()) {
                     auto it = declMap.find(pId);
-                    if (it != declMap.end()) {
-                        // 这里要判断它是不是 EDeclKind::PARAM_VAR_DECL
-                        if (it->second->kind == EDeclKind::PARAM_VAR_DECL) {
-                            fn->params.push_back(static_cast<ParmVarDecl*>(it->second));
-                        }
+                    if (it != declMap.end() &&
+                        it->second->kind == EDeclKind::PARAM_VAR_DECL) {
+                        fn->params.push_back(it->second->index);
                     }
                 }
+            }
+        }
+        // template_params
+        if (j.contains("is_template"))
+            fn->is_template = j["is_template"].get<bool>();
+        if (j.contains("template_params") && j["template_params"].is_array()) {
+            for (auto& tpj : j["template_params"]) {
+                TemplateParam tp;
+                auto kind_str = tpj.value("kind", "type");
+                if (kind_str == "non_type")           tp.kind = TemplateParam::Kind::NonType;
+                else if (kind_str == "template_tmpl") tp.kind = TemplateParam::Kind::TemplateTemplate;
+                else                                  tp.kind = TemplateParam::Kind::Type;
+                tp.name     = tpj.value("name", "");
+                tp.spelling = tpj.value("spelling", "");
+                fn->template_params.push_back(std::move(tp));
             }
         }
     }
@@ -83,7 +100,7 @@ namespace lux::cxx::dref
         }
     }
 
-    static nlohmann::json serialize(const Decl* d)
+    static nlohmann::json serialize(const Decl* d, const MetaUnitData& data)
     {
         nlohmann::json j;
         if (!d) return j;
@@ -93,6 +110,13 @@ namespace lux::cxx::dref
         j["__kind"] = declKindToString(d->kind);
 		j["index"]  = d->index;
 		j["hash"]   = std::to_string(d->hash);
+
+        // Helper: resolve a decl index to its string id (empty string = invalid)
+        auto decl_id_from_idx = [&](size_t idx) -> std::string {
+            if (idx == INVALID_DECL_INDEX || idx >= data.declarations.size())
+                return {};
+            return data.declarations[idx]->id;
+        };
 
         // 如果是 NamedDecl（比如大多数 Decl 都继承 NamedDecl）
         if (auto* nd = asNamedDecl(d))
@@ -137,41 +161,56 @@ namespace lux::cxx::dref
             // bases
             {
                 nlohmann::json arr = nlohmann::json::array();
-                for (auto* base : cxxr->bases)
-                    arr.push_back(base ? base->id : "");
+                for (auto idx : cxxr->bases)
+                    arr.push_back(decl_id_from_idx(idx));
                 j["bases"] = arr;
             }
             // ctors
             {
                 nlohmann::json arr = nlohmann::json::array();
-                for (auto* ctor : cxxr->constructor_decls)
-                    arr.push_back(ctor ? ctor->id : "");
+                for (auto idx : cxxr->constructor_decls)
+                    arr.push_back(decl_id_from_idx(idx));
                 j["constructor_decls"] = arr;
             }
             // dtor
-            j["destructor_decl"] = (cxxr->destructor_decl ? cxxr->destructor_decl->id : "");
+            j["destructor_decl"] = decl_id_from_idx(cxxr->destructor_decl);
             // normal method
             {
                 nlohmann::json arr = nlohmann::json::array();
-                for (auto* m : cxxr->method_decls)
-                    arr.push_back(m ? m->id : "");
+                for (auto idx : cxxr->method_decls)
+                    arr.push_back(decl_id_from_idx(idx));
                 j["method_decls"] = arr;
             }
             // static method
             {
                 nlohmann::json arr = nlohmann::json::array();
-                for (auto* sm : cxxr->static_method_decls)
-                    arr.push_back(sm ? sm->id : "");
+                for (auto idx : cxxr->static_method_decls)
+                    arr.push_back(decl_id_from_idx(idx));
                 j["static_method_decls"] = arr;
             }
             // fields
             {
                 nlohmann::json arr = nlohmann::json::array();
-                for (auto* f : cxxr->field_decls)
-                    arr.push_back(f ? f->id : "");
+                for (auto idx : cxxr->field_decls)
+                    arr.push_back(decl_id_from_idx(idx));
                 j["field_decls"] = arr;
             }
             j["is_abstract"] = cxxr->is_abstract;
+            // Phase 3: template info
+            j["is_template"] = cxxr->is_template;
+            if (cxxr->is_template) {
+                nlohmann::json tpArr = nlohmann::json::array();
+                for (const auto& tp : cxxr->template_params) {
+                    nlohmann::json tpj;
+                    if (tp.kind == TemplateParam::Kind::NonType)              tpj["kind"] = "non_type";
+                    else if (tp.kind == TemplateParam::Kind::TemplateTemplate) tpj["kind"] = "template_tmpl";
+                    else                                                        tpj["kind"] = "type";
+                    tpj["name"]     = tp.name;
+                    tpj["spelling"] = tp.spelling;
+                    tpArr.push_back(std::move(tpj));
+                }
+                j["template_params"] = std::move(tpArr);
+            }
         }
         break;
 
@@ -180,14 +219,29 @@ namespace lux::cxx::dref
             auto* f = static_cast<const FieldDecl*>(d);
             j["visibility"] = (int)f->visibility;
             j["offset"] = (uint64_t)f->offset;
-            j["parent_class_id"] = (f->parent_class ? f->parent_class->id : "");
+            j["parent_class_id"] = decl_id_from_idx(f->parent_class);
         }
         break;
 
         case EDeclKind::FUNCTION_DECL:
         {
             auto* fn = static_cast<const FunctionDecl*>(d);
-            serializeFunctionCommon(fn, j);
+            serializeFunctionCommon(fn, j, data);
+            // Phase 3: template info
+            j["is_template"] = fn->is_template;
+            if (fn->is_template) {
+                nlohmann::json tpArr = nlohmann::json::array();
+                for (const auto& tp : fn->template_params) {
+                    nlohmann::json tpj;
+                    if (tp.kind == TemplateParam::Kind::NonType)              tpj["kind"] = "non_type";
+                    else if (tp.kind == TemplateParam::Kind::TemplateTemplate) tpj["kind"] = "template_tmpl";
+                    else                                                        tpj["kind"] = "type";
+                    tpj["name"]     = tp.name;
+                    tpj["spelling"] = tp.spelling;
+                    tpArr.push_back(std::move(tpj));
+                }
+                j["template_params"] = std::move(tpArr);
+            }
         }
         break;
 
@@ -197,13 +251,13 @@ namespace lux::cxx::dref
         case EDeclKind::CXX_DESTRUCTOR_DECL:
         {
             auto* method = static_cast<const CXXMethodDecl*>(d);
-            serializeFunctionCommon(method, j);
+            serializeFunctionCommon(method, j, data);
             j["visibility"] = (int)method->visibility;
             j["is_static"] = method->is_static;
             j["is_virtual"] = method->is_virtual;
             j["is_const"] = method->is_const;
             j["is_volatile"] = method->is_volatile;
-            j["parent_class_id"] = (method->parent_class ? method->parent_class->id : "");
+            j["parent_class_id"] = decl_id_from_idx(method->parent_class);
         }
         break;
 
@@ -288,6 +342,7 @@ namespace lux::cxx::dref
         {
             auto* cxxr = static_cast<CXXRecordDecl*>(raw);
             cxxr->is_abstract = j.value("is_abstract", false);
+            cxxr->is_template = j.value("is_template", false);
         }
         break;
 
@@ -391,9 +446,7 @@ namespace lux::cxx::dref
                     if (!s.empty()) {
                         auto it = declMap.find(s);
                         if (it != declMap.end() && it->second->kind == EDeclKind::CXX_RECORD_DECL)
-                        {
-                            cxxr->bases.push_back(static_cast<CXXRecordDecl*>(it->second));
-                        }
+                            cxxr->bases.push_back(it->second->index);
                     }
                 }
             }
@@ -404,9 +457,7 @@ namespace lux::cxx::dref
                     if (!s.empty()) {
                         auto it = declMap.find(s);
                         if (it != declMap.end() && it->second->kind == EDeclKind::CXX_CONSTRUCTOR_DECL)
-                        {
-                            cxxr->constructor_decls.push_back(static_cast<CXXConstructorDecl*>(it->second));
-                        }
+                            cxxr->constructor_decls.push_back(it->second->index);
                     }
                 }
             }
@@ -416,9 +467,7 @@ namespace lux::cxx::dref
                 if (!did.empty()) {
                     auto it = declMap.find(did);
                     if (it != declMap.end() && it->second->kind == EDeclKind::CXX_DESTRUCTOR_DECL)
-                    {
-                        cxxr->destructor_decl = static_cast<CXXDestructorDecl*>(it->second);
-                    }
+                        cxxr->destructor_decl = it->second->index;
                 }
             }
             // method_decls
@@ -428,9 +477,7 @@ namespace lux::cxx::dref
                     if (!s.empty()) {
                         auto it = declMap.find(s);
                         if (it != declMap.end() && isAnyCXXMethodKind(it->second->kind))
-                        {
-                            cxxr->method_decls.push_back(static_cast<CXXMethodDecl*>(it->second));
-                        }
+                            cxxr->method_decls.push_back(it->second->index);
                     }
                 }
             }
@@ -441,9 +488,7 @@ namespace lux::cxx::dref
                     if (!s.empty()) {
                         auto it = declMap.find(s);
                         if (it != declMap.end() && isAnyCXXMethodKind(it->second->kind))
-                        {
-                            cxxr->static_method_decls.push_back(static_cast<CXXMethodDecl*>(it->second));
-                        }
+                            cxxr->static_method_decls.push_back(it->second->index);
                     }
                 }
             }
@@ -454,10 +499,21 @@ namespace lux::cxx::dref
                     if (!s.empty()) {
                         auto it = declMap.find(s);
                         if (it != declMap.end() && it->second->kind == EDeclKind::FIELD_DECL)
-                        {
-                            cxxr->field_decls.push_back(static_cast<FieldDecl*>(it->second));
-                        }
+                            cxxr->field_decls.push_back(it->second->index);
                     }
+                }
+            }
+            // Phase 3: template_params
+            if (j.contains("template_params") && j["template_params"].is_array()) {
+                for (auto& tpj : j["template_params"]) {
+                    TemplateParam tp;
+                    auto kind_str = tpj.value("kind", "type");
+                    if (kind_str == "non_type")           tp.kind = TemplateParam::Kind::NonType;
+                    else if (kind_str == "template_tmpl") tp.kind = TemplateParam::Kind::TemplateTemplate;
+                    else                                  tp.kind = TemplateParam::Kind::Type;
+                    tp.name     = tpj.value("name", "");
+                    tp.spelling = tpj.value("spelling", "");
+                    cxxr->template_params.push_back(std::move(tp));
                 }
             }
         }
@@ -470,9 +526,7 @@ namespace lux::cxx::dref
                 if (!pcid.empty()) {
                     auto it = declMap.find(pcid);
                     if (it != declMap.end() && it->second->kind == EDeclKind::CXX_RECORD_DECL)
-                    {
-                        f->parent_class = static_cast<CXXRecordDecl*>(it->second);
-                    }
+                        f->parent_class = it->second->index;
                 }
             }
         }
@@ -498,10 +552,7 @@ namespace lux::cxx::dref
                 if (!s.empty()) {
                     auto it = declMap.find(s);
                     if (it != declMap.end() && it->second->kind == EDeclKind::CXX_RECORD_DECL)
-                    {
-						auto parent_class = static_cast<CXXRecordDecl*>(it->second);
-                        method->parent_class = parent_class;
-                    }
+                        method->parent_class = it->second->index;
                 }
             }
         }
@@ -837,7 +888,7 @@ namespace lux::cxx::dref
             nlohmann::json declArr = nlohmann::json::array();
             for (auto& d : data.declarations)
             {
-                declArr.push_back(serialize(d.get()));
+                declArr.push_back(serialize(d.get(), data));
             }
             root["declarations"] = declArr;
         }

@@ -148,11 +148,10 @@ namespace lux::cxx::dref
                     auto field_decl = std::make_unique<FieldDecl>();
                     parseFieldDecl(cursor, *field_decl);
                     field_decl->kind = EDeclKind::FIELD_DECL;
-					field_decl->parent_class = &decl;
-                    // Add the parsed field declaration to the record's field list
-                    decl.field_decls.push_back(field_decl.get());
-                    // Register the declaration in the parser's registry (handles ownership)
-                    registerDeclaration(std::move(field_decl));
+                    // Register first so the index is assigned, then record it
+                    auto* field_raw = registerDeclaration(std::move(field_decl));
+                    decl.field_decls.push_back(field_raw->index);
+                    // parent_class will be back-patched when the CXXRecordDecl itself is registered
                 }
                 else if (cursor_kind == CXCursor_CXXMethod)
                 {
@@ -162,18 +161,12 @@ namespace lux::cxx::dref
                     auto method_decl = std::make_unique<CXXMethodDecl>();
                     method_decl->kind = EDeclKind::CXX_METHOD_DECL;
                     parseCxxMethodDecl(cursor, *method_decl);
-					method_decl->parent_class = &decl;
-                    // Distinguish between static and non-static methods
-                    if (method_decl->is_static)
-                    {
-                        decl.static_method_decls.push_back(method_decl.get());
-                    }
+                    const bool is_static = method_decl->is_static;
+                    auto* method_raw = registerDeclaration(std::move(method_decl));
+                    if (is_static)
+                        decl.static_method_decls.push_back(method_raw->index);
                     else
-                    {
-                        decl.method_decls.push_back(method_decl.get());
-                    }
-                    // Register the parsed method declaration
-                    registerDeclaration(std::move(method_decl));
+                        decl.method_decls.push_back(method_raw->index);
                 }
                 else if (cursor_kind == CXCursor_Constructor)
                 {
@@ -181,11 +174,8 @@ namespace lux::cxx::dref
                     auto method_decl = std::make_unique<CXXConstructorDecl>();
                     method_decl->kind = EDeclKind::CXX_CONSTRUCTOR_DECL;
                     parseCxxMethodDecl(cursor, *method_decl);
-                    method_decl->parent_class = &decl;
-                    // Add the constructor to the record's constructor list
-                    decl.constructor_decls.push_back(method_decl.get());
-                    // Register the declaration
-                    registerDeclaration(std::move(method_decl));
+                    auto* ctor_raw = registerDeclaration(std::move(method_decl));
+                    decl.constructor_decls.push_back(ctor_raw->index);
                 }
                 else if (cursor_kind == CXCursor_Destructor)
                 {
@@ -193,11 +183,8 @@ namespace lux::cxx::dref
                     auto method_decl = std::make_unique<CXXDestructorDecl>();
                     method_decl->kind = EDeclKind::CXX_DESTRUCTOR_DECL;
                     parseCxxMethodDecl(cursor, *method_decl);
-                    method_decl->parent_class = &decl;
-                    // Store the destructor declaration (assuming one destructor per record)
-                    decl.destructor_decl = method_decl.get();
-                    // Register the destructor declaration
-                    registerDeclaration(std::move(method_decl));
+                    auto* dtor_raw = registerDeclaration(std::move(method_decl));
+                    decl.destructor_decl = dtor_raw->index;
                 }
                 else if (cursor_kind == CXCursor_ConversionFunction)
                 {
@@ -207,9 +194,8 @@ namespace lux::cxx::dref
                     auto method_decl = std::make_unique<CXXConversionDecl>();
                     method_decl->kind = EDeclKind::CXX_CONVERSION_DECL;
                     parseCxxMethodDecl(cursor, *method_decl);
-                    method_decl->parent_class = &decl;
-                    decl.method_decls.push_back(method_decl.get());
-                    registerDeclaration(std::move(method_decl));
+                    auto* conv_raw = registerDeclaration(std::move(method_decl));
+                    decl.method_decls.push_back(conv_raw->index);
                 }
                 else if (cursor_kind == CXCursor_CXXBaseSpecifier)
                 {
@@ -218,22 +204,47 @@ namespace lux::cxx::dref
                     // Check if the base class declaration has already been registered
                     if (const auto cursor_id = base_cursor.USR().to_std(); hasDeclaration(cursor_id))
                     {
-                        // If found, retrieve the registered declaration and cast it to a record declaration
-                        const auto base_decl = dynamic_cast<CXXRecordDecl*>(getDeclaration(cursor_id));
+                        // Base already registered — its index is stable
+                        const auto* base_decl = getDeclaration(cursor_id);
                         assert(base_decl != nullptr);
-                        // Add the existing base class declaration to the current record's bases list
-                        decl.bases.push_back(base_decl);
+                        decl.bases.push_back(base_decl->index);
                     }
                     else
                     {
                         // Otherwise, create a new record declaration for the base class
                         auto base_class_decl = std::make_unique<CXXRecordDecl>();
                         parseCXXRecordDecl(base_cursor, *base_class_decl);
-                        // Add the newly parsed base class to the list
-                        decl.bases.push_back(base_class_decl.get());
-                        // Register the new base class declaration
-                        registerDeclaration(std::move(base_class_decl));
+                        auto* base_raw = registerDeclaration(std::move(base_class_decl));
+                        decl.bases.push_back(base_raw->index);
                     }
+                }
+                // Template parameters — Phase 3: collect TemplateParam entries
+                else if (cursor_kind == CXCursor_TemplateTypeParameter)
+                {
+                    TemplateParam tp;
+                    tp.kind     = TemplateParam::Kind::Type;
+                    tp.name     = cursor.cursorSpelling().to_std();
+                    tp.spelling = cursor.displayName().to_std();
+                    decl.template_params.push_back(std::move(tp));
+                    decl.is_template = true;
+                }
+                else if (cursor_kind == CXCursor_NonTypeTemplateParameter)
+                {
+                    TemplateParam tp;
+                    tp.kind     = TemplateParam::Kind::NonType;
+                    tp.name     = cursor.cursorSpelling().to_std();
+                    tp.spelling = cursor.displayName().to_std();
+                    decl.template_params.push_back(std::move(tp));
+                    decl.is_template = true;
+                }
+                else if (cursor_kind == CXCursor_TemplateTemplateParameter)
+                {
+                    TemplateParam tp;
+                    tp.kind     = TemplateParam::Kind::TemplateTemplate;
+                    tp.name     = cursor.cursorSpelling().to_std();
+                    tp.spelling = cursor.displayName().to_std();
+                    decl.template_params.push_back(std::move(tp));
+                    decl.is_template = true;
                 }
 
                 // Continue visiting other child cursors
@@ -242,19 +253,13 @@ namespace lux::cxx::dref
         );
 
         // Determine the tag kind (struct, union, or class) of the record based on the cursor kind
-        auto cursor_kind_enum = cursor.cursorKind().kindEnum();
+        const auto cursor_kind_enum = cursor.cursorKind().kindEnum();
         if (cursor_kind_enum == CXCursor_StructDecl)
-        {
             decl.tag_kind = TagDecl::ETagKind::Struct;
-        }
         else if (cursor_kind_enum == CXCursor_UnionDecl)
-        {
             decl.tag_kind = TagDecl::ETagKind::Union;
-        }
-        else if (cursor_kind_enum == CXCursor_ClassDecl)
-        {
+        else if (cursor_kind_enum == CXCursor_ClassDecl || cursor_kind_enum == CXCursor_ClassTemplate)
             decl.tag_kind = TagDecl::ETagKind::Class;
-        }
 
         // Parse common named declaration attributes (such as name, location, etc.)
         parseNamedDecl(cursor, decl);
@@ -262,11 +267,10 @@ namespace lux::cxx::dref
         decl.kind = EDeclKind::CXX_RECORD_DECL;
 		decl.is_abstract = cursor.isAbstract();
 
-        // Update the record type associated with the declaration.
-        // It is assumed that decl.type is already a pointer to a RecordType.
-        auto record_type = dynamic_cast<RecordType*>(decl.type);
-        // Ensure the record type is valid and link it back to the declaration
-        assert(record_type != nullptr);
-        record_type->decl = &decl;
+        // Link the associated RecordType back to this declaration.
+        // Template declarations may not have an instantiated record type yet,
+        // so guard with a null check instead of assert.
+        if (auto* record_type = dynamic_cast<RecordType*>(decl.type))
+            record_type->decl = &decl;
     }
 }

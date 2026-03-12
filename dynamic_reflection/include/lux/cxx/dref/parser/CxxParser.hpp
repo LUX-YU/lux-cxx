@@ -35,8 +35,12 @@ namespace lux::cxx::dref
 
     enum class EParseResult
     {
+        /// Parsing completed without errors; MetaUnit is populated.
         SUCCESS,
+        /// One or more marked declarations have unsupported cursor kinds.
+        /// The successfully parsed declarations are still available in MetaUnit.
         UNKNOWN_TYPE,
+        /// Translation unit could not be created, or a hard libclang error occurred.
         FAILED
     };
 

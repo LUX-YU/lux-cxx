@@ -103,6 +103,20 @@ namespace lux::cxx::dref
 		return _impl->findTypeById(id);
 	}
 
+	Decl* MetaUnit::getDeclAt(size_t idx) const
+	{
+		if (!_impl) return nullptr;
+		if (idx == INVALID_DECL_INDEX || idx >= _impl->_data->declarations.size()) return nullptr;
+		return _impl->_data->declarations[idx].get();
+	}
+
+	Type* MetaUnit::getTypeAt(size_t idx) const
+	{
+		if (!_impl) return nullptr;
+		if (idx >= _impl->_data->types.size()) return nullptr;
+		return _impl->_data->types[idx].get();
+	}
+
 	nlohmann::json MetaUnit::toJson() const
 	{
 		if (!_impl) throw std::runtime_error("MetaUnit: accessing uninitialized instance");

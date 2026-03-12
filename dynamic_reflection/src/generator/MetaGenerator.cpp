@@ -1,5 +1,6 @@
 #include "lux/cxx/dref/generator/GeneratorHelper.hpp"
 #include "lux/cxx/dref/parser/CxxParser.hpp"
+#include "lux/cxx/dref/Error.hpp"
 #include <iostream>
 #include <inja/inja.hpp>
 #include <fstream>
@@ -21,13 +22,15 @@ using namespace ::lux::cxx::dref;
 //---------------------------------------------------------------------
 static bool validateFiles(const GeneratorConfig& generator_config)
 {
+    bool ok = true;
+
     // Iterate over each target file and verify that the file exists.
     for (const auto& file : generator_config.target_files)
     {
         if (!std::filesystem::exists(file))
         {
             std::cerr << "[Error] file_to_parse " << file << " does not exist.\n";
-            return false;
+            ok = false;
         }
     }
 
@@ -37,16 +40,17 @@ static bool validateFiles(const GeneratorConfig& generator_config)
         std::cerr << "[Error] source_file " << generator_config.source_file << " does not exist or not matched.\n";
         std::cerr << "[Error] You can check your build system, and try to make sure use absolute path for source file.\n";
         std::cerr << "[Error] If you are using cmake, the possible format is ${CMAKE_CURRENT_SOURCE_DIR}/to/source_file.\n";
-        return false;
+        ok = false;
     }
 
     // Verify the existence of compile_commands file, which is necessary to extract include paths.
     if (!std::filesystem::exists(generator_config.compile_commands))
     {
         std::cerr << "[Error] compile_commands " << generator_config.compile_commands << " does not exist.\n";
-        return false;
+        ok = false;
     }
-    return true;
+
+    return ok;
 }
 
 //---------------------------------------------------------------------
@@ -134,12 +138,19 @@ static bool processTargetFile(const std::filesystem::path& file,
 
     // Create a parser instance with the provided options.
     auto cxx_parser = std::make_unique<CxxParser>(parse_options);
+    // Route all libclang diagnostics and parser-level errors to stderr.
+    cxx_parser->setOnParseError([&file_path](const std::string& msg) {
+        std::cerr << "[Parser] " << file_path << ": " << msg << "\n";
+    });
 
     // Parse the target file.
     auto [parse_rst, data] = cxx_parser->parse(file_path);
     if (parse_rst != EParseResult::SUCCESS)
     {
-        std::cerr << "[Error] Parsing of " << file_path << " failed.\n";
+        std::cerr << "[Error] Parsing of '" << file_path << "' failed"
+                  << (parse_rst == EParseResult::UNKNOWN_TYPE
+                      ? " (one or more declarations have unsupported cursor kinds)" : "")
+                  << ".\n";
         return false;
     }
 
@@ -152,8 +163,16 @@ static bool processTargetFile(const std::filesystem::path& file,
 	meta_json["include_dir"]            = GeneratorHelper::findRelativeIncludePath(file, includes).value_or(std::string(""));
 
     if (!generator_config.custom_fields_json.empty()) {
-		for (const std::string& field : generator_config.custom_fields_json) {
-            auto extra = nlohmann::json::parse(field);
+        for (const std::string& field : generator_config.custom_fields_json) {
+            nlohmann::json extra;
+            try {
+                extra = nlohmann::json::parse(field);
+            }
+            catch (const nlohmann::json::parse_error& e) {
+                std::cerr << "[Error] Invalid custom_fields_json entry '" << field
+                          << "': " << e.what() << "\n";
+                return false;
+            }
             for (auto& [key, val] : extra.items()) {
                 meta_json[key] = val;
             }
@@ -191,7 +210,8 @@ static bool processTargetFile(const std::filesystem::path& file,
 static bool dfsFindChain(const CXXRecordDecl* current,
     std::string_view            target_name,
     std::vector<const CXXRecordDecl*>& path,
-    std::unordered_set<const CXXRecordDecl*>& visited)
+    std::unordered_set<const CXXRecordDecl*>& visited,
+    const MetaUnit& meta_unit)
 {
     if (!current || visited.count(current)) return false;
     visited.insert(current);
@@ -202,8 +222,9 @@ static bool dfsFindChain(const CXXRecordDecl* current,
         return true;
     }
 
-    for (const auto* base : current->bases) {
-        if (dfsFindChain(base, target_name, path, visited)) {
+    for (auto base_idx : current->bases) {
+        auto* base = meta_unit.getDeclAs<CXXRecordDecl>(base_idx);
+        if (dfsFindChain(base, target_name, path, visited, meta_unit)) {
             return true;
         }
     }
@@ -219,12 +240,12 @@ static bool dfsFindChain(const CXXRecordDecl* current,
  * @param target_name
  * @return
  */
-static std::vector<const CXXRecordDecl*> find_parent_chain(const CXXRecordDecl* start, std::string_view target_name)
+static std::vector<const CXXRecordDecl*> find_parent_chain(const CXXRecordDecl* start, std::string_view target_name, const MetaUnit& meta_unit)
 {
     std::vector<const CXXRecordDecl*> path;
     std::unordered_set<const CXXRecordDecl*> visited;
 
-    if (dfsFindChain(start, target_name, path, visited)) {
+    if (dfsFindChain(start, target_name, path, visited, meta_unit)) {
         return path; 
     }
     return {};
@@ -320,12 +341,20 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
             auto id     = args.at(0)->get<std::string>();
 			auto target = args.at(1)->get<std::string>();
             auto decl = meta_unit.findDeclById(id);
+            if (!decl) {
+                std::cerr << "[Error] parent_chain: declaration id='" << id
+                          << "' not found in '" << meta_json["source_path"] << "'.\n";
+                throw std::runtime_error("parent_chain: declaration not found: " + id);
+            }
             if (decl->kind != EDeclKind::CXX_RECORD_DECL)
             {
-				std::cerr << "[Error] Declaration with id " << id << " is not a CXX_RECORD_DECL.\n";
-				throw std::runtime_error("Declaration is not a CXX_RECORD_DECL");
+                std::cerr << "[Error] parent_chain: id='" << id
+                          << "' is not a CXX_RECORD_DECL (kind="
+                          << static_cast<int>(decl->kind) << ") in '"
+                          << meta_json["source_path"] << "'.\n";
+                throw std::runtime_error("parent_chain: not a CXX_RECORD_DECL");
             }
-            auto decl_list = find_parent_chain(static_cast<const CXXRecordDecl*>(decl), target);
+            auto decl_list = find_parent_chain(static_cast<const CXXRecordDecl*>(decl), target, meta_unit);
 			nlohmann::json ret = nlohmann::json::array();
             for (auto decl : decl_list)
             {
@@ -420,9 +449,14 @@ int main(int argc, char* argv[])
 
     // Build compile options (including include paths) to be passed to the parser.
     // Fetch additional include paths from the compile commands based on the source file.
-    auto extra_includes = GeneratorHelper::fetchIncludePaths(
+    auto includes_result = GeneratorHelper::fetchIncludePaths(
         generator_config.compile_commands, generator_config.source_file
     );
+    if (!includes_result) {
+        std::cerr << includes_result.error().message << "\n";
+        return 1;
+    }
+    auto extra_includes = std::move(includes_result.value());
     auto options = buildCompileOptions(generator_config, extra_includes);
     std::vector<MetaUnit>       meta_unit_list;
     std::vector<nlohmann::json> meta_json_list;

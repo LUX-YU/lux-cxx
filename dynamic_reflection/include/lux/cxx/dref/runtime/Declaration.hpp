@@ -24,8 +24,26 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 namespace lux::cxx::dref {
+
+    /**
+     * Sentinel value meaning "no declaration" when storing declaration
+     * indices instead of raw pointers.  Equal to std::numeric_limits<size_t>::max().
+     */
+    static constexpr size_t INVALID_DECL_INDEX = static_cast<size_t>(-1);
+
+    /**
+     * Describes a single template parameter in a class or function template.
+     */
+    struct TemplateParam
+    {
+        enum class Kind { Type, NonType, TemplateTemplate };
+        Kind        kind     = Kind::Type;
+        std::string name;     ///< e.g. "T", "N", "Alloc"
+        std::string spelling; ///< e.g. "typename T", "int N"
+    };
     enum class EVisibility {
         INVALID = 0,  /**< Invalid visibility. */
         PUBLIC,       /**< Public access specifier. */
@@ -38,8 +56,6 @@ namespace lux::cxx::dref {
      * They will be defined later in this header.
      */
     class Type;
-    class CXXConstructorDecl;
-    class CXXDestructorDecl;
 
     /**
      * A subset of a complete C++ declaration system.
@@ -245,23 +261,33 @@ namespace lux::cxx::dref {
     /**
      * CXXRecordDecl: Represents a C++ class or struct, containing additional
      * information such as base classes, constructors, destructor, and methods.
+     *
+     * All cross-references are stored as indices into MetaUnitData::declarations.
+     * Use INVALID_DECL_INDEX to indicate "no declaration".
+     * Resolve via MetaUnit::getDeclAs<T>(idx).
      */
     class CXXRecordDecl final : public RecordDecl
     {
     public:
-        /// List of direct base classes (C++ inheritance).
-        std::vector<CXXRecordDecl*> bases;
+        /// Indices of direct base class CXXRecordDecl entries.
+        std::vector<size_t> bases;
 
-        /**
-         * Declarations for constructors, destructor, normal (non-static) methods,
-         * static methods, and fields in this class.
-         */
-        std::vector<CXXConstructorDecl*> constructor_decls;
-        CXXDestructorDecl*               destructor_decl = nullptr;
-        std::vector<CXXMethodDecl*>      method_decls;
-        std::vector<CXXMethodDecl*>      static_method_decls;
-        std::vector<class FieldDecl*>    field_decls;
+        /// Indices of CXXConstructorDecl entries.
+        std::vector<size_t> constructor_decls;
+        /// Index of CXXDestructorDecl entry, or INVALID_DECL_INDEX if none.
+        size_t              destructor_decl = INVALID_DECL_INDEX;
+        /// Indices of non-static CXXMethodDecl entries.
+        std::vector<size_t> method_decls;
+        /// Indices of static CXXMethodDecl entries.
+        std::vector<size_t> static_method_decls;
+        /// Indices of FieldDecl entries.
+        std::vector<size_t> field_decls;
+
 		bool is_abstract = false; ///< True if this class is abstract (has pure virtual methods).
+
+        /// True when this was parsed from a class/struct template declaration.
+        bool is_template = false;
+        std::vector<TemplateParam> template_params;
 
         void accept(DeclVisitor* visitor) override
         {
@@ -295,7 +321,9 @@ namespace lux::cxx::dref {
         EVisibility visibility = EVisibility::INVALID; ///< e.g., public, protected, private (if relevant).
         std::size_t offset {}; ///< The field offset in bytes (or bits, depending on usage).
 
-		CXXRecordDecl* parent_class = nullptr; ///< The class where this field is declared.
+        /// Index of the owning CXXRecordDecl in MetaUnitData::declarations,
+        /// or INVALID_DECL_INDEX if unknown.
+		size_t parent_class = INVALID_DECL_INDEX;
 
         void accept(DeclVisitor* visitor) override
         {
@@ -311,14 +339,19 @@ namespace lux::cxx::dref {
     public:
         ///< The return type of the function.
         Type* result_type = nullptr;  
-        ///< The parameter list of the function.
-        std::vector<class ParmVarDecl*> params; 
-        /// The name used to invoke this function.For member functions, it's spelling, for non member functions, it's namespace::spelling.
+        /// Indices of ParmVarDecl entries in MetaUnitData::declarations.
+        std::vector<size_t> params;
+        /// The name used to invoke this function. For member functions it's
+        /// spelling; for free functions it's namespace::spelling.
 		std::string invoke_name; 
         ///< The mangled name, if relevant for linkage.
         std::string mangling; 
 
 		bool is_variadic = false; ///< True if this function accepts variadic arguments.
+
+        /// True when this was parsed from a function template declaration.
+        bool is_template = false;
+        std::vector<TemplateParam> template_params;
 
         void accept(DeclVisitor* visitor) override
         {
@@ -340,7 +373,9 @@ namespace lux::cxx::dref {
         bool is_const = false; ///< True if this method is declared const.
 		bool is_volatile = false; ///< True if this method is declared volatile.
 
-		CXXRecordDecl* parent_class = nullptr; ///< The class where this method is declared.
+        /// Index of the owning CXXRecordDecl in MetaUnitData::declarations,
+        /// or INVALID_DECL_INDEX if unknown.
+		size_t parent_class = INVALID_DECL_INDEX;
 
         void accept(DeclVisitor* visitor) override
         {

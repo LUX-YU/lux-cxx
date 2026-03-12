@@ -203,22 +203,38 @@ function(target_add_meta)
         set(_meta_dry_run OFF)
     endif()
 
-    # Get target source files to determine the entry source for compile_commands
-    get_target_property(_srcs "${_target_name}" SOURCES)
-    if(NOT _srcs OR _srcs STREQUAL "NOTFOUND")
-        message(WARNING "[target_add_meta] Target '${_target_name}' has no sources; using empty string for source_file.")
-        set(_main_src "")
+    # If SOURCE_FILE was supplied explicitly via create_meta(), use it directly;
+    # otherwise try to deduce a .cpp source from the target's own source list.
+    if(_meta_source_file AND NOT _meta_source_file STREQUAL "NOTFOUND" AND NOT _meta_source_file STREQUAL "")
+        set(_main_src "${_meta_source_file}")
     else()
-        set(_main_src "")
-        foreach(_s IN LISTS _srcs)
-            get_filename_component(_ext "${_s}" EXT)
-            if(_ext STREQUAL ".cpp" OR _ext STREQUAL ".cxx" OR _ext STREQUAL ".cc")
-                set(_main_src "${_s}")
-                break()
-            endif()
-        endforeach()
-        if(_main_src STREQUAL "")
-            message(WARNING "[target_add_meta] No .cpp file found in target '${_target_name}'; passing empty source_file.")
+        # Get target source files to determine the entry source for compile_commands
+        get_target_property(_srcs "${_target_name}" SOURCES)
+        if(NOT _srcs OR _srcs STREQUAL "NOTFOUND")
+            set(_main_src "")
+        else()
+            set(_main_src "")
+            foreach(_s IN LISTS _srcs)
+                get_filename_component(_ext "${_s}" EXT)
+                if(_ext STREQUAL ".cpp" OR _ext STREQUAL ".cxx" OR _ext STREQUAL ".cc")
+                    set(_main_src "${_s}")
+                    break()
+                endif()
+            endforeach()
+        endif()
+    endif()
+
+    # If we still have no source file AND no extra compile options, the generator will
+    # be unable to locate include paths — abort with a clear diagnostic.
+    if(_main_src STREQUAL "")
+        if(NOT _meta_extra_compile_options OR _meta_extra_compile_options STREQUAL "NOTFOUND")
+            message(FATAL_ERROR
+                "[target_add_meta] No source_file could be determined for target '${_target_name}' "
+                "and no EXTRA_COMPILE_OPTIONS were provided. Provide either SOURCE_FILE in "
+                "create_meta() or EXTRA_COMPILE_OPTIONS with the necessary -I flags.")
+        else()
+            message(STATUS "[target_add_meta] No .cpp source found for '${_target_name}'; "
+                "relying on EXTRA_COMPILE_OPTIONS for include paths.")
         endif()
     endif()
 
@@ -251,9 +267,9 @@ function(target_add_meta)
     file(APPEND "${_config_file}" "  \"meta_suffix\": \"${_meta_meta_suffix}\",\n")
     file(APPEND "${_config_file}" "  \"extra_compile_options\": [\n")
     if(_meta_extra_compile_options)
-        # Convert the semicolon-separated EXTRA_COMPILE_OPTIONS to a list and write each entry on a new line
-        string(REPLACE ";" "\n" _compile_opts "${_meta_extra_compile_options}")
-        separate_arguments(_compile_opts)
+        # Target properties keep CMake lists as semicolon-separated values already.
+        # Re-parsing them as a command line can strip backslashes in Windows paths.
+        set(_compile_opts ${_meta_extra_compile_options})
         list(LENGTH _compile_opts _co_len)
         math(EXPR _co_last "${_co_len} - 1")
         foreach(i RANGE 0 ${_co_last})

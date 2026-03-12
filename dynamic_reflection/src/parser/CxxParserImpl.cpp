@@ -49,10 +49,10 @@ namespace lux::cxx::dref
 		{
 			return it->second;
 		}
-
+		// Assign the index immediately (before moving into the vector).
+		type->index = _meta_unit_data->types.size();
 		const auto raw_ptr = type.get();
 		_meta_unit_data->types.emplace_back(std::move(type));
-
 		return raw_ptr;
 	}
 
@@ -63,8 +63,33 @@ namespace lux::cxx::dref
 		{
 			return it->second;
 		}
+		// Assign the stable index before transferring ownership.
+		decl->index = _meta_unit_data->declarations.size();
 		const auto raw_ptr = decl.get();
+		const auto own_index = raw_ptr->index;
 		_meta_unit_data->declarations.push_back(std::move(decl));
+
+		// Back-patch parent_class on every child of a CXXRecordDecl so that
+		// child entries (fields, methods) that were registered earlier can
+		// resolve their parent's index now that it is known.
+		if (raw_ptr->kind == EDeclKind::CXX_RECORD_DECL)
+		{
+			auto* cxxr = static_cast<CXXRecordDecl*>(raw_ptr);
+			auto back_patch = [&](size_t child_idx)
+			{
+				auto* child = _meta_unit_data->declarations[child_idx].get();
+				if (auto* f = dynamic_cast<FieldDecl*>(child))
+					f->parent_class = own_index;
+				else if (auto* m = dynamic_cast<CXXMethodDecl*>(child))
+					m->parent_class = own_index;
+			};
+			for (auto idx : cxxr->field_decls)        back_patch(idx);
+			for (auto idx : cxxr->method_decls)       back_patch(idx);
+			for (auto idx : cxxr->static_method_decls) back_patch(idx);
+			for (auto idx : cxxr->constructor_decls)  back_patch(idx);
+			if (cxxr->destructor_decl != INVALID_DECL_INDEX)
+				back_patch(cxxr->destructor_decl);
+		}
 
 		if (is_marked)
 		{
@@ -120,18 +145,17 @@ namespace lux::cxx::dref
 	void CxxParserImpl::parseFunctionDecl(const Cursor& cursor, FunctionDecl& decl)
 	{
 		decl.result_type = createOrFindType(cursor.cursorResultType());
-		decl.mangling = cursor.mangling().to_std();
+		decl.mangling    = cursor.mangling().to_std();
 		decl.is_variadic = cursor.isVariadic();
-
 
 		for (size_t i = 0; i < cursor.numArguments(); i++)
 		{
 			auto param_decl = std::make_unique<ParmVarDecl>();
-			parseParamDecl(cursor.getArgument(i), i, *param_decl);
-			decl.params.push_back(param_decl.get());
-			registerDeclaration(std::move(param_decl));
+			parseParamDecl(cursor.getArgument(i), static_cast<int>(i), *param_decl);
+			auto* param_raw = registerDeclaration(std::move(param_decl));
+			decl.params.push_back(param_raw->index);
 		}
-		parseNamedDecl(cursor, decl); // type is set here		
+		parseNamedDecl(cursor, decl); // type is set here
 
 		if (decl.kind != EDeclKind::CXX_CONSTRUCTOR_DECL &&
 			decl.kind != EDeclKind::CXX_CONVERSION_DECL &&
@@ -144,6 +168,45 @@ namespace lux::cxx::dref
 		else
 		{
 			decl.invoke_name = decl.spelling;
+		}
+
+		// Phase 3: collect template parameters for function templates
+		if (cursor.cursorKind().kindEnum() == CXCursor_FunctionTemplate)
+		{
+			decl.is_template = true;
+			cursor.visitChildren(
+				[&decl](const Cursor& child, const Cursor&) -> CXChildVisitResult
+				{
+					const auto ck = child.cursorKind().kindEnum();
+					if (ck == CXCursor_TemplateTypeParameter)
+					{
+						TemplateParam tp;
+						tp.kind     = TemplateParam::Kind::Type;
+						tp.name     = child.cursorSpelling().to_std();
+						tp.spelling = child.displayName().to_std();
+						decl.template_params.push_back(std::move(tp));
+					}
+					else if (ck == CXCursor_NonTypeTemplateParameter)
+					{
+						TemplateParam tp;
+						tp.kind     = TemplateParam::Kind::NonType;
+						tp.name     = child.cursorSpelling().to_std();
+						tp.spelling = child.displayName().to_std();
+						decl.template_params.push_back(std::move(tp));
+					}
+					else if (ck == CXCursor_TemplateTemplateParameter)
+					{
+						TemplateParam tp;
+						tp.kind     = TemplateParam::Kind::TemplateTemplate;
+						tp.name     = child.cursorSpelling().to_std();
+						tp.spelling = child.displayName().to_std();
+						decl.template_params.push_back(std::move(tp));
+					}
+					// Params and body children are visited fine; we only collect
+					// template parameter cursors at the top level of the template.
+					return CXChildVisit_Continue;
+				}
+			);
 		}
 	}
 
@@ -183,21 +246,45 @@ namespace lux::cxx::dref
 
 	std::string CxxParserImpl::fullQualifiedName(const Cursor& cursor)
 	{
-		auto cursor_kind = cursor.cursorKind().kindEnum();
-		if (cursor_kind == CXCursor_TranslationUnit)
+		// Iterative implementation: walk up the semantic parent chain collecting
+		// display names, then concatenate in reverse order.  This avoids N
+		// heap-allocations + string-copies that the recursive version produced
+		// for a namespace-depth of N.
+		std::vector<std::string> parts;
+		parts.reserve(8);
+		Cursor current = cursor;
+		while (true)
 		{
-			return std::string{};
-		}
-		auto spelling = cursor.displayName().to_std();
-		if (const std::string res = fullQualifiedName(cursor.getCursorSemanticParent()); !res.empty())
-		{
-			if (cursor_kind == CXCursor_LinkageSpec)
+			const auto kind = current.cursorKind().kindEnum();
+			if (kind == CXCursor_TranslationUnit)
+				break;
+			if (kind == CXCursor_LinkageSpec)
 			{
-				return res;
+				current = current.getCursorSemanticParent();
+				continue;
 			}
-			return res + "::" + spelling;
+			parts.push_back(current.displayName().to_std());
+			current = current.getCursorSemanticParent();
 		}
-		return spelling;
+		if (parts.empty())
+			return {};
+
+		std::reverse(parts.begin(), parts.end());
+
+		// Pre-compute total length to avoid repeated reallocation.
+		std::size_t total = 0;
+		for (const auto& p : parts)
+			total += p.size() + 2; // "::" separator (slightly over-allocated but harmless)
+
+		std::string result;
+		result.reserve(total);
+		for (std::size_t i = 0; i < parts.size(); ++i)
+		{
+			if (i > 0)
+				result += "::";
+			result += parts[i];
+		}
+		return result;
 	}
 
 	std::string CxxParserImpl::fullQualifiedParameterName(const Cursor& cursor, size_t index)
@@ -275,17 +362,8 @@ namespace lux::cxx::dref
 			}
 		}
 
-		for (size_t i = 0; i < _meta_unit_data->types.size(); i++)
-		{
-			auto& type  = _meta_unit_data->types[i];
-			type->index = i;
-		}
-
-		for (size_t i = 0; i < _meta_unit_data->declarations.size(); i++)
-		{
-			auto& decl = _meta_unit_data->declarations[i];
-			decl->index = i;
-		}
+		// Indices are assigned eagerly in registerDeclaration/registerType, so
+		// no separate index-setting loops are needed here.
 
 		auto meta_unit_impl = std::make_unique<MetaUnitImpl>(
 			std::move(_meta_unit_data),
@@ -317,20 +395,22 @@ namespace lux::cxx::dref
 		{
 			case CXCursor_StructDecl: [[fallthrough]];
 			case CXCursor_UnionDecl: [[fallthrough]];
-			case CXCursor_ClassDecl: // implement
+			case CXCursor_ClassTemplate: [[fallthrough]]; // Phase 3: class/struct templates
+			case CXCursor_ClassDecl:
 			{
 				auto class_decl = std::make_unique<CXXRecordDecl>();
 				parseCXXRecordDecl(cursor, *class_decl);
 				decl = std::move(class_decl);
 				break;
 			}
-			case CXCursor_EnumDecl: // implement
+			case CXCursor_EnumDecl:
 			{
 				auto enum_decl = std::make_unique<EnumDecl>();
 				parseEnumDecl(cursor, *enum_decl);
 				decl = std::move(enum_decl);
 				break;
 			}
+			case CXCursor_FunctionTemplate: [[fallthrough]]; // Phase 3: function templates
 			case CXCursor_FunctionDecl:
 			{
 				auto func_decl = std::make_unique<FunctionDecl>();
@@ -339,7 +419,16 @@ namespace lux::cxx::dref
 				break;
 			}
 			default:
-				return false;
+			{
+				const auto kind_int = static_cast<int>(cursor.cursorKind().kindEnum());
+				const auto spelling = cursor.cursorSpelling().to_std();
+				if (_callback)
+					_callback("Unsupported declaration kind " + std::to_string(kind_int)
+						+ " for cursor '" + spelling + "' — skipped");
+				// Return true (not false) so one unrecognised declaration does
+				// not abort the entire parse.
+				return true;
+			}
 		}
 
 		registerDeclaration(std::move(decl), true);
