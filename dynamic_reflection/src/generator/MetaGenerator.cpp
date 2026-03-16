@@ -6,6 +6,11 @@
 #include <fstream>
 #include <filesystem>
 #include <unordered_set>
+#include <algorithm>
+#include <cctype>
+#include <cerrno>
+#include <cstdlib>
+#include <string_view>
 
 using namespace ::lux::cxx::dref;
 
@@ -251,6 +256,287 @@ static std::vector<const CXXRecordDecl*> find_parent_chain(const CXXRecordDecl* 
     return {};
 }
 
+struct ParsedAnnotation
+{
+    std::string raw{};
+    std::string head{};
+    nlohmann::json args = nlohmann::json::object();
+};
+
+static std::string trim_copy(std::string_view text)
+{
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())))
+    {
+        text.remove_prefix(1);
+    }
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())))
+    {
+        text.remove_suffix(1);
+    }
+    return std::string(text);
+}
+
+static std::vector<std::string> split_csv_like(std::string_view text, char delimiter)
+{
+    std::vector<std::string> tokens;
+    std::string current;
+    current.reserve(text.size());
+
+    bool in_single_quote = false;
+    bool in_double_quote = false;
+    bool escaped = false;
+
+    for (char ch : text)
+    {
+        if (escaped)
+        {
+            current.push_back(ch);
+            escaped = false;
+            continue;
+        }
+
+        if (ch == '\\')
+        {
+            escaped = true;
+            current.push_back(ch);
+            continue;
+        }
+
+        if (ch == '\'' && !in_double_quote)
+        {
+            in_single_quote = !in_single_quote;
+            current.push_back(ch);
+            continue;
+        }
+
+        if (ch == '"' && !in_single_quote)
+        {
+            in_double_quote = !in_double_quote;
+            current.push_back(ch);
+            continue;
+        }
+
+        if (ch == delimiter && !in_single_quote && !in_double_quote)
+        {
+            auto token = trim_copy(current);
+            if (!token.empty())
+            {
+                tokens.push_back(std::move(token));
+            }
+            current.clear();
+            continue;
+        }
+
+        current.push_back(ch);
+    }
+
+    auto token = trim_copy(current);
+    if (!token.empty())
+    {
+        tokens.push_back(std::move(token));
+    }
+
+    return tokens;
+}
+
+static nlohmann::json parse_annotation_value(std::string_view raw)
+{
+    std::string value = trim_copy(raw);
+    if (value.empty())
+    {
+        return "";
+    }
+
+    if (value.size() >= 2)
+    {
+        const char first = value.front();
+        const char last = value.back();
+        if ((first == '"' && last == '"') || (first == '\'' && last == '\''))
+        {
+            return value.substr(1, value.size() - 2);
+        }
+    }
+
+    std::string lower = value;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (lower == "true")
+    {
+        return true;
+    }
+    if (lower == "false")
+    {
+        return false;
+    }
+
+    errno = 0;
+    char* end_i = nullptr;
+    const long long as_int = std::strtoll(value.c_str(), &end_i, 10);
+    if (end_i != value.c_str() && end_i && *end_i == '\0' && errno != ERANGE)
+    {
+        return as_int;
+    }
+
+    errno = 0;
+    char* end_d = nullptr;
+    const double as_double = std::strtod(value.c_str(), &end_d);
+    if (end_d != value.c_str() && end_d && *end_d == '\0' && errno != ERANGE)
+    {
+        return as_double;
+    }
+
+    return value;
+}
+
+static ParsedAnnotation parse_annotation(std::string_view annotation_text)
+{
+    ParsedAnnotation result{};
+    result.raw = trim_copy(annotation_text);
+    if (result.raw.empty())
+    {
+        return result;
+    }
+
+    auto tokens = split_csv_like(result.raw, ',');
+    if (tokens.empty())
+    {
+        return result;
+    }
+
+    auto parse_kv_token = [&result](const std::string& token, bool is_head) {
+        const auto eq_pos = token.find('=');
+        if (eq_pos == std::string::npos)
+        {
+            if (is_head)
+            {
+                result.head = trim_copy(token);
+            }
+            else
+            {
+                const std::string key = trim_copy(token);
+                if (!key.empty())
+                {
+                    result.args[key] = true;
+                }
+            }
+            return;
+        }
+
+        const std::string key = trim_copy(token.substr(0, eq_pos));
+        const std::string value = trim_copy(token.substr(eq_pos + 1));
+        if (key.empty())
+        {
+            return;
+        }
+        if (is_head)
+        {
+            result.head = key;
+        }
+        result.args[key] = parse_annotation_value(value);
+    };
+
+    parse_kv_token(tokens[0], true);
+    for (size_t i = 1; i < tokens.size(); ++i)
+    {
+        parse_kv_token(tokens[i], false);
+    }
+
+    if (result.head.empty())
+    {
+        result.head = result.raw;
+    }
+    return result;
+}
+
+static std::vector<std::string> extract_annotation_texts(const nlohmann::json& input)
+{
+    std::vector<std::string> annotations{};
+    if (input.is_null())
+    {
+        return annotations;
+    }
+
+    if (input.is_object())
+    {
+        auto it = input.find("attributes");
+        if (it == input.end() || !it->is_array())
+        {
+            return annotations;
+        }
+        for (const auto& item : *it)
+        {
+            if (item.is_string())
+            {
+                annotations.push_back(item.get<std::string>());
+            }
+        }
+        return annotations;
+    }
+
+    if (input.is_array())
+    {
+        for (const auto& item : input)
+        {
+            if (item.is_string())
+            {
+                annotations.push_back(item.get<std::string>());
+            }
+        }
+        return annotations;
+    }
+
+    if (input.is_string())
+    {
+        annotations.push_back(input.get<std::string>());
+    }
+
+    return annotations;
+}
+
+static std::vector<ParsedAnnotation> parse_annotation_set(const nlohmann::json& input)
+{
+    auto raw_annotations = extract_annotation_texts(input);
+    std::vector<ParsedAnnotation> parsed{};
+    parsed.reserve(raw_annotations.size());
+    for (const auto& raw : raw_annotations)
+    {
+        parsed.push_back(parse_annotation(raw));
+    }
+    return parsed;
+}
+
+static nlohmann::json annotation_map_all(const std::vector<ParsedAnnotation>& parsed)
+{
+    nlohmann::json map = nlohmann::json::object();
+    for (const auto& ann : parsed)
+    {
+        for (auto it = ann.args.begin(); it != ann.args.end(); ++it)
+        {
+            map[it.key()] = it.value();
+        }
+    }
+    return map;
+}
+
+static nlohmann::json annotation_map_for_head(
+    const std::vector<ParsedAnnotation>& parsed,
+    std::string_view target_head)
+{
+    nlohmann::json map = nlohmann::json::object();
+    for (const auto& ann : parsed)
+    {
+        if (ann.head != target_head)
+        {
+            continue;
+        }
+        for (auto it = ann.args.begin(); it != ann.args.end(); ++it)
+        {
+            map[it.key()] = it.value();
+        }
+    }
+    return map;
+}
+
 //---------------------------------------------------------------------
 // renderTemplates: Render output files using the provided template
 //
@@ -365,6 +651,177 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
                 ret.push_back(info);
             }
 			return ret;
+        }
+    );
+
+    // Returns annotation strings from a declaration (or raw attributes input).
+    inja_env.add_callback(
+        "annotation_list",
+        [](const inja::Arguments& args) -> nlohmann::json
+        {
+            if (args.empty())
+            {
+                return nlohmann::json::array();
+            }
+            const auto raw = extract_annotation_texts(*args.at(0));
+            nlohmann::json out = nlohmann::json::array();
+            for (const auto& attr : raw)
+            {
+                out.push_back(attr);
+            }
+            return out;
+        }
+    );
+
+    // Returns annotation heads (first token before comma).
+    inja_env.add_callback(
+        "annotation_heads",
+        [](const inja::Arguments& args) -> nlohmann::json
+        {
+            if (args.empty())
+            {
+                return nlohmann::json::array();
+            }
+            const auto parsed = parse_annotation_set(*args.at(0));
+            nlohmann::json out = nlohmann::json::array();
+            for (const auto& ann : parsed)
+            {
+                out.push_back(ann.head);
+            }
+            return out;
+        }
+    );
+
+    // Checks whether a declaration has a given annotation symbol.
+    inja_env.add_callback(
+        "annotation_has",
+        [](const inja::Arguments& args) -> nlohmann::json
+        {
+            if (args.size() < 2)
+            {
+                return false;
+            }
+            const auto target = trim_copy(args.at(1)->get<std::string>());
+            const auto parsed = parse_annotation_set(*args.at(0));
+            for (const auto& ann : parsed)
+            {
+                if (ann.raw == target || ann.head == target || ann.args.contains(target))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+    );
+
+    // Returns merged key/value map of all annotations.
+    inja_env.add_callback(
+        "annotation_map",
+        [](const inja::Arguments& args) -> nlohmann::json
+        {
+            if (args.empty())
+            {
+                return nlohmann::json::object();
+            }
+            const auto parsed = parse_annotation_set(*args.at(0));
+            return annotation_map_all(parsed);
+        }
+    );
+
+    // Returns merged key/value map for a specific annotation head.
+    inja_env.add_callback(
+        "annotation_map_for",
+        [](const inja::Arguments& args) -> nlohmann::json
+        {
+            if (args.size() < 2)
+            {
+                return nlohmann::json::object();
+            }
+            const auto parsed = parse_annotation_set(*args.at(0));
+            const auto head = trim_copy(args.at(1)->get<std::string>());
+            return annotation_map_for_head(parsed, head);
+        }
+    );
+
+    // Returns a value for key across all annotations; null if not found.
+    inja_env.add_callback(
+        "annotation_get",
+        [](const inja::Arguments& args) -> nlohmann::json
+        {
+            if (args.size() < 2)
+            {
+                return nullptr;
+            }
+            const auto key = trim_copy(args.at(1)->get<std::string>());
+            const auto map = annotation_map_all(parse_annotation_set(*args.at(0)));
+            auto it = map.find(key);
+            if (it == map.end())
+            {
+                return nullptr;
+            }
+            return *it;
+        }
+    );
+
+    // Returns a value for key across all annotations; default when missing.
+    inja_env.add_callback(
+        "annotation_get_or",
+        [](const inja::Arguments& args) -> nlohmann::json
+        {
+            if (args.size() < 3)
+            {
+                return nullptr;
+            }
+            const auto key = trim_copy(args.at(1)->get<std::string>());
+            const auto map = annotation_map_all(parse_annotation_set(*args.at(0)));
+            auto it = map.find(key);
+            if (it == map.end())
+            {
+                return *args.at(2);
+            }
+            return *it;
+        }
+    );
+
+    // Returns a value for key inside a specific annotation head; null if missing.
+    inja_env.add_callback(
+        "annotation_get_for",
+        [](const inja::Arguments& args) -> nlohmann::json
+        {
+            if (args.size() < 3)
+            {
+                return nullptr;
+            }
+            const auto head = trim_copy(args.at(1)->get<std::string>());
+            const auto key = trim_copy(args.at(2)->get<std::string>());
+            const auto map = annotation_map_for_head(parse_annotation_set(*args.at(0)), head);
+            auto it = map.find(key);
+            if (it == map.end())
+            {
+                return nullptr;
+            }
+            return *it;
+        }
+    );
+
+    // Returns a value for key inside a specific annotation head; default when missing.
+    inja_env.add_callback(
+        "annotation_get_for_or",
+        [](const inja::Arguments& args) -> nlohmann::json
+        {
+            if (args.size() < 4)
+            {
+                return nullptr;
+            }
+            const auto head = trim_copy(args.at(1)->get<std::string>());
+            const auto key = trim_copy(args.at(2)->get<std::string>());
+            const auto map = annotation_map_for_head(parse_annotation_set(*args.at(0)), head);
+            auto it = map.find(key);
+            if (it == map.end())
+            {
+                return *args.at(3);
+            }
+            return *it;
         }
     );
 

@@ -39,6 +39,7 @@ A C++ dynamic reflection system based on **libclang**, designed for game engines
 
 ### Code Generation
 - **inja template engine**: Flexible template-based code generation
+- **Annotation-aware template callbacks**: Query annotation heads/keys/defaults directly in inja
 - **CMake integration**: `add_meta()` + `target_add_meta()` for seamless build system integration
 - **Incremental builds**: Only regenerates when source headers change
 - **Customizable output**: Any file format via templates (`.meta.hpp`, `.meta.cpp`, `.json`, etc.)

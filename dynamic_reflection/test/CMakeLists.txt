@@ -74,6 +74,18 @@ if(LUX_GENERATOR)
 		ECHO
 	)
 
+	add_meta(
+		NAME			test_annotation_meta
+		GENERATOR		${LUX_GENERATOR}
+		OUT_DIR			${CMAKE_BINARY_DIR}/metagen
+		META_SUFFIX     "anno.hpp"
+		MARKER          "marked"
+		META_GENERATOR  ${GENERATOR}
+		TEMPLATE		${TEST_TEMPLATE_DIR}/annotation_callbacks_test.template.inja
+		TARGET_FILES	${CMAKE_CURRENT_SOURCE_DIR}/test_annotation_callbacks.hpp
+		ECHO
+	)
+
 	target_add_meta(
 		TARGET			generator_test
 		NAME			test_meta
@@ -82,8 +94,21 @@ if(LUX_GENERATOR)
 		ECHO
 	)
 
+	target_add_meta(
+		TARGET			generator_test
+		NAME			test_annotation_meta
+		ALWAYS_REGENERATE
+		DONT_ADD_TO_SOURCE
+		ECHO
+	)
+
 	add_dependencies(
 		test_meta_gen
+		lux_meta_generator
+	)
+
+	add_dependencies(
+		test_annotation_meta_gen
 		lux_meta_generator
 	)
 endif()

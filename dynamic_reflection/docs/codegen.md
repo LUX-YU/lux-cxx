@@ -85,7 +85,9 @@ lux_meta_generator <config.json>
 
 ## Template Callbacks
 
-The generator registers four callbacks available inside inja templates:
+The generator registers callbacks available inside inja templates.
+
+### Core lookup callbacks
 
 ### `decl_from_id(id)`
 
@@ -128,6 +130,133 @@ For a `CXXRecordDecl`, find the inheritance chain from the declaration to a name
 ```
 
 This is useful for generating virtual dispatch tables, RTTI chains, or component hierarchies.
+
+### Annotation callbacks
+
+These callbacks make annotation usage declarative in templates (no manual string splitting in inja):
+
+Supported `node` inputs:
+
+- A declaration JSON object (`decl_from_id(...)`, `decl_from_index(...)` result)
+- A raw `attributes` JSON array
+- A single annotation string
+
+Annotation parse rules:
+
+- The parser first splits declaration attributes by `;` into individual annotation strings.
+- Inside each annotation string, callback parsing splits by `,` (quote-aware).
+- The first token is treated as the annotation **head**.
+- `key=value` tokens are parsed into typed JSON values:
+  - `true` / `false` -> boolean
+  - integer literals -> integer
+  - floating literals -> number
+  - quoted values -> string without quotes
+  - otherwise -> string
+- A key-only token (e.g. `readonly`) is treated as `readonly=true`.
+- When multiple annotations provide the same key, **last write wins** in merged maps.
+
+### `annotation_list(node)`
+
+Return raw annotation strings.
+
+```
+{% set attrs = annotation_list(decl) %}
+{% for a in attrs %}{{ a }}{% endfor %}
+```
+
+### `annotation_heads(node)`
+
+Return annotation heads (first token before `,`).
+
+```
+{% if annotation_heads(decl) is empty %}...{% endif %}
+```
+
+### `annotation_has(node, symbol)`
+
+Return `true` if any annotation matches `symbol` by raw text, head, or key.
+
+```
+{% if annotation_has(field, "luxref::property::member") %}...{% endif %}
+```
+
+### `annotation_map(node)`
+
+Return merged key/value map from all annotations.
+
+```
+{% set m = annotation_map(field) %}
+{{ m.display_name }}
+```
+
+### `annotation_map_for(node, head)`
+
+Return merged key/value map from annotations with the specified head.
+
+```
+{% set m = annotation_map_for(field, "luxref::property::member") %}
+{{ m.tooltip }}
+```
+
+### `annotation_get(node, key)`
+
+Return value for `key` across all annotations, or `null` if missing.
+
+```
+{% set p = annotation_get(decl, "priority") %}
+```
+
+### `annotation_get_or(node, key, default_value)`
+
+Return value for `key`, fallback to `default_value` when missing.
+
+```
+{{ annotation_get_or(decl, "priority", 100) }}
+```
+
+### `annotation_get_for(node, head, key)`
+
+Return value for `key` inside annotations with `head`, or `null`.
+
+```
+{{ annotation_get_for(field, "luxref::property::member", "display_name") }}
+```
+
+### `annotation_get_for_or(node, head, key, default_value)`
+
+Return value for `key` inside `head` annotations, or `default_value`.
+
+```
+{{ annotation_get_for_or(field, "luxref::property::member", "readonly", false) }}
+```
+
+### Signature Summary
+
+| Callback | Return | Description |
+|----------|--------|-------------|
+| `annotation_list(node)` | `array<string>` | Raw annotation strings |
+| `annotation_heads(node)` | `array<string>` | Annotation heads |
+| `annotation_has(node, symbol)` | `bool` | Match by raw text/head/key |
+| `annotation_map(node)` | `object` | Merged key/value map across all annotations |
+| `annotation_map_for(node, head)` | `object` | Merged key/value map for one head |
+| `annotation_get(node, key)` | `json/null` | Value lookup across all annotations |
+| `annotation_get_or(node, key, default)` | `json` | Value or default across all annotations |
+| `annotation_get_for(node, head, key)` | `json/null` | Value lookup in one head |
+| `annotation_get_for_or(node, head, key, default)` | `json` | Value or default in one head |
+
+### Recommended Pattern (inja compatibility)
+
+Prefer loop-based access over inline index expressions:
+
+```inja
+{% for rec_index in marked_record_decls %}
+{% set rec = decl_from_index(rec_index) %}
+{% for field_id in rec.field_decls %}
+{% set field = decl_from_id(field_id) %}
+{{ annotation_get_for_or(field, "luxref::property::member", "display_name", field.name) }}
+{% endfor %}
+{% endfor %}
+```
 
 ## Template Data Schema
 

@@ -68,6 +68,24 @@ LUX_META(marked; serializable; category=physics) float mass;
 
 This produces `attributes: ["marked", "serializable", "category=physics"]`. Your templates or runtime code can inspect these freely.
 
+For code generation templates, the generator now provides annotation-aware callbacks
+(`annotation_get_or`, `annotation_map_for`, etc.) so templates can consume
+annotation keys directly without manual string parsing. See `docs/codegen.md`.
+
+Example declaration:
+
+```cpp
+float LUX_META(luxref::property::member, display_name=Health, min=0.0, max=100.0, readonly=false) hp;
+```
+
+At template side:
+
+```inja
+{{ annotation_get_for_or(field, "luxref::property::member", "display_name", field.name) }}
+{{ annotation_get_for_or(field, "luxref::property::member", "min", 0.0) }}
+{{ annotation_get_for_or(field, "luxref::property::member", "readonly", false) }}
+```
+
 ## ParseOptions
 
 ```cpp

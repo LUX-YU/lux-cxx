@@ -1,0 +1,31 @@
+#pragma once
+#include <string_view>
+
+{% for rec_index in marked_record_decls %}
+{% set rec = decl_from_index(rec_index) %}
+{% set rec_i = loop.index %}
+
+static_assert({{ annotation_has(rec, "marked") }}, "record should keep 'marked' annotation");
+static_assert({{ annotation_has(rec, "render::feature") }}, "record should keep 'render::feature' annotation head");
+static_assert({{ annotation_get_or(rec, "priority", 0) }} == 50, "priority annotation must be parsed as integer");
+static_assert({{ annotation_get_or(rec, "enabled", false) }}, "enabled annotation must be parsed as bool");
+static_assert({{ length(annotation_heads(rec)) }} >= 2, "annotation_heads() should expose parsed heads");
+
+constexpr std::string_view kFeatureName_{{ rec_i }} = "{{ annotation_get_or(rec, "name", "Unknown") }}";
+static_assert(kFeatureName_{{ rec_i }} == "Skybox", "annotation_get_or(name) should return string value");
+
+constexpr std::string_view kDeps_{{ rec_i }} = "{{ annotation_get_for_or(rec, "render::feature", "deps", "") }}";
+static_assert(kDeps_{{ rec_i }} == "DepthPrepass|ForwardOpaque", "annotation_get_for_or(head,key) should read scoped kv");
+
+{% for field_id in rec.field_decls %}
+{% set field = decl_from_id(field_id) %}
+constexpr std::string_view kDisplayName_{{ rec_i }}_{{ loop.index }} = "{{ annotation_get_for_or(field, "luxref::property::member", "display_name", "") }}";
+static_assert(kDisplayName_{{ rec_i }}_{{ loop.index }} == "World Position", "field display_name annotation must be parsed");
+
+static_assert({{ annotation_get_for_or(field, "luxref::property::member", "readonly", false) }},
+              "field readonly annotation must be parsed as bool");
+
+constexpr std::string_view kLabels_{{ rec_i }}_{{ loop.index }} = "{{ annotation_get_for_or(field, "luxref::property::member", "labels", "") }}";
+static_assert(kLabels_{{ rec_i }}_{{ loop.index }} == "X|Y|Z", "field labels annotation must be parsed");
+{% endfor %}
+{% endfor %}
