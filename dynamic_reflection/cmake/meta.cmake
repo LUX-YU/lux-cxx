@@ -355,7 +355,7 @@ function(target_add_meta)
     add_custom_command(
         OUTPUT ${_all_generated_files}
         COMMAND "${_meta_gen_exe}" "${_config_file}"
-        DEPENDS ${_meta_files}
+        DEPENDS ${_meta_files} "${_meta_template}" "${_config_file}"
         COMMENT "[target_add_meta] Generating meta information for '${_meta_name}', command: ${_meta_gen_exe} ${_config_file}"
         VERBATIM
     )
