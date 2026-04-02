@@ -313,6 +313,31 @@ namespace lux::cxx
             return dense_values_;
         }
 
+        /**
+         * @brief Returns a pointer to the value associated with a key, or nullptr if not found.
+         *
+         * Combines contains() + at() into a single lookup, avoiding redundant bounds checks.
+         *
+         * @param key The key to look up.
+         * @return A pointer to the associated value, or nullptr if the key is absent.
+         */
+        Value* tryGet(Key key) noexcept
+        {
+            if (key < Offset) return nullptr;
+            const size_type idx = toIndex(key);
+            if (idx >= sparse_.size() || sparse_[idx] == INVALID_INDEX) return nullptr;
+            return &dense_values_[sparse_[idx]];
+        }
+
+        /// @overload const version
+        const Value* tryGet(Key key) const noexcept
+        {
+            if (key < Offset) return nullptr;
+            const size_type idx = toIndex(key);
+            if (idx >= sparse_.size() || sparse_[idx] == INVALID_INDEX) return nullptr;
+            return &dense_values_[sparse_[idx]];
+        }
+
     private:
         /**
          * @brief Converts a key to an index in the sparse array by subtracting the Offset.
@@ -594,6 +619,14 @@ namespace lux::cxx
         {
             return BaseType::at(key);
         }
+
+        /**
+         * @brief Returns a pointer to the value associated with a key, or nullptr if not found.
+         * @param key The key to look up.
+         * @return A pointer to the associated value, or nullptr if the key is absent.
+         */
+        Value* tryGet(Key key) noexcept { return BaseType::tryGet(key); }
+        const Value* tryGet(Key key) const noexcept { return BaseType::tryGet(key); }
 
     protected:
         /**
