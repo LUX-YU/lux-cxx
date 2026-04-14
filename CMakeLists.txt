@@ -24,6 +24,7 @@ add_subdirectory(subprogram)
 add_subdirectory(arguments)
 add_subdirectory(algorithm)
 add_subdirectory(archtype)
+add_subdirectory(event)
 
 set(ENABLE_COMPONENTS 
     container
@@ -35,6 +36,7 @@ set(ENABLE_COMPONENTS
     algorithm
     archtype
     static_reflection
+    event
 )
 
 set(ENABLE_DYNAMIC_REFLECTION OFF CACHE BOOL "ENABLE REFLECTION SUPPORT")
