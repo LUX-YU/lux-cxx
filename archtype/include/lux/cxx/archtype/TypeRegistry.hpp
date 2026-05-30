@@ -1,120 +1,131 @@
 #pragma once
+#include <cstdint>
+#include <cstring>
+#include <type_traits>
 #include <typeinfo>
-#include <string>
-#include <unordered_map>
+
 #include "Common.hpp"
-#include "Component.hpp"
 
 namespace lux::cxx::archtype {
 
-    using ComponentTypeID = std::size_t;
+    /**
+     * @brief Type-erased lifecycle ops for a component.
+     *
+     * For trivially-relocatable / trivially-destructible types, the
+     * corresponding function pointer is **nullptr** so that hot paths can
+     * detect that case in one branch and fall back to an inline memcpy,
+     * avoiding the indirect-call overhead and letting the compiler
+     * specialize on the (cached, per-archetype) component size.
+     */
+    struct ComponentOps {
+        /// Move-construct dest from src AND destroy src in place.
+        /// nullptr  =>  the type is trivially relocatable; caller should memcpy `size` bytes.
+        void (*move_and_destroy)(void* dest, void* src) = nullptr;
+
+        /// Destroy a component in place.
+        /// nullptr  =>  trivial destructor; nothing to do.
+        void (*destroy)(void* ptr) = nullptr;
+    };
+
+    /// Bit flags carried in ComponentTypeInfo::flags.
+    enum ComponentFlag : std::uint8_t {
+        kFlagTriviallyRelocatable  = 1u << 0, ///< ops.move_and_destroy is nullptr
+        kFlagTriviallyDestructible = 1u << 1, ///< ops.destroy           is nullptr
+        kFlagTag                   = 1u << 2, ///< std::is_empty_v<T>; size is stored as 0 — no chunk storage
+    };
 
     /**
      * @struct ComponentTypeInfo
-     * @brief Holds metadata about a single component type, 
-     *        including size, alignment, and a hash value 
-     *        (often derived from std::type_info).
+     * @brief Metadata for a single component type. Looked up by ComponentTypeID.
      */
     struct ComponentTypeInfo {
-        const char* name = nullptr;
-        std::size_t size = 0;
-        std::size_t alignment = 0;
-        std::size_t hash = 0; 
+        const char*       name      = nullptr;
+        std::uint32_t     size      = 0;
+        std::uint32_t     alignment = 0;
+        std::uint8_t      flags     = 0; ///< bitwise OR of ComponentFlag values
+        ComponentOps      ops{};
     };
 
     /**
      * @class TypeRegistry
-     * @brief Responsible for assigning unique component type IDs, 
-     *        storing type metadata (size, alignment), and 
-     *        storing type-erased operations (move_construct, destroy).
-     * 
-     *        Typically used through getTypeID<T>() to retrieve a 
-     *        stable ID for each distinct component type.
+     * @brief Hands out a stable ComponentTypeID per component type T and stores its metadata.
+     *
+     * Backed by a static array indexed by ID, so getTypeInfo(id) is one array load
+     * with no hash / function-pointer overhead in the hot path.
      */
     class TypeRegistry {
     public:
-        /**
-         * @brief Retrieves a unique ComponentTypeID for type T, 
-         *        assigning one if it hasn't been registered yet.
-         * 
-         * @tparam T The component type to register or retrieve.
-         * @return The stable, unique ID for T.
-         */
         template<typename T>
         static ComponentTypeID getTypeID() {
-            static const ComponentTypeID type_id = registerType<T>();
-            return type_id;
-        }
-
-        /**
-         * @brief Retrieves the ComponentTypeInfo for a given ID, 
-         *        containing size, alignment, etc.
-         */
-        static const ComponentTypeInfo& getTypeInfo(ComponentTypeID id) {
-            return type_infos_[id];
-        }
-
-        /**
-         * @brief Retrieves the type-erased ComponentOps for a given ID, 
-         *        which includes pointers for move_construct and destroy.
-         */
-        static const ComponentOps& getOps(ComponentTypeID id) {
-            return type_ops_[id];
-        }
-
-        /**
-         * @brief Returns the number of registered component types so far.
-         */
-        static ComponentTypeID getTypeCount() {
-            return type_count_;
-        }
-
-    private:
-        /**
-         * @brief Registers the component type T by creating 
-         *        a new ID and storing metadata/ops.
-         */
-        template<typename T>
-        static ComponentTypeID registerType() {
-            ComponentTypeID id = type_count_++;
-
-            // Fill type information
-            type_infos_[id].name      = typeid(T).name();
-            type_infos_[id].size      = sizeof(T);
-            type_infos_[id].alignment = alignof(T);
-            type_infos_[id].hash      = typeid(T).hash_code();
-
-            // Build type-erased ops
-            ComponentOps ops{};
-            if constexpr (std::is_trivially_copyable_v<T>) {
-                ops.move_construct = [](void* dest, void* src) {
-                    std::memcpy(dest, src, sizeof(T));
-                };
-            } else if constexpr (std::is_move_constructible_v<T>) {
-                ops.move_construct = [](void* dest, void* src) {
-                    new(dest) T(std::move(*reinterpret_cast<T*>(src)));
-                };
-            } else if constexpr (std::is_copy_constructible_v<T>) {
-                ops.move_construct = [](void* dest, void* src) {
-                    new(dest) T(*reinterpret_cast<T*>(src));
-                };
-            }
-            if constexpr (std::is_trivially_destructible_v<T>) {
-                ops.destroy = [](void*) {
-                    // trivial destructor - do nothing
-                };
-            } else {
-                ops.destroy = [](void* ptr) {
-                    reinterpret_cast<T*>(ptr)->~T();
-                };
-            }
-            type_ops_[id] = ops;
+            static const ComponentTypeID id = registerType<T>();
             return id;
         }
 
-        static inline ComponentTypeInfo  type_infos_[kMaxComponents]{};
-        static inline ComponentOps       type_ops_[kMaxComponents]{};
-        static inline ComponentTypeID    type_count_ = 0;
+        static const ComponentTypeInfo& getTypeInfo(ComponentTypeID id) noexcept {
+            return type_infos_[id];
+        }
+
+        static const ComponentOps& getOps(ComponentTypeID id) noexcept {
+            return type_infos_[id].ops;
+        }
+
+        static ComponentTypeID getTypeCount() noexcept { return type_count_; }
+
+    private:
+        template<typename T>
+        static ComponentTypeID registerType() {
+            const ComponentTypeID id = type_count_++;
+            auto& info = type_infos_[id];
+
+            info.name      = typeid(T).name();
+            // Empty / tag components carry no data: report size=0 so chunk
+            // layout reserves zero bytes for them. (sizeof(T) is at least 1 in
+            // C++ even for empty classes — that minimum byte is purely a
+            // language artifact, not data we need to store.)
+            constexpr bool is_tag = std::is_empty_v<T>;
+            info.size      = is_tag ? 0u : static_cast<std::uint32_t>(sizeof(T));
+            info.alignment = static_cast<std::uint32_t>(alignof(T));
+
+            std::uint8_t flags = 0;
+            if constexpr (is_tag) {
+                flags |= kFlagTag;
+            }
+
+            // ---- move_and_destroy ----
+            // "Trivially relocatable" approximation: trivially copyable AND trivially destructible.
+            // The standard guarantees memcpy preserves object identity for trivially-copyable types,
+            // and a trivial destructor needs no call.
+            if constexpr (std::is_trivially_copyable_v<T> && std::is_trivially_destructible_v<T>) {
+                flags |= kFlagTriviallyRelocatable;
+                info.ops.move_and_destroy = nullptr; // caller uses memcpy(size)
+            } else if constexpr (std::is_move_constructible_v<T>) {
+                info.ops.move_and_destroy = [](void* dst, void* src) {
+                    T* s = static_cast<T*>(src);
+                    ::new (dst) T(std::move(*s));
+                    s->~T();
+                };
+            } else if constexpr (std::is_copy_constructible_v<T>) {
+                info.ops.move_and_destroy = [](void* dst, void* src) {
+                    T* s = static_cast<T*>(src);
+                    ::new (dst) T(*s);
+                    s->~T();
+                };
+            }
+
+            // ---- destroy ----
+            if constexpr (std::is_trivially_destructible_v<T>) {
+                flags |= kFlagTriviallyDestructible;
+                info.ops.destroy = nullptr;        // hot path: `if (ops.destroy)` short-circuits
+            } else {
+                info.ops.destroy = [](void* p) { static_cast<T*>(p)->~T(); };
+            }
+
+            info.flags = flags;
+            return id;
+        }
+
+        static inline ComponentTypeInfo type_infos_[kMaxComponents]{};
+        static inline ComponentTypeID   type_count_ = 0;
     };
 
-} // namespace lux::ecs
+} // namespace lux::cxx::archtype
