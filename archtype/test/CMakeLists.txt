@@ -9,6 +9,8 @@ target_link_libraries(
 	lux::cxx::archtype
 )
 
+# The fair benchmark compares against EnTT, so it is only built when the
+# comparison is enabled. All performance measurement lives here now.
 set(ENABLE_COMPARE_WITH_ENTT false CACHE BOOL "Enable compare archtype with entt")
 if(ENABLE_COMPARE_WITH_ENTT)
 	find_package(EnTT    CONFIG REQUIRED)
@@ -20,18 +22,18 @@ if(ENABLE_COMPARE_WITH_ENTT)
 	endif()
 
 	add_executable(
-		entt_test
-		entt_test.cpp
+		ecs_bench
+		ecs_bench.cpp
 	)
 
 	target_link_libraries(
-		entt_test
+		ecs_bench
 		PRIVATE
 		lux::cxx::archtype
 	)
 
 	target_include_directories(
-		entt_test
+		ecs_bench
 		PRIVATE
 		${ENTT_INCLUDE_DIRS}
 	)
