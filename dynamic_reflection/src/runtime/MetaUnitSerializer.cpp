@@ -18,6 +18,17 @@ namespace lux::cxx::dref
             || k == EDeclKind::CXX_DESTRUCTOR_DECL);
     }
 
+    // Kinds whose runtime type is a TagDecl subclass (EnumDecl / RecordDecl /
+    // CXXRecordDecl).  Used to validate static_cast<TagDecl*>(decl) sites in
+    // deserialization fixups — without this check, a malformed/edited JSON
+    // could route a non-TagDecl id into a TagType::decl slot and trip UB later.
+    static bool isTagDeclKind(EDeclKind k)
+    {
+        return (k == EDeclKind::ENUM_DECL
+            || k == EDeclKind::RECORD_DECL
+            || k == EDeclKind::CXX_RECORD_DECL);
+    }
+
     static void serializeFunctionCommon(const FunctionDecl* fn, nlohmann::json& j, const MetaUnitData& data)
     {
         j["result_type_id"] = (fn->result_type ? fn->result_type->id : "");
@@ -127,6 +138,18 @@ namespace lux::cxx::dref
             j["attributes"] = nd->attributes;
             j["is_anonymous"] = nd->is_anonymous;
             j["type_id"] = (nd->type ? nd->type->id : "");
+        }
+
+        // TagDecl 公共字段（EnumDecl / RecordDecl / CXXRecordDecl）
+        switch (d->kind)
+        {
+        case EDeclKind::ENUM_DECL:
+        case EDeclKind::RECORD_DECL:
+        case EDeclKind::CXX_RECORD_DECL:
+            j["tag_kind"] = tagKindToString(static_cast<const TagDecl*>(d)->tag_kind);
+            break;
+        default:
+            break;
         }
 
         // 分发
@@ -296,8 +319,8 @@ namespace lux::cxx::dref
         Decl* raw  = declPtr.get();
         raw->kind  = k;
         raw->id    = j.value("id", "");
-        raw->index = j["index"].get<size_t>();
-		std::string hash_tr = j["hash"].get<std::string>();
+        raw->index = j.value("index", INVALID_DECL_INDEX);
+        std::string hash_tr = j.value("hash", std::string{"0"});
         auto [p, ec] = std::from_chars(hash_tr.data(), hash_tr.data() + hash_tr.size(), raw->hash);
         if (ec != std::errc())
         {
@@ -314,6 +337,19 @@ namespace lux::cxx::dref
 
             if (j.contains("attributes") && j["attributes"].is_array())
                 nd->attributes = j["attributes"].get<std::vector<std::string>>();
+        }
+
+        // TagDecl 公共字段
+        switch (k)
+        {
+        case EDeclKind::ENUM_DECL:
+        case EDeclKind::RECORD_DECL:
+        case EDeclKind::CXX_RECORD_DECL:
+            static_cast<TagDecl*>(raw)->tag_kind =
+                stringToTagKind(j.value("tag_kind", std::string{"Struct"}));
+            break;
+        default:
+            break;
         }
 
         // 再填子类字段
@@ -429,7 +465,11 @@ namespace lux::cxx::dref
                 auto uid = j["underlying_type_id"].get<std::string>();
                 if (!uid.empty()) {
                     auto it = typeMap.find(uid);
-                    if (it != typeMap.end()) {
+                    // Only accept BuiltinType — silently drop other kinds rather
+                    // than UB-cast through static_cast.
+                    if (it != typeMap.end() && it->second
+                        && it->second->kind == ETypeKinds::Builtin)
+                    {
                         en->underlying_type = static_cast<BuiltinType*>(it->second);
                     }
                 }
@@ -596,7 +636,6 @@ namespace lux::cxx::dref
         j["__kind"] = typeKindToString(t->kind);
 
         j["name"] = t->name;
-        j["type_kind"] = (int)t->kind;
         j["is_const"] = t->is_const;
         j["is_volatile"] = t->is_volatile;
         j["size"] = t->size;
@@ -707,7 +746,7 @@ namespace lux::cxx::dref
         raw->is_volatile = j.value("is_volatile", false);
         raw->size = j.value("size", 0);
         raw->align = j.value("align", 0);
-        raw->index = j["index"].get<size_t>();
+        raw->index = j.value("index", static_cast<size_t>(-1));
 
         switch (k)
         {
@@ -800,8 +839,11 @@ namespace lux::cxx::dref
                 auto did = j["decl_id"].get<std::string>();
                 if (!did.empty()) {
                     auto itd = declMap.find(did);
-                    if (itd != declMap.end())
+                    if (itd != declMap.end() && itd->second
+                        && isTagDeclKind(itd->second->kind))
+                    {
                         rt->decl = static_cast<TagDecl*>(itd->second);
+                    }
                 }
             }
             rt->template_name = j.value("template_name", "");
@@ -842,8 +884,11 @@ namespace lux::cxx::dref
                 auto did = j["decl_id"].get<std::string>();
                 if (!did.empty()) {
                     auto itd = declMap.find(did);
-                    if (itd != declMap.end())
+                    if (itd != declMap.end() && itd->second
+                        && isTagDeclKind(itd->second->kind))
+                    {
                         et->decl = static_cast<TagDecl*>(itd->second);
+                    }
                 }
             }
         }
@@ -1019,11 +1064,10 @@ namespace lux::cxx::dref
 			for (auto& id : root[name])
 			{
 				auto idx = id.get<size_t>();
-				if (idx >= 0 && idx <data.declarations.size())
-                {
-					auto it = dynamic_cast<T*>(data.declarations[idx].get());
-					decls.push_back(it);
-				}
+				if (idx == INVALID_DECL_INDEX || idx >= data.declarations.size())
+					continue;
+				if (auto* casted = dynamic_cast<T*>(data.declarations[idx].get()))
+					decls.push_back(casted);
 			}
 		};
 		deserialize_marked_decl("marked_record_decls",   data.marked_record_decls);

@@ -8,21 +8,31 @@
 
 namespace lux::cxx::dref
 {
+    // ---------------------------------------------------------------
+    // Single source of truth for declaration-kind ↔ JSON-string maps.
+    // Adding a new EDeclKind requires only one new X-row in this list;
+    // both serialisation and deserialisation pick it up automatically.
+    // ---------------------------------------------------------------
+    #define LUX_DREF_DECL_KIND_TABLE(X)                                   \
+        X(ENUM_DECL,             "EnumDecl")                              \
+        X(RECORD_DECL,           "RecordDecl")                            \
+        X(CXX_RECORD_DECL,       "CXXRecordDecl")                         \
+        X(FIELD_DECL,            "FieldDecl")                             \
+        X(FUNCTION_DECL,         "FunctionDecl")                          \
+        X(CXX_METHOD_DECL,       "CXXMethodDecl")                         \
+        X(CXX_CONSTRUCTOR_DECL,  "CXXConstructorDecl")                    \
+        X(CXX_CONVERSION_DECL,   "CXXConversionDecl")                     \
+        X(CXX_DESTRUCTOR_DECL,   "CXXDestructorDecl")                     \
+        X(PARAM_VAR_DECL,        "ParmVarDecl")                           \
+        X(VAR_DECL,              "VarDecl")
+
     inline std::string declKindToString(EDeclKind k)
     {
         switch (k)
         {
-        case EDeclKind::ENUM_DECL:               return "EnumDecl";
-        case EDeclKind::RECORD_DECL:             return "RecordDecl";
-        case EDeclKind::CXX_RECORD_DECL:         return "CXXRecordDecl";
-        case EDeclKind::FIELD_DECL:              return "FieldDecl";
-        case EDeclKind::FUNCTION_DECL:           return "FunctionDecl";
-        case EDeclKind::CXX_METHOD_DECL:         return "CXXMethodDecl";
-        case EDeclKind::CXX_CONSTRUCTOR_DECL:    return "CXXConstructorDecl";
-        case EDeclKind::CXX_CONVERSION_DECL:     return "CXXConversionDecl";
-        case EDeclKind::CXX_DESTRUCTOR_DECL:     return "CXXDestructorDecl";
-        case EDeclKind::PARAM_VAR_DECL:          return "ParmVarDecl";
-        case EDeclKind::VAR_DECL:                return "VarDecl";
+        #define LUX_DREF_X(enumerator, str) case EDeclKind::enumerator: return str;
+            LUX_DREF_DECL_KIND_TABLE(LUX_DREF_X)
+        #undef LUX_DREF_X
         default:
             return "UnknownDecl";
         }
@@ -30,39 +40,51 @@ namespace lux::cxx::dref
 
     inline EDeclKind stringToDeclKind(const std::string& s)
     {
-        // 简单示意
-        if (s == "EnumDecl")                 return EDeclKind::ENUM_DECL;
-        else if (s == "RecordDecl")          return EDeclKind::RECORD_DECL;
-        else if (s == "CXXRecordDecl")       return EDeclKind::CXX_RECORD_DECL;
-        else if (s == "FieldDecl")           return EDeclKind::FIELD_DECL;
-        else if (s == "FunctionDecl")        return EDeclKind::FUNCTION_DECL;
-        else if (s == "CXXMethodDecl")       return EDeclKind::CXX_METHOD_DECL;
-        else if (s == "CXXConstructorDecl")  return EDeclKind::CXX_CONSTRUCTOR_DECL;
-        else if (s == "CXXConversionDecl")   return EDeclKind::CXX_CONVERSION_DECL;
-        else if (s == "CXXDestructorDecl")   return EDeclKind::CXX_DESTRUCTOR_DECL;
-        else if (s == "ParmVarDecl")         return EDeclKind::PARAM_VAR_DECL;
-        else if (s == "VarDecl")             return EDeclKind::VAR_DECL;
+        #define LUX_DREF_X(enumerator, str) if (s == str) return EDeclKind::enumerator;
+            LUX_DREF_DECL_KIND_TABLE(LUX_DREF_X)
+        #undef LUX_DREF_X
         return EDeclKind::UNKNOWN;
     }
 
-    // 同理给 TypeKinds
+    // Kinds whose runtime type is a NamedDecl subclass.
+    inline bool isNamedDeclKind(EDeclKind k)
+    {
+        switch (k)
+        {
+        #define LUX_DREF_X(enumerator, str) case EDeclKind::enumerator: return true;
+            LUX_DREF_DECL_KIND_TABLE(LUX_DREF_X)
+        #undef LUX_DREF_X
+        default:
+            return false;
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // ETypeKinds ↔ JSON string table. The ordering matters only for
+    // human readability; lookup is name-based.
+    // ---------------------------------------------------------------
+    #define LUX_DREF_TYPE_KIND_TABLE(X)                                       \
+        X(Builtin,                  "BuiltinType")                            \
+        X(Pointer,                  "PointerType")                            \
+        X(PointerToDataMember,      "MemberDataPointerType")                  \
+        X(PointerToMemberFunction,  "MemberFuncPointerType")                  \
+        X(PointerToFunction,        "FuncPointerType")                        \
+        X(PointerToObject,          "ObjectPointerType")                      \
+        X(LvalueReference,          "LValueReferenceType")                    \
+        X(RvalueReference,          "RValueReferenceType")                    \
+        X(Record,                   "RecordType")                             \
+        X(Enum,                     "EnumType")                               \
+        X(ScopedEnum,               "ScopedEnumType")                         \
+        X(UnscopedEnum,             "UnscopedEnumType")                       \
+        X(Function,                 "FunctionType")
+
     inline std::string typeKindToString(ETypeKinds k)
     {
         switch (k)
         {
-        case ETypeKinds::Builtin:                   return "BuiltinType";
-        case ETypeKinds::Pointer:                   return "PointerType";
-        case ETypeKinds::PointerToDataMember:       return "MemberDataPointerType";
-        case ETypeKinds::PointerToMemberFunction:   return "MemberFuncPointerType";
-        case ETypeKinds::PointerToFunction:         return "FuncPointerType";
-        case ETypeKinds::PointerToObject:           return "ObjectPointerType";
-        case ETypeKinds::LvalueReference:           return "LValueReferenceType";
-        case ETypeKinds::RvalueReference:           return "RValueReferenceType";
-        case ETypeKinds::Record:                    return "RecordType";
-        case ETypeKinds::Enum:                      return "EnumType";
-		case ETypeKinds::ScopedEnum:                return "ScopedEnumType";
-		case ETypeKinds::UnscopedEnum:              return "UnscopedEnumType";
-        case ETypeKinds::Function:                  return "FunctionType";
+        #define LUX_DREF_X(enumerator, str) case ETypeKinds::enumerator: return str;
+            LUX_DREF_TYPE_KIND_TABLE(LUX_DREF_X)
+        #undef LUX_DREF_X
         default:
             return "UnsupportedType";
         }
@@ -70,44 +92,44 @@ namespace lux::cxx::dref
 
     inline ETypeKinds stringToTypeKind(const std::string& s)
     {
-        if (s == "BuiltinType")              return ETypeKinds::Builtin;
-        else if (s == "PointerType")         return ETypeKinds::Pointer;
-		else if (s == "MemberDataPointerType") return ETypeKinds::PointerToDataMember;
-		else if (s == "MemberFuncPointerType") return ETypeKinds::PointerToMemberFunction;
-		else if (s == "FuncPointerType")     return ETypeKinds::PointerToFunction;
-		else if (s == "ObjectPointerType")   return ETypeKinds::PointerToObject;
-        else if (s == "LValueReferenceType") return ETypeKinds::LvalueReference;
-        else if (s == "RValueReferenceType") return ETypeKinds::RvalueReference;
-        else if (s == "RecordType")          return ETypeKinds::Record;
-        else if (s == "EnumType")            return ETypeKinds::Enum;
-		else if (s == "ScopedEnumType")      return ETypeKinds::ScopedEnum;
-		else if (s == "UnscopedEnumType")    return ETypeKinds::UnscopedEnum;
-        else if (s == "FunctionType")        return ETypeKinds::Function;
+        #define LUX_DREF_X(enumerator, str) if (s == str) return ETypeKinds::enumerator;
+            LUX_DREF_TYPE_KIND_TABLE(LUX_DREF_X)
+        #undef LUX_DREF_X
         return ETypeKinds::Unknown;
+    }
+
+    // ---------------------------------------------------------------
+    // TagDecl::ETagKind ↔ JSON string table.
+    // ---------------------------------------------------------------
+    #define LUX_DREF_TAG_KIND_TABLE(X)                                        \
+        X(Struct, "Struct")                                                   \
+        X(Class,  "Class")                                                    \
+        X(Union,  "Union")                                                    \
+        X(Enum,   "Enum")
+
+    inline std::string tagKindToString(TagDecl::ETagKind k)
+    {
+        switch (k)
+        {
+        #define LUX_DREF_X(enumerator, str) case TagDecl::ETagKind::enumerator: return str;
+            LUX_DREF_TAG_KIND_TABLE(LUX_DREF_X)
+        #undef LUX_DREF_X
+        }
+        return "Struct";
+    }
+
+    inline TagDecl::ETagKind stringToTagKind(const std::string& s)
+    {
+        #define LUX_DREF_X(enumerator, str) if (s == str) return TagDecl::ETagKind::enumerator;
+            LUX_DREF_TAG_KIND_TABLE(LUX_DREF_X)
+        #undef LUX_DREF_X
+        return TagDecl::ETagKind::Struct;
     }
 
     inline NamedDecl* asNamedDecl(Decl* d)
     {
         if (!d) return nullptr;
-
-        switch (d->kind)
-        {
-        case EDeclKind::ENUM_DECL: [[fallthrough]];
-        case EDeclKind::RECORD_DECL: [[fallthrough]];
-        case EDeclKind::CXX_RECORD_DECL: [[fallthrough]];
-        case EDeclKind::FIELD_DECL: [[fallthrough]];
-        case EDeclKind::FUNCTION_DECL: [[fallthrough]];
-        case EDeclKind::CXX_METHOD_DECL: [[fallthrough]];
-        case EDeclKind::CXX_CONSTRUCTOR_DECL: [[fallthrough]];
-        case EDeclKind::CXX_CONVERSION_DECL: [[fallthrough]];
-        case EDeclKind::CXX_DESTRUCTOR_DECL: [[fallthrough]];
-        case EDeclKind::PARAM_VAR_DECL: [[fallthrough]];
-        case EDeclKind::VAR_DECL:
-            // 这些都继承自 NamedDecl
-            return static_cast<NamedDecl*>(d);
-        default:
-            return nullptr;
-        }
+        return isNamedDeclKind(d->kind) ? static_cast<NamedDecl*>(d) : nullptr;
     }
 
     inline const NamedDecl* asNamedDecl(const Decl* d)

@@ -162,7 +162,9 @@ target_add_meta(NAME my_meta TARGET my_game_engine)
 | Pointer types | ✅ | Object, function, member pointers |
 | Reference types | ✅ | Lvalue & rvalue references |
 | Const / Volatile qualifiers | ✅ | On types, fields, and methods |
-| Default parameters | ✅ | Parameter types parsed (not default values) |
+| Default parameters | ⚠️ | Parameter types parsed; the literal default-value expression is not stored |
+| Tag-kind round-trip (struct/class/union) | ✅ | `tag_kind` serialized as part of the JSON schema |
+| `Result<T>` / `DRefError` | ⚠️ | Only used by `GeneratorHelper::fetchIncludePaths`; the rest of the API still uses bool/exceptions |
 
 ## Dependencies
 

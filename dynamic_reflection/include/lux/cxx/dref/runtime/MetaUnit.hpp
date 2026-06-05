@@ -65,7 +65,15 @@ namespace lux::cxx::dref
 		}
 
 		nlohmann::json toJson() const;
-		static void fromJson(const std::string& json, MetaUnit& unit);
+
+		/**
+		 * @brief Deserialize a MetaUnit from its JSON dump.
+		 *
+		 * Throws @c nlohmann::json::parse_error on malformed JSON. Returns a
+		 * fully-populated MetaUnit on success; the caller assumes ownership of
+		 * the returned value.
+		 */
+		[[nodiscard]] static MetaUnit fromJson(const std::string& json);
 
 	private:
 		std::unique_ptr<MetaUnitImpl> _impl;

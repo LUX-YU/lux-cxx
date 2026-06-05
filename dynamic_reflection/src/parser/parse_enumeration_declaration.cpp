@@ -27,9 +27,21 @@ namespace lux::cxx::dref
 	void CxxParserImpl::parseEnumDecl(const Cursor& cursor, EnumDecl& decl)
 	{
 		decl.is_scoped = cursor.isEnumDeclScoped();
-		auto underlying_type = createOrFindType(cursor.enumDeclIntegerType());
-		assert(underlying_type->kind == ETypeKinds::Builtin);
-		decl.underlying_type = dynamic_cast<BuiltinType*>(underlying_type);
+
+		// underlying_type may be null when the integer type is invalid/unexposed.
+		// Don't assert — Release builds strip asserts and crash on the deref below.
+		if (auto* underlying_type = createOrFindType(cursor.enumDeclIntegerType());
+			underlying_type && underlying_type->kind == ETypeKinds::Builtin)
+		{
+			decl.underlying_type = static_cast<BuiltinType*>(underlying_type);
+		}
+		else
+		{
+			if (_callback)
+				_callback("EnumDecl '" + cursor.cursorSpelling().to_std()
+					+ "': underlying integer type could not be resolved");
+			decl.underlying_type = nullptr;
+		}
 
 		cursor.visitChildren(
 			[this, &decl](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
@@ -49,9 +61,19 @@ namespace lux::cxx::dref
 		decl.tag_kind = TagDecl::ETagKind::Enum;
 		decl.kind	  = EDeclKind::ENUM_DECL;
 		parseNamedDecl(cursor, decl);
-		auto enum_type = dynamic_cast<EnumType*>(decl.type);
-		assert(enum_type != nullptr);
-		enum_type->decl = &decl;
-		enum_type->kind = decl.is_scoped ? ETypeKinds::ScopedEnum : ETypeKinds::UnscopedEnum;
+
+		// decl.type is normally an EnumType (created via createOrFindType inside
+		// parseNamedDecl). For dependent enums it can be null or a different
+		// kind — guard instead of asserting.
+		if (auto* enum_type = dynamic_cast<EnumType*>(decl.type))
+		{
+			enum_type->decl = &decl;
+			enum_type->kind = decl.is_scoped ? ETypeKinds::ScopedEnum : ETypeKinds::UnscopedEnum;
+		}
+		else if (_callback)
+		{
+			_callback("EnumDecl '" + decl.full_qualified_name
+				+ "': associated Type is not an EnumType");
+		}
 	}
 }

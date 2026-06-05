@@ -82,6 +82,11 @@ namespace lux::cxx::dref
 		ParseOptions                            _options;
         std::function<void(const std::string&)> _callback;
         std::unique_ptr<MetaUnitData>           _meta_unit_data;
-        CXIndex                                 _clang_index;
+        ClangIndex                              _clang_index;
+        // Set by parseMarkedDeclaration when an unsupported cursor kind is
+        // encountered. parse() reads this to return EParseResult::UNKNOWN_TYPE
+        // instead of SUCCESS — the MetaUnit is still valid, but the caller is
+        // told that at least one marked declaration was skipped.
+        bool                                    _saw_unsupported_kind = false;
     };
 } // namespace lux::reflection

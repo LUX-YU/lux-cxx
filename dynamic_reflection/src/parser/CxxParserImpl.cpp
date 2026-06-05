@@ -224,7 +224,8 @@ namespace lux::cxx::dref
 				{
 					std::string annotation = current_cursor.displayName().to_std();
 
-					// 分割注解字符串
+					// Split semicolon-joined payload (e.g. LUX_META(a;b;c)) into
+					// individual annotation strings.
 					std::stringstream ss(annotation);
 					std::string part;
 					while (std::getline(ss, part, ';'))
@@ -235,9 +236,9 @@ namespace lux::cxx::dref
 							ret.push_back(trimed_part);
 						}
 					}
-
-					return CXChildVisit_Break;
 				}
+				// Continue so multiple sibling __attribute__((annotate(...)))
+				// attributes are all collected.
 				return CXChildVisit_Continue;
 			}
 		);
@@ -308,13 +309,9 @@ namespace lux::cxx::dref
 {
 	CxxParserImpl::CxxParserImpl(ParseOptions option)
 		: _options(std::move(option))
+		// clang_createIndex(excludeDeclarationsFromPCH = 0, displayDiagnostics = 1)
+		, _clang_index(0, 1)
 	{
-		/**
-		 * @brief information about clang_createIndex(int excludeDeclarationsFromPCH, int displayDiagnostics)
-		 * @param excludeDeclarationsFromPCH
-		 */
-		_clang_index = clang_createIndex(0, 1);
-
 		// Automatically inject MSVC STL compatibility flags so that libclang
 		// (which may report an older Clang version) can parse MSVC STL headers
 		// without triggering the STL1000 static_assert version check.
@@ -328,10 +325,7 @@ namespace lux::cxx::dref
 #endif
 	}
 
-	CxxParserImpl::~CxxParserImpl()
-	{
-		clang_disposeIndex(_clang_index);
-	}
+	CxxParserImpl::~CxxParserImpl() = default;
 
 	ParseResult CxxParserImpl::parse(std::string_view file)
 	{
@@ -352,7 +346,8 @@ namespace lux::cxx::dref
 		const auto marked_cursors = findMarkedCursors(cursor);
 
 		// set global parse context
-		_meta_unit_data = std::make_unique<MetaUnitData>();
+		_meta_unit_data        = std::make_unique<MetaUnitData>();
+		_saw_unsupported_kind  = false;
 
 		for (auto& marked_cursor : marked_cursors)
 		{
@@ -372,7 +367,10 @@ namespace lux::cxx::dref
 		);
 
 		MetaUnit return_meta_unit(std::move(meta_unit_impl));
-		return std::make_pair(EParseResult::SUCCESS, std::move(return_meta_unit));
+		const auto status = _saw_unsupported_kind
+			? EParseResult::UNKNOWN_TYPE   // populated, but at least one marked cursor was skipped
+			: EParseResult::SUCCESS;
+		return std::make_pair(status, std::move(return_meta_unit));
 	}
 
 	void CxxParserImpl::setOnParseError(std::function<void(const std::string&)> callback)
@@ -426,7 +424,9 @@ namespace lux::cxx::dref
 					_callback("Unsupported declaration kind " + std::to_string(kind_int)
 						+ " for cursor '" + spelling + "' — skipped");
 				// Return true (not false) so one unrecognised declaration does
-				// not abort the entire parse.
+				// not abort the entire parse. The flag below surfaces this to
+				// the caller via EParseResult::UNKNOWN_TYPE.
+				_saw_unsupported_kind = true;
 				return true;
 			}
 		}
@@ -490,24 +490,26 @@ namespace lux::cxx::dref
 		std::string_view file_path,
 		const std::vector<std::string>& commands) const
 	{
-		CXTranslationUnit translation_unit;
+		CXTranslationUnit translation_unit = nullptr;
 
 		const int commands_size = static_cast<int>(commands.size());
-		std::vector<const char*> c_commands(commands_size);
-		for (size_t i = 0; i < commands_size; i++)
-		{
-			c_commands[i] = commands[i].data();
-		}
+		std::vector<const char*> c_commands;
+		c_commands.reserve(commands_size);
+		for (const auto& s : commands)
+			c_commands.push_back(s.c_str());
 
-		CXErrorCode error_code = clang_parseTranslationUnit2(
-			_clang_index,           // CXIndex
-			file_path.data(),       // source_filename
-			c_commands.data(),      // command line args
-			commands_size,          // num_command_line_args
-			nullptr,                // unsaved_files
-			0,                      // num_unsaved_files
-			CXTranslationUnit_None, // option
-			&translation_unit       // CXTranslationUnit
+		// file_path is std::string_view; libclang needs a NUL-terminated string.
+		const std::string file_path_str(file_path);
+
+		const CXErrorCode error_code = clang_parseTranslationUnit2(
+			_clang_index.get(),                                 // CXIndex
+			file_path_str.c_str(),                              // source_filename (NUL-terminated)
+			c_commands.empty() ? nullptr : c_commands.data(),   // command line args
+			commands_size,                                      // num_command_line_args
+			nullptr,                                            // unsaved_files
+			0,                                                  // num_unsaved_files
+			CXTranslationUnit_None,                             // option
+			&translation_unit                                   // CXTranslationUnit
 		);
 
 		return TranslationUnit(error_code == CXErrorCode::CXError_Success ? translation_unit : nullptr);

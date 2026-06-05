@@ -30,9 +30,50 @@
 #include <vector>
 #include <ostream>
 
-namespace lux::cxx::dref 
+namespace lux::cxx::dref
 {
 	class Cursor;
+
+	/**
+	 * @brief RAII wrapper around CXIndex.
+	 *
+	 * Owns a CXIndex handle and disposes it in its destructor.  Move-only;
+	 * copying would lead to double-dispose.
+	 */
+	class ClangIndex
+	{
+	public:
+		ClangIndex(int excludeDeclarationsFromPCH, int displayDiagnostics)
+			: _index(clang_createIndex(excludeDeclarationsFromPCH, displayDiagnostics)) {}
+
+		~ClangIndex()
+		{
+			if (_index) clang_disposeIndex(_index);
+		}
+
+		ClangIndex(const ClangIndex&)            = delete;
+		ClangIndex& operator=(const ClangIndex&) = delete;
+
+		ClangIndex(ClangIndex&& other) noexcept
+			: _index(other._index) { other._index = nullptr; }
+
+		ClangIndex& operator=(ClangIndex&& other) noexcept
+		{
+			if (this != &other)
+			{
+				if (_index) clang_disposeIndex(_index);
+				_index       = other._index;
+				other._index = nullptr;
+			}
+			return *this;
+		}
+
+		[[nodiscard]] CXIndex get()  const noexcept { return _index; }
+		[[nodiscard]] explicit operator bool() const noexcept { return _index != nullptr; }
+
+	private:
+		CXIndex _index;
+	};
 
 	class TranslationUnit
 	{
@@ -48,6 +89,24 @@ namespace lux::cxx::dref
 			{
 				clang_disposeTranslationUnit(_unit);
 			}
+		}
+
+		// Move-only: forbid copies (owns a CXTranslationUnit handle).
+		TranslationUnit(const TranslationUnit&)            = delete;
+		TranslationUnit& operator=(const TranslationUnit&) = delete;
+
+		TranslationUnit(TranslationUnit&& other) noexcept
+			: _unit(other._unit) { other._unit = nullptr; }
+
+		TranslationUnit& operator=(TranslationUnit&& other) noexcept
+		{
+			if (this != &other)
+			{
+				if (_unit) clang_disposeTranslationUnit(_unit);
+				_unit       = other._unit;
+				other._unit = nullptr;
+			}
+			return *this;
 		}
 
 		[[nodiscard]] bool isValid() const

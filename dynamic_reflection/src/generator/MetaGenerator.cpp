@@ -562,7 +562,6 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
     std::ifstream     template_file(generator_config.template_path);
     inja::Environment inja_env;
     inja::Template    inja_template;
-    size_t i = 0; // Index used to correlate meta data with files
 
     if (!template_file.is_open()) {
         std::cerr << "[Error] Failed to open template file " << generator_config.template_path << "\n";
@@ -574,30 +573,36 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
         std::istreambuf_iterator<char>()
     );
 
+    // Per-iteration context the file-aware callbacks read from. Updated once at
+    // the top of each per-file render below instead of being driven by a shared
+    // mutable index — this keeps the dependency on iteration state explicit and
+    // is robust against future async/cached rendering.
+    struct RenderContext {
+        const MetaUnit*       meta_unit = nullptr;
+        const nlohmann::json* meta_json = nullptr;
+    } current{};
+
     // Callback to retrieve a declaration based on its unique ID from the meta data.
     // The meta_unit_list is used to locate the declaration, and then the corresponding JSON data is returned.
     inja_env.add_callback(
         "decl_from_id",
-        [&meta_unit_list, &meta_json_list, &i](const inja::Arguments& args) -> nlohmann::json {
-            auto& meta_json = meta_json_list[i];
-            auto& meta_unit = meta_unit_list[i];
+        [&current](const inja::Arguments& args) -> nlohmann::json {
             auto id = args.at(0)->get<std::string>();
-            auto decl = meta_unit.findDeclById(id);
+            auto decl = current.meta_unit->findDeclById(id);
             if (!decl) {
                 std::cerr << "[Error] Declaration with id " << id << " not found.\n";
                 throw std::runtime_error("Declaration not found");
             }
-            return meta_json["declarations"][decl->index];
+            return (*current.meta_json)["declarations"][decl->index];
         }
     );
 
     // Callback to retrieve a declaration based solely on its index in the meta JSON array.
     inja_env.add_callback(
         "decl_from_index",
-        [&meta_json_list, &i](const inja::Arguments& args) -> nlohmann::json {
-            auto& meta_json = meta_json_list[i];
+        [&current](const inja::Arguments& args) -> nlohmann::json {
             auto  index = args.at(0)->get<size_t>();
-            return meta_json["declarations"][index];
+            return (*current.meta_json)["declarations"][index];
         }
     );
 
@@ -605,31 +610,27 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
     // It looks up the type from meta_unit_list and returns the associated JSON data.
     inja_env.add_callback(
         "type_from_id",
-        [&meta_unit_list, &meta_json_list, &i](const inja::Arguments& args) -> nlohmann::json {
-            auto& meta_json = meta_json_list[i];
-            auto& meta_unit = meta_unit_list[i];
+        [&current](const inja::Arguments& args) -> nlohmann::json {
             auto id = args.at(0)->get<std::string>();
-            auto type = meta_unit.findTypeById(id);
+            auto type = current.meta_unit->findTypeById(id);
             if (!type) {
                 std::cerr << "[Error] Type with id " << id << " not found.\n";
                 throw std::runtime_error("Type not found");
             }
-            return meta_json["types"][type->index];
+            return (*current.meta_json)["types"][type->index];
         }
     );
 
     inja_env.add_callback(
         "parent_chain",
-        [&meta_unit_list, &meta_json_list, &i](const inja::Arguments& args) -> nlohmann::json
+        [&current](const inja::Arguments& args) -> nlohmann::json
         {
-            auto& meta_json = meta_json_list[i];
-            auto& meta_unit = meta_unit_list[i];
             auto id     = args.at(0)->get<std::string>();
-			auto target = args.at(1)->get<std::string>();
-            auto decl = meta_unit.findDeclById(id);
+            auto target = args.at(1)->get<std::string>();
+            auto decl = current.meta_unit->findDeclById(id);
             if (!decl) {
                 std::cerr << "[Error] parent_chain: declaration id='" << id
-                          << "' not found in '" << meta_json["source_path"] << "'.\n";
+                          << "' not found in '" << (*current.meta_json)["source_path"] << "'.\n";
                 throw std::runtime_error("parent_chain: declaration not found: " + id);
             }
             if (decl->kind != EDeclKind::CXX_RECORD_DECL)
@@ -637,20 +638,20 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
                 std::cerr << "[Error] parent_chain: id='" << id
                           << "' is not a CXX_RECORD_DECL (kind="
                           << static_cast<int>(decl->kind) << ") in '"
-                          << meta_json["source_path"] << "'.\n";
+                          << (*current.meta_json)["source_path"] << "'.\n";
                 throw std::runtime_error("parent_chain: not a CXX_RECORD_DECL");
             }
-            auto decl_list = find_parent_chain(static_cast<const CXXRecordDecl*>(decl), target, meta_unit);
-			nlohmann::json ret = nlohmann::json::array();
-            for (auto decl : decl_list)
+            auto decl_list = find_parent_chain(static_cast<const CXXRecordDecl*>(decl), target, *current.meta_unit);
+            nlohmann::json ret = nlohmann::json::array();
+            for (auto d : decl_list)
             {
-				nlohmann::json info = {
-					{"id", decl->id},
-					{"hash", std::to_string(decl->hash)}
-				};
+                nlohmann::json info = {
+                    {"id", d->id},
+                    {"hash", std::to_string(d->hash)}
+                };
                 ret.push_back(info);
             }
-			return ret;
+            return ret;
         }
     );
 
@@ -825,9 +826,26 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
         }
     );
 
+    // Parse the template exactly once — the string never changes across files.
+    try {
+        inja_template = inja_env.parse(template_str);
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[Error] Failed to parse template "
+                  << generator_config.template_path << ": " << e.what() << "\n";
+        return false;
+    }
+
     // Iterate over each meta JSON object.
-    for (auto& meta_json : meta_json_list)
+    for (size_t i = 0; i < meta_json_list.size(); ++i)
     {
+        const auto& meta_json = meta_json_list[i];
+        // Update the per-iteration context that the file-aware callbacks
+        // capture. Must be set before render() because inja invokes callbacks
+        // synchronously during render.
+        current.meta_unit = &meta_unit_list[i];
+        current.meta_json = &meta_json;
+
         // Derive the source file's base name (without extension) to be used for the output file.
         auto source_file_name = std::filesystem::path(meta_json["source_path"].get<std::string>()).stem().string();
         // Construct the output file path by combining the output directory with the source filename and meta suffix.
@@ -839,9 +857,7 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
         }
 
         try {
-            // Parse the template string.
-            inja_template = inja_env.parse(template_str);
-            // Render the template using the current meta JSON data.
+            // Render the pre-parsed template using the current meta JSON data.
             auto render_rst = inja_env.render(inja_template, meta_json);
             out_file << render_rst;
             if (out_file.fail()) {
@@ -854,8 +870,6 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
             return false;
         }
         out_file.close();
-        // Increment the index to process the next meta JSON object.
-        i++;
     }
     return true;
 }

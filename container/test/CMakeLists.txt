@@ -41,3 +41,14 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::container
 )
+
+add_executable(
+	basic_sparse_set_test
+	basic_sparse_set_test.cpp
+)
+
+target_link_libraries(
+	basic_sparse_set_test
+	PRIVATE
+	lux::cxx::container
+)

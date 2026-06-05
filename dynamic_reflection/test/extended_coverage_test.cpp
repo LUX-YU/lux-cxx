@@ -651,8 +651,7 @@ int main(int argc, char* argv[])
     // Round-trip serialization test
     {
         std::string json_str = meta_json_str;
-        MetaUnit deserialized;
-        MetaUnit::fromJson(json_str, deserialized);
+        auto deserialized = MetaUnit::fromJson(json_str);
         auto reserialized = deserialized.toJson().dump(4);
         check(meta_json_str == reserialized, "Round-trip serialization matches");
     }

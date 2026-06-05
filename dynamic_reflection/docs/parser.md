@@ -286,6 +286,7 @@ The parser recognizes and categorizes the following type kinds:
 | Float | `float`, `double`, `long double` | `Float`, `Double`, `LongDouble` |
 | Pointer | `T*`, `T C::*` | `PointerToObject`, `PointerToFunction`, `PointerToDataMember`, `PointerToMemberFunction` |
 | Reference | `T&`, `T&&` | `LvalueReference`, `RvalueReference` |
+| Incomplete | forward-declared `class C;` | `Incomplete` |
 | Record | `struct`, `class`, `union` | `Record`, `Class`, `Union` |
 | Enum | `enum`, `enum class` | `UnscopedEnum`, `ScopedEnum` |
 | Function | function types | `Function` |
@@ -307,4 +308,9 @@ if (result != EParseResult::SUCCESS) {
 }
 ```
 
-`setOnParseError` receives both libclang diagnostics and parser-level errors. The parse result is `SUCCESS`, `UNKNOWN_TYPE`, or `FAILED`.
+`setOnParseError` receives both libclang diagnostics and parser-level errors.
+
+The parse result is one of:
+- `SUCCESS` — translation unit parsed and every marked declaration was recognised. The `MetaUnit` is fully populated.
+- `UNKNOWN_TYPE` — translation unit parsed, but at least one marked cursor had an unsupported kind (e.g. an obscure libclang cursor type). It was skipped with a callback warning; everything else is in the `MetaUnit`. Treat as a "partial success" — the data is usable, but you may want to re-inspect the warnings.
+- `FAILED` — translation unit could not be created (libclang error in `translate()`). The returned `MetaUnit` is empty.

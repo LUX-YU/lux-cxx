@@ -123,11 +123,10 @@ namespace lux::cxx::dref
 		return _impl->toJson();
 	}
 
-	void MetaUnit::fromJson(const std::string& json, MetaUnit& unit)
+	MetaUnit MetaUnit::fromJson(const std::string& json)
 	{
 		auto impl = std::make_unique<MetaUnitImpl>();
 		MetaUnitImpl::fromJson(json, *impl);
-
-		unit = MetaUnit(std::move(impl));
+		return MetaUnit(std::move(impl));
 	}
 }

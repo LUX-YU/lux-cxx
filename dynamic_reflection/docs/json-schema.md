@@ -12,19 +12,24 @@ This document describes **all** the major fields you may encounter in the genera
 2. **`types`** *(array)*  
    An array of type objects. Each describes a specific kind of type (built-in, pointer, record, function, enum, etc.).
 
-3. **`marked_declarations`** *(array of numbers)*  
-   A list of integer indices referencing special declarations in the `declarations` array. Example: `[3, 5]` means you should look at `declarations[3]` and `declarations[5]` for marked declarations.
+3. **`marked_record_decls`** *(array of numbers)*  
+   Integer indices into `declarations` for every `LUX_META(<marker>)`-tagged class/struct/union.
 
-4. **`marked_types`** *(array of numbers)*  
-   Similar to `marked_declarations`, but references entries in the `types` array.
+4. **`marked_function_decls`** *(array of numbers)*  
+   Integer indices into `declarations` for every marked free function (or function template).
 
-5. **`type_alias_map`** *(object)*  
-   A dictionary for user-friendly aliases to type IDs. Each **key** is an alias (e.g., `"std::string"`), and each **value** is the real type’s `id` (e.g., `"std::basic_string<char>"`). This is used to store or restore custom naming conventions.
+5. **`marked_enum_decls`** *(array of numbers)*  
+   Integer indices into `declarations` for every marked enum.
 
-6. **`name`** *(string)*  
+   > Older revisions documented `marked_declarations` / `marked_types`; those fields **do not exist** in the current schema. Marked entries are split into the three lists above and there is no `marked_types`.
+
+6. **`type_alias_map`** *(object)*  
+   A dictionary for user-friendly aliases to type IDs. Each **key** is an alias (e.g., `"std::string"`), and each **value** is the real type's `id` (e.g., `"std::basic_string<char>"`).
+
+7. **`name`** *(string)*  
    A user-defined or tool-defined name for this entire JSON metadata unit.
 
-7. **`version`** *(string)*  
+8. **`version`** *(string)*  
    A version string indicating the format or tool version.
 
 ---
@@ -36,44 +41,49 @@ Each item in the `declarations` array is an **object** with various fields. Some
 ### 2.1 Common Declaration Fields
 
 - **`__kind`** *(string)*  
-  Indicates the declaration’s kind. Possible values include (but are not limited to):
-  - `"ENUM_DECL"`
-  - `"RECORD_DECL"`
-  - `"CXX_RECORD_DECL"`
-  - `"FIELD_DECL"`
-  - `"FUNCTION_DECL"`
-  - `"CXX_METHOD_DECL"`
-  - `"CXX_CONSTRUCTOR_DECL"`
-  - `"CXX_CONVERSION_DECL"`
-  - `"CXX_DESTRUCTOR_DECL"`
-  - `"PARAM_VAR_DECL"`
-  - `"VAR_DECL"`
-  - ...  
-  It’s essentially the enumerator name of the internal declaration kind.
+  Indicates the declaration's kind. Produced by `declKindToString`. Possible values:
+  - `"EnumDecl"`
+  - `"RecordDecl"`
+  - `"CXXRecordDecl"`
+  - `"FieldDecl"`
+  - `"FunctionDecl"`
+  - `"CXXMethodDecl"`
+  - `"CXXConstructorDecl"`
+  - `"CXXConversionDecl"`
+  - `"CXXDestructorDecl"`
+  - `"ParmVarDecl"`
+  - `"VarDecl"`
+  - `"UnknownDecl"` (fallback)
 
 - **`id`** *(string)*  
-  A globally or uniquely identifiable string for this declaration (e.g., a USR from Clang, a tool-generated ID, etc.).
+  A globally unique string for this declaration (typically a Clang USR).
 
 - **`index`** *(number)*  
-  The array index of this object in `declarations`. Used to cross-reference with `marked_declarations` or other references.
+  The array index of this object in `declarations`. `marked_*_decls` arrays reference declarations by this index. Equal to `static_cast<size_t>(-1)` for default-constructed declarations.
+
+- **`hash`** *(string)*  
+  64-bit FNV-1a hash of `id`, written as a decimal string (avoids JS number-precision loss when round-tripping through other tools).
+
+- **`tag_kind`** *(string, only on `EnumDecl` / `RecordDecl` / `CXXRecordDecl`)*  
+  `"Struct"`, `"Class"`, `"Union"`, or `"Enum"`. Distinguishes `struct Foo` from `class Foo` after deserialization.
 
 - **`fq_name`** *(string)*  
-  A fully qualified name, possibly including namespaces, class scopes, or function parameter signatures.
+  Fully qualified name, including namespaces / class scopes / function parameter signatures.
 
 - **`name`** *(string)*  
-  The simple identifier without namespaces or parameter lists (e.g., just `"TestFunction"` or `"TestClass"`).
+  Clang's `displayName` for the cursor (often includes parameter list for functions).
 
 - **`spelling`** *(string)*  
-  The raw spelling or textual representation in the source code. It can be identical to `name` or might include more details (especially for templated items or operators).
+  Raw spelling — typically the bare identifier without parameter lists.
 
 - **`is_anonymous`** *(boolean)*  
   Indicates if the declaration is anonymous (e.g., an unnamed enum or struct).
 
 - **`type_id`** *(string)*  
-  References a type from the `types` array by that type’s `id`. For example, a field declaration might have `"type_id": "int"`, which corresponds to a built-in type object in the `types` array.
+  References a type from the `types` array by that type's `id`. For example, a field declaration might have `"type_id": "int"`.
 
 - **`attributes`** *(array of strings)*  
-  Extra metadata or user-defined markers on this declaration (e.g., `[ "marked" ]`). This can be empty or omitted if none exist.
+  Parsed annotation payload from `LUX_META(...)`. Semicolons inside the macro split into separate entries (e.g. `LUX_META(a;b)` → `["a", "b"]`).
 
 #### 2.1.1 Visibility
 
@@ -113,9 +123,16 @@ Below are the additional or unique fields you may see for particular declaration
 - **`static_method_decls`** *(array of strings)*  
   A list of IDs referencing static member functions.
 - **`field_decls`** *(array of strings)*  
-  A list of IDs referencing `FIELD_DECL` objects.
+  A list of IDs referencing `FieldDecl` objects.
 - **`is_abstract`** *(boolean)*  
   True if this record has at least one pure virtual function.
+- **`is_template`** *(boolean)*  
+  True when this was parsed from a class/struct template declaration (i.e. cursor kind `CXCursor_ClassTemplate`).
+- **`template_params`** *(array, present only if `is_template` is true)*  
+  Each element describes one template parameter:
+  - `kind` *(string)* — `"type"`, `"non_type"`, or `"template_tmpl"`
+  - `name` *(string)* — e.g. `"T"`, `"N"`, `"Alloc"`
+  - `spelling` *(string)* — e.g. `"typename T"`, `"int N"`
 
 #### 2.2.3 `FieldDecl`
 
@@ -145,10 +162,15 @@ Many fields overlap among these function-like declarations:
 - **`is_virtual`** *(boolean)*  
   True for virtual member functions.
 - **`is_const`** *(boolean)*  
-  True if it’s declared as a const member function (C++).
+  True if it's declared as a const member function (C++).
 - **`is_volatile`** *(boolean)*  
-  True if it’s declared volatile.- **`invoke_name`** *(string)*  
-  A callable name for the function. For free functions, this is typically the same as `fq_name`. For member functions, it's `&ClassName::MethodName`. Used in templates to generate function pointers.
+  True if it's declared volatile.
+- **`invoke_name`** *(string)*  
+  A callable name for the function. For free functions, this is typically `namespace::spelling` (the `fq_name` minus the parameter list). For member functions it's `spelling`. Generators commonly use it to synthesize `&Class::method` expressions.
+- **`is_template`** *(boolean, on `FunctionDecl` only)*  
+  True when parsed from `CXCursor_FunctionTemplate`. Follows the same shape as on `CXXRecordDecl`.
+- **`template_params`** *(array, present only when `is_template` is true)*  
+  Same schema as on `CXXRecordDecl`.
 #### 2.2.5 `ParmVarDecl`
 
 - **`arg_index`** *(number)*  
@@ -165,16 +187,19 @@ Many fields overlap among these function-like declarations:
 Each entry in the `types` array is an **object** describing a particular type. Shared fields:
 
 - **`__kind`** *(string)*  
-  The type category, for instance:
+  The type category. Produced by `typeKindToString`. Possible values:
   - `"BuiltinType"`
-  - `"PointerType"`
-  - `"LvalueReferenceType"`
-  - `"RvalueReferenceType"`
+  - `"PointerType"` — generic pointer
+  - `"ObjectPointerType"` — pointer-to-object (`int*`)
+  - `"FuncPointerType"` — pointer-to-function (`void(*)(int)`)
+  - `"MemberDataPointerType"` — pointer-to-data-member (`int C::*`)
+  - `"MemberFuncPointerType"` — pointer-to-member-function (`int (C::*)()`)
+  - `"LValueReferenceType"`
+  - `"RValueReferenceType"`
   - `"RecordType"`
-  - `"EnumType"`
+  - `"EnumType"`, `"ScopedEnumType"`, `"UnscopedEnumType"`
   - `"FunctionType"`
-  - `"UnsupportedType"`
-  - etc.
+  - `"UnsupportedType"` (fallback)
 
 - **`id`** *(string)*  
   A unique type identifier.
@@ -184,20 +209,6 @@ Each entry in the `types` array is an **object** describing a particular type. S
 
 - **`name`** *(string)*  
   A descriptive or user-friendly name for the type. It can differ from `id` if there’s an alias or a custom label.
-
-- **`type_kind`** *(number)*  
-  An integer enumerating the internal kind. For example:
-  - `2` => Builtin
-  - `24` => LvalueReference
-  - `25` => RvalueReference
-  - `29` => PointerToData (or MemberDataPointer)
-  - `30` => PointerToMemberFunction
-  - `32` => Function
-  - `34` => UnscopedEnum
-  - `35` => ScopedEnum
-  - `36` => Record
-  - etc.  
-  (Exact values can vary depending on the internal tool.)
 
 - **`is_const`** *(boolean)*  
   True if `const`.
@@ -275,15 +286,19 @@ This covers a range of pointer categories (pointer to object, pointer to functio
 
 ---
 
-## 4. Marked Declarations & Types
+## 4. Marked Declarations
 
-- **`marked_declarations`** *(array of numbers)*  
-  These are integers that match the `index` of some declaration in the `declarations` array. They denote special or user-marked declarations.
+The parser splits marked declarations into three index lists by kind:
 
-- **`marked_types`** *(array of numbers)*  
-  Similarly, these integers match the `index` of some type in the `types` array.
+- **`marked_record_decls`** *(array of numbers)* — indices into `declarations` for `CXXRecordDecl`/`RecordDecl` entries
+- **`marked_function_decls`** *(array of numbers)* — indices for `FunctionDecl` entries
+- **`marked_enum_decls`** *(array of numbers)* — indices for `EnumDecl` entries
 
-Example usage:
+Each integer is the `index` field of some declaration. There is **no** `marked_types` list — types are only marked transitively through the declarations that reference them.
+
+Example:
 ```json
-"marked_declarations": [6, 12],
-"marked_types": [12, 17, 30]
+"marked_record_decls":   [6, 12],
+"marked_function_decls": [3],
+"marked_enum_decls":     [17, 30]
+```

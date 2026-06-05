@@ -84,17 +84,24 @@ namespace lux::cxx::dref {
      * (classes, fields, methods, parameters, etc.) in a structured manner
      * similar to Clang's AST.
      */
+    /**
+     * Tag identifying a concrete @ref Decl subclass. Every enumerator below
+     * maps to exactly one instantiable class — entries that previously named
+     * abstract intermediates (NamedDecl, TypeDecl, TagDecl, ValueDecl,
+     * DeclaratorDecl) or template parameter kinds that have no runtime class
+     * (IMPLICIT_PARAM_DECL, NONTYPE_TEMPLATE_PARAM_DECL, UNKNOWN_PARAM_DECL)
+     * have been removed because they were never returned by the parser, never
+     * instantiable by the serializer, and only misled readers.
+     *
+     * Adding a new kind: also add a row to LUX_DREF_DECL_KIND_TABLE in
+     * pinclude/lux/cxx/dref/runtime/MetaUnitSerializer.hpp.
+     */
     enum class EDeclKind
     {
         UNKNOWN,
-        NAMED_DECL,
-        TYPED_DECL,
-        TAG_DECL,
         ENUM_DECL,
         RECORD_DECL,
         CXX_RECORD_DECL,
-        VALUE_DECL,
-        DECLARATOR_DECL,
         FIELD_DECL,
         FUNCTION_DECL,
         CXX_METHOD_DECL,
@@ -102,10 +109,7 @@ namespace lux::cxx::dref {
         CXX_CONVERSION_DECL,
         CXX_DESTRUCTOR_DECL,
         VAR_DECL,
-        IMPLICIT_PARAM_DECL,
-        NONTYPE_TEMPLATE_PARAM_DECL,
         PARAM_VAR_DECL,
-        UNKNOWN_PARAM_DECL
     };
 
     /**
@@ -113,6 +117,11 @@ namespace lux::cxx::dref {
      * Subclasses that implement this interface can be used to perform
      * operations (e.g., printing, code generation, analysis) on specific
      * declaration types.
+     *
+     * @note The serializer in this module does NOT use the visitor pattern —
+     *       it dispatches on @ref Decl::kind via switch/static_cast for
+     *       efficiency. The visitor interface is provided purely for
+     *       downstream consumers who prefer dynamic dispatch.
      */
     class EnumDecl;
     class RecordDecl;
@@ -151,10 +160,10 @@ namespace lux::cxx::dref {
     class Decl
     {
     public:
-        std::string id;     ///< A unique identifier for internal bookkeeping.
-        uint64_t    hash;
-        EDeclKind   kind;   ///< The specific kind of declaration (see EDeclKind).
-		size_t      index;  ///< The index of this declaration in its parent container (if applicable).
+        std::string id;                                ///< A unique identifier for internal bookkeeping.
+        uint64_t    hash  = 0;                         ///< 64-bit hash of @ref id.
+        EDeclKind   kind  = EDeclKind::UNKNOWN;        ///< The specific kind of declaration (see EDeclKind).
+        size_t      index = INVALID_DECL_INDEX;        ///< Index of this declaration in MetaUnitData::declarations.
 
         virtual ~Decl() = default;
 
@@ -208,7 +217,7 @@ namespace lux::cxx::dref {
             Enum
         };
 
-        ETagKind tag_kind;
+        ETagKind tag_kind = ETagKind::Struct;
     };
 
     /**
@@ -216,9 +225,9 @@ namespace lux::cxx::dref {
      */
     struct Enumerator
     {
-        std::string name;       ///< The name of the enumerator.
-        int64_t     signed_value;    ///< The signed integer value it represents.
-        uint64_t    unsigned_value;  ///< The unsigned integer value it represents.
+        std::string name;                ///< The name of the enumerator.
+        int64_t     signed_value   = 0;  ///< The signed integer value it represents.
+        uint64_t    unsigned_value = 0;  ///< The unsigned integer value it represents.
     };
 
     class BuiltinType; // Forward declaration for use within EnumDecl.

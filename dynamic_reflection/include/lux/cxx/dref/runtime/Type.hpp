@@ -25,15 +25,27 @@
 #include <vector>
 
 namespace lux::cxx::dref {
+    /**
+     * Kind tag for @ref Type subclasses.
+     *
+     * @note Several "coarse" enumerators (@ref Pointer, @ref Enum, @ref Class,
+     *       @ref Union) overlap with the fine-grained ones below. The parser
+     *       only emits the fine-grained variants on actual @ref Type instances;
+     *       the coarse names exist as switch-fallthrough labels in the
+     *       serializer and as `static_kind` constants on the concrete C++
+     *       classes (@ref PointerType, @ref EnumType, @ref RecordType). Treat
+     *       the coarse values as "C++ class identity" and the fine values as
+     *       "semantic subtype". A future major version may collapse them.
+     */
     enum class ETypeKinds {
         Unknown = 0,            /**< Unknown type. */
-        Imcomplete,             /**< Incomplete type. (Note: "Imcomplete" is a known spelling issue.) */
-		Builtin,                /**< Built-in type. */
-        // Fundamental types
+        Incomplete,             /**< Incomplete type (e.g. forward declaration). */
+        Builtin,                /**< Built-in type (corresponds to @ref BuiltinType). */
+        // Fundamental enumerators below are reserved labels — the parser emits
+        // @ref Builtin and stores the concrete kind on @ref BuiltinType::builtin_type.
         Void,                   /**< void type. */
         Nullptr_t,              /**< std::nullptr_t type (C++11). */
         Bool,                   /**< Boolean type. */
-        // Integer and character types
         Char,                   /**< char type. */
         SignedChar,             /**< signed char type. */
         UnsignedChar,           /**< unsigned char type. */
@@ -49,31 +61,32 @@ namespace lux::cxx::dref {
         UnsignedInt,            /**< unsigned int type. */
         UnsignedLong,           /**< unsigned long integer type. */
         UnsignedLongLong,       /**< unsigned long long integer type. */
-        // Floating-point types
         Float,                  /**< float type. */
         Double,                 /**< double type. */
         LongDouble,             /**< long double type. */
-        // Compound types
-        // Reference types
+        // Reference types.
         LvalueReference,        /**< lvalue reference (T&). */
         RvalueReference,        /**< rvalue reference (T&&) (C++11). */
-        // Pointer types
-		Pointer,                /**< Pointer type. */
-        PointerToObject,        /**< Pointer to an object. */
-        PointerToFunction,      /**< Pointer to a function. */
-        // Pointer-to-member types
-        PointerToDataMember,    /**< Pointer to a data member. */
+        // Pointer types — runtime class identity is @ref Pointer; the parser
+        // refines this into one of the four fine-grained values below.
+        Pointer,                /**< Class identity for @ref PointerType. */
+        PointerToObject,        /**< T* to a non-function object. */
+        PointerToFunction,      /**< Pointer to a free function. */
+        PointerToDataMember,    /**< Pointer to a data member (T C::*). */
         PointerToMemberFunction,/**< Pointer to a member function. */
         Array,                  /**< Array type. */
         Function,               /**< Function type. */
-        // Enumeration types
-        Enum,
+        // Enumeration types — class identity is @ref Enum; parser refines to
+        // @ref ScopedEnum / @ref UnscopedEnum.
+        Enum,                   /**< Class identity for @ref EnumType. */
         UnscopedEnum,           /**< Unscoped enumeration. */
         ScopedEnum,             /**< Scoped enumeration (C++11). */
-		Record,                /**< Record type (struct/class). */
-        // Class types
-        Class,                  /**< Non-union class type. */
-        Union                   /**< Union type. */
+        // Record types — class identity is @ref Record; distinguishing struct
+        // / class / union is done via @ref TagDecl::tag_kind on the backing
+        // declaration, not via these enumerators.
+        Record,                 /**< Class identity for @ref RecordType. */
+        Class,                  /**< Reserved — not emitted by the parser. */
+        Union,                  /**< Reserved — not emitted by the parser. */
     };
 
     /**
@@ -93,6 +106,10 @@ namespace lux::cxx::dref {
     /**
      * Interface for visiting different concrete Type classes.
      * This follows a Visitor pattern, similar to the DeclVisitor above.
+     *
+     * @note Same caveat as DeclVisitor: the in-module serializer does NOT use
+     *       this interface — it dispatches via switch on @ref Type::kind.
+     *       Provided for downstream consumers.
      */
     class TypeVisitor
     {
@@ -118,14 +135,14 @@ namespace lux::cxx::dref {
     public:
         virtual ~Type() = default;
 
-        std::string name; ///< A descriptive name, used for debugging or display.
-        std::string id;   ///< A unique identifier for internal referencing.
-        ETypeKinds  kind; ///< The classification of this type (e.g. BUILTIN, POINTER).
-        bool        is_const{ false };    ///< True if the type is marked as const.
-        bool        is_volatile{ false }; ///< True if the type is marked as volatile.
-        int         size;  ///< Size in bytes (if known), otherwise could be set to -1 or 0 if unknown.
-        int         align; ///< Alignment requirement in bytes (if known).
-        size_t      index; ///< The index of this type in its parent container (if applicable).
+        std::string name;                          ///< A descriptive name, used for debugging or display.
+        std::string id;                            ///< A unique identifier for internal referencing.
+        ETypeKinds  kind        = ETypeKinds::Unknown; ///< The classification of this type (e.g. BUILTIN, POINTER).
+        bool        is_const    = false;           ///< True if the type is marked as const.
+        bool        is_volatile = false;           ///< True if the type is marked as volatile.
+        int         size        = 0;               ///< Size in bytes (if known), otherwise 0.
+        int         align       = 0;               ///< Alignment requirement in bytes (if known).
+        size_t      index       = static_cast<size_t>(-1); ///< Index of this type in MetaUnitData::types.
 
         /**
          * Accepts a type visitor to allow external operations on this object
@@ -299,7 +316,7 @@ namespace lux::cxx::dref {
             }
         }
 
-        EBuiltinKind builtin_type;
+        EBuiltinKind builtin_type = EBuiltinKind::VOID;
 
         void accept(TypeVisitor* visitor) override {
             visitor->visit(this);
