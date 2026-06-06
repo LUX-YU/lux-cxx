@@ -190,7 +190,7 @@ namespace lux::cxx
             if (_exit)
                 return false;
 
-            std::construct_at(ptr_at(_tail), T(std::forward<Args>(args)...));
+            std::construct_at(ptr_at(_tail), std::forward<Args>(args)...);  // emplace: no temporary
             _tail = (_tail + 1) % _capacity;
             ++_size;
 
@@ -220,7 +220,7 @@ namespace lux::cxx
             if (_exit)
                 return false;
 
-            std::construct_at(ptr_at(_tail), T(std::forward<Args>(args)...));
+            std::construct_at(ptr_at(_tail), std::forward<Args>(args)...);  // emplace: no temporary
             _tail = (_tail + 1) % _capacity;
             ++_size;
 
@@ -452,7 +452,7 @@ namespace lux::cxx
          * @return True if the element is successfully pushed; false if the queue is full or closed.
          */
         template <class U>
-        bool try_push(U&& value)
+        [[nodiscard]] bool try_push(U&& value)
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (_exit || _size >= _capacity)
@@ -472,7 +472,7 @@ namespace lux::cxx
          * @param out Reference to the variable where the popped element will be stored.
          * @return True if an element is successfully popped; false if the queue is empty.
          */
-        bool try_pop(T& out)
+        [[nodiscard]] bool try_pop(T& out)
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (_size == 0)
@@ -498,7 +498,7 @@ namespace lux::cxx
          * @return True if all elements are pushed; false if capacity insufficient or closed.
          */
         template <class InputIterator>
-        bool try_push_bulk(InputIterator first, size_t count)
+        [[nodiscard]] bool try_push_bulk(InputIterator first, size_t count)
         {
             if (count == 0)
                 return true;
@@ -524,7 +524,7 @@ namespace lux::cxx
          * @return Actual number of elements popped.
          */
         template <class OutputIterator>
-        size_t try_pop_bulk(OutputIterator dest, size_t maxCount)
+        [[nodiscard]] size_t try_pop_bulk(OutputIterator dest, size_t maxCount)
         {
             if (maxCount == 0)
                 return 0;
@@ -979,7 +979,7 @@ namespace lux::cxx
          * @return True if pushed successfully, false if full or closed.
          */
         template <class U>
-        bool try_push(U&& value)
+        [[nodiscard]] bool try_push(U&& value)
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (_exit || (_capacity > 0 && _size >= _capacity))
@@ -998,7 +998,7 @@ namespace lux::cxx
          * @param out Reference to store the popped element.
          * @return True if popped successfully, false if empty.
          */
-        bool try_pop(T& out)
+        [[nodiscard]] bool try_pop(T& out)
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (_size == 0)
@@ -1021,7 +1021,7 @@ namespace lux::cxx
          * @return True if all elements pushed, false otherwise.
          */
         template <class InputIterator>
-        bool try_push_bulk(InputIterator first, size_t count)
+        [[nodiscard]] bool try_push_bulk(InputIterator first, size_t count)
         {
             if (count == 0)
                 return true;
@@ -1047,7 +1047,7 @@ namespace lux::cxx
          * @return Actual elements popped.
          */
         template <class OutputIterator>
-        size_t try_pop_bulk(OutputIterator dest, size_t maxCount)
+        [[nodiscard]] size_t try_pop_bulk(OutputIterator dest, size_t maxCount)
         {
             if (maxCount == 0)
                 return 0;

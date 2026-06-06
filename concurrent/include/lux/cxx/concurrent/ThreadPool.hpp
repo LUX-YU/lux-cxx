@@ -94,6 +94,15 @@ namespace lux::cxx
      * tasks from a shared queue. It supports both regular task submission and
      * cancellable tasks via stop tokens. Tasks can return values and throw
      * exceptions safely.
+     *
+     * @warning Bounded queue + self-submission can DEADLOCK. The task queue is
+     *          bounded (queue_cap, default 64) and submit()/submit_copy() BLOCK
+     *          when it is full. If a task running ON this pool submits more work
+     *          to the SAME pool and the queue is full, the worker blocks waiting
+     *          for space that only a worker could free — a classic dependent-task
+     *          deadlock. If you submit recursively/from within tasks, construct the
+     *          pool with queue_cap == 0 (unbounded) or use a separate pool for the
+     *          nested work.
      */
     class ThreadPool
     {
