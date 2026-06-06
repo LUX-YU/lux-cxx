@@ -92,9 +92,20 @@ namespace lux::cxx
                 	}
             	}
 
-            	if (task)
+            	if (task && !stop_flag_.load(std::memory_order_relaxed))
                 {
-                	thread_pool_.submit(std::move(task));
+                	// submit() throws if the pool was closed (typical during teardown:
+                	// the pool may shut down while this thread is still looping). Let
+                	// that escape and it propagates out of the std::thread callable ->
+                	// std::terminate. Guard it so teardown is clean.
+                	try
+                	{
+                		thread_pool_.submit(std::move(task));
+                	}
+                	catch (...)
+                	{
+                		break; // pool closed — stop dispatching
+                	}
             	}
         	}
     	}
