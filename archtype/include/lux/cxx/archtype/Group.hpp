@@ -56,14 +56,14 @@ namespace lux::cxx::archtype {
             return g;
         }
 
-        std::size_t size() {
+        [[nodiscard]] std::size_t size() const {
             refresh_if_stale();
             std::size_t n = 0;
             for (auto& ca : cached_) n += ca.arch->size();
             return n;
         }
 
-        bool empty() {
+        [[nodiscard]] bool empty() const {
             refresh_if_stale();
             for (auto& ca : cached_) if (ca.arch->size() > 0) return false;
             return true;
@@ -83,8 +83,9 @@ namespace lux::cxx::archtype {
             chunk_dispatch(std::forward<F>(f), std::make_index_sequence<sizeof...(Cs)>{});
         }
 
-        /// Re-scan archetype list. Normally called automatically.
-        void refresh() {
+        /// Re-scan archetype list. Normally called automatically. const because it
+        /// only updates the mutable lazy cache (registry reads are const-safe).
+        void refresh() const {
             cached_.clear();
             for (auto& a_up : registry_->archetypes_) {
                 Archetype* a = a_up.get();
@@ -201,7 +202,7 @@ namespace lux::cxx::archtype {
         }
 
     private:
-        void refresh_if_stale() {
+        void refresh_if_stale() const {
             if (cached_version_ != registry_->archetypeVersion()) refresh();
         }
 
@@ -251,8 +252,10 @@ namespace lux::cxx::archtype {
         Registry*               registry_;
         Signature               include_sig_;
         Signature               exclude_sig_;
-        std::vector<CachedArch> cached_;
-        std::uint64_t           cached_version_ = static_cast<std::uint64_t>(-1);
+        // mutable: the cache is a lazy view, refreshed on access even from const
+        // queries (size()/empty()); it is not part of the Group's logical value.
+        mutable std::vector<CachedArch> cached_;
+        mutable std::uint64_t           cached_version_ = static_cast<std::uint64_t>(-1);
     };
 
     // Out-of-line Registry accessor (declared in Registry, defined after Group).

@@ -167,6 +167,33 @@ namespace lux::cxx::archtype {
             signals_[tid].on_construct.publish(*this, e);
         }
 
+        /// Roll back a partially-constructed entity from allocateInSignature when a
+        /// component constructor throws mid-placement. Destroys ONLY the @p constructed
+        /// components in @p types (the rest of the slot is raw/uninitialized — running
+        /// their destructors would be UB), removes the row without further destruction,
+        /// and recycles the entity id. No on_construct has fired yet, so none is undone.
+        void rollbackPlacement(const PlacedEntity& p,
+                               const std::vector<ComponentTypeID>& types,
+                               std::size_t constructed) noexcept {
+            for (std::size_t k = 0; k < constructed; ++k) {
+                const ComponentTypeID tid = types[k];
+                if (!p.arch->has(tid)) continue;
+                const auto& ci = p.arch->comps()[p.arch->localIndex(tid)];
+                if (ci.destroy) ci.destroy(p.chunk->comp_ptr(ci, p.idx));
+            }
+            // Raw removal: swap-on-remove WITHOUT destroying components (handled above
+            // for the constructed ones; the remainder are uninitialized).
+            Entity moved = p.arch->removeEntityRaw(p.chunk, p.idx);
+            noteRelocation(moved, archIdAs16(p.arch->arch_id_),
+                           packRow(p.chunk->chunk_index(), p.idx));
+            // Recycle the entity slot (mirror destroy()'s tail).
+            auto& slot   = slots_[p.e.id()];
+            slot.gen     = static_cast<std::uint16_t>((slot.gen + 1) & ((1u << Entity::kGenBits) - 1));
+            slot.arch_id = kNoArchSlot;
+            slot.row     = free_head_;
+            free_head_   = p.e.id();
+        }
+
         /// Release the heap buffers of every empty chunk across all archetypes.
         /// Call this at level boundaries / after large entity churn to reclaim
         /// peak memory. The chunk slots themselves are preserved (tombstoned)
@@ -474,7 +501,7 @@ namespace lux::cxx::archtype {
         /// Hot path: one 8-byte slot load (gen + arch_id + row in a single
         /// cache line), then archetype/chunk indirection via L1-hot tables.
         template<class C>
-        C* try_get(Entity e) noexcept {
+        [[nodiscard]] C* try_get(Entity e) noexcept {
             if (e.id() >= slots_.size()) return nullptr;
             const EntitySlot s = slots_[e.id()];
             if (s.gen != e.gen())               return nullptr;
@@ -490,6 +517,22 @@ namespace lux::cxx::archtype {
         template<class C>
         C& get(Entity e) noexcept {
             C* p = try_get<C>(e);
+            assert(p && "Registry::get<C>: entity does not have component C");
+            return *p;
+        }
+
+        /// const overloads — let a `const Registry&` read components (previously
+        /// only has<C>() was const, so you could ask IF a component exists but not
+        /// read it). Delegate through the non-const walk (all touched state is
+        /// const-accessible) and hand back const references.
+        template<class C>
+        [[nodiscard]] const C* try_get(Entity e) const noexcept {
+            return const_cast<Registry*>(this)->template try_get<C>(e);
+        }
+
+        template<class C>
+        [[nodiscard]] const C& get(Entity e) const noexcept {
+            const C* p = try_get<C>(e);
             assert(p && "Registry::get<C>: entity does not have component C");
             return *p;
         }

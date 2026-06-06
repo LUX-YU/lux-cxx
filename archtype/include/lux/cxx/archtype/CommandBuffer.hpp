@@ -124,6 +124,11 @@ namespace lux::cxx::archtype {
         /// Apply every queued deferred-create batch and every real-entity
         /// command, in order. Resets the buffer.
         void commit(Registry& reg) {
+            // Always reset the buffer on exit — including when a deferred component
+            // constructor throws below. A non-reset buffer would double-apply every
+            // op (re-create entities, re-run real commands) on a retry/next commit.
+            struct ClearGuard { CommandBuffer* cb; ~ClearGuard() { cb->clear(); } } guard{ this };
+
             std::vector<Entity> resolved(next_deferred_);
 
             for (std::uint32_t i = 0; i < next_deferred_; ++i) {
@@ -143,12 +148,21 @@ namespace lux::cxx::archtype {
                     for (auto tid : ops.types) sig.set(tid);
                     auto p = reg.allocateInSignature(sig);
                     placed = p.e;
-                    // Run each per-component ctor against the chunk slot.
-                    for (std::size_t k = 0; k < ops.types.size(); ++k) {
-                        const auto tid = ops.types[k];
-                        const auto& ci = p.arch->comps()[p.arch->localIndex(tid)];
-                        void* dst = p.chunk->comp_ptr(ci, p.idx);
-                        ops.ctors[k](dst);
+                    // Run each per-component ctor against the chunk slot. If one
+                    // throws, roll back the partially-built entity (destroy only the
+                    // components already constructed, remove the row, recycle the id)
+                    // so we never leave a half-built, on_construct-less entity behind.
+                    std::size_t constructed = 0;
+                    try {
+                        for (; constructed < ops.types.size(); ++constructed) {
+                            const auto tid = ops.types[constructed];
+                            const auto& ci = p.arch->comps()[p.arch->localIndex(tid)];
+                            void* dst = p.chunk->comp_ptr(ci, p.idx);
+                            ops.ctors[constructed](dst);
+                        }
+                    } catch (...) {
+                        reg.rollbackPlacement(p, ops.types, constructed);
+                        throw;   // ClearGuard resets the buffer during unwinding
                     }
                     // Fire on_construct for each (since allocateInSignature did not).
                     for (auto tid : ops.types) {
@@ -163,8 +177,6 @@ namespace lux::cxx::archtype {
             }
 
             for (auto& cmd : real_commands_) cmd(reg, resolved);
-
-            clear();
         }
 
         void clear() noexcept {

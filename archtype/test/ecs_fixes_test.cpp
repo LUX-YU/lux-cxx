@@ -14,6 +14,7 @@
 #include <lux/cxx/archtype/Registry.hpp>
 #include <lux/cxx/archtype/Index.hpp>
 #include <lux/cxx/archtype/Observer.hpp>
+#include <lux/cxx/archtype/CommandBuffer.hpp>
 
 #include <cassert>
 #include <iostream>
@@ -38,6 +39,19 @@ namespace
         Throwing& operator=(const Throwing&) = default;
         Throwing& operator=(Throwing&&) noexcept = default;
         ~Throwing() { --live; }
+    };
+
+    // Move ctor throws when armed — used to make a component constructor throw
+    // DURING CommandBuffer::commit (the deferred ctor lambda move-constructs the slot).
+    struct CommitBoom
+    {
+        int v = 0;
+        static inline bool armed = false;
+        CommitBoom(int vv = 0) : v(vv) {}
+        CommitBoom(const CommitBoom& o) : v(o.v) {}
+        CommitBoom(CommitBoom&& o) : v(o.v) { if (armed) throw std::runtime_error("commit boom"); o.v = -1; }
+        CommitBoom& operator=(const CommitBoom&) = default;
+        CommitBoom& operator=(CommitBoom&&) = default;
     };
 
     int g_failures = 0;
@@ -149,6 +163,40 @@ static void test_observer_teardown_order()
     check(true, "observer destroyed after its registry without UAF");
 }
 
+// CommandBuffer::commit must roll back a partially-built deferred entity if a
+// component ctor throws, and always reset the buffer.
+static void test_commandbuffer_commit_rollback()
+{
+    Registry w;
+    CommitBoom::armed = false;
+
+    CommandBuffer cb;
+    auto de = cb.create();
+    cb.emplace<Pos>(de, Pos{ 1 });
+    cb.emplace<CommitBoom>(de, 7);   // built + captured here (armed == false)
+
+    CommitBoom::armed = true;        // make the COMMIT-time move throw
+    bool threw = false;
+    try { cb.commit(w); } catch (const std::exception&) { threw = true; }
+    CommitBoom::armed = false;
+
+    check(threw, "commit: throwing component move propagated");
+    check(cb.empty(), "commit: buffer is reset even after a throw");
+    check((w.view<Pos, CommitBoom>().size() == 0), "commit: no half-built entity left behind");
+}
+
+// const Registry& can read components (try_get/get const overloads).
+static void test_registry_const_access()
+{
+    Registry w;
+    Entity e = w.create<Pos>(Pos{ 42 });
+    const Registry& cw = w;
+    const Pos* p = cw.try_get<Pos>(e);
+    check(p && p->x == 42, "const Registry::try_get reads a component");
+    check(cw.get<Pos>(e).x == 42, "const Registry::get reads a component");
+    check(cw.try_get<Other>(e) == nullptr, "const Registry::try_get returns null for an absent component");
+}
+
 int main()
 {
     std::cout << "ECS hardening regression tests:\n";
@@ -156,6 +204,8 @@ int main()
     test_emplace_exception_safety();
     test_component_index_relocation();
     test_observer_teardown_order();
+    test_commandbuffer_commit_rollback();
+    test_registry_const_access();
     std::cout << "\n=== Results ===\nFailures: " << g_failures << "\n";
     return g_failures;
 }
