@@ -173,7 +173,7 @@ namespace lux::cxx::ser
     }
 
     template <class T>
-    lux::cxx::Parser make_arg_parser(std::string prog)
+    [[nodiscard]] lux::cxx::Parser make_arg_parser(std::string prog)
     {
         T defaults{};
         lux::cxx::Parser parser(std::move(prog));
@@ -182,7 +182,7 @@ namespace lux::cxx::ser
     }
 
     template <class T>
-    std::string usage(std::string prog)
+    [[nodiscard]] std::string usage(std::string prog)
     {
         T defaults{};
         lux::cxx::Parser parser(std::move(prog));
@@ -191,7 +191,7 @@ namespace lux::cxx::ser
     }
 
     template <class T>
-    result<T> from_args(int argc, char** argv, std::string prog = "app")
+    [[nodiscard]] result<T> from_args(int argc, char** argv, std::string prog = "app")
     {
         T out{};
         lux::cxx::Parser parser(std::move(prog));
@@ -203,7 +203,7 @@ namespace lux::cxx::ser
     }
 
     template <class T>
-    result<T> from_args(const std::string& cmdline, std::string prog = "app")
+    [[nodiscard]] result<T> from_args(const std::string& cmdline, std::string prog = "app")
     {
         T out{};
         lux::cxx::Parser parser(prog);

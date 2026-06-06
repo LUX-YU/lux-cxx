@@ -101,6 +101,14 @@ int main()
     const auto e_ok = from_json<Required>(R"({"id":"abc","value":7})");
     check(e_ok.has_value() && e_ok.value().id == "abc", "required field present -> success");
 
+    // ---- omit_empty: empty tagged field is not emitted; non-empty is ----
+    WithOmit wo;                          // maybe is empty
+    const std::string jo_empty = to_json(wo);
+    check(has(jo_empty, "\"keep\":5"),  "omit_empty: untagged field still emitted");
+    check(!has(jo_empty, "\"maybe\""),  "omit_empty: empty tagged field is omitted");
+    wo.maybe = { 1, 2 };
+    check(has(to_json(wo), "\"maybe\":[1,2]"), "omit_empty: non-empty tagged field is emitted");
+
     std::cout << "\n=== Results ===\nFailures: " << g_failures << "\n";
     return g_failures;
 }

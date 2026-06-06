@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -183,10 +184,48 @@ namespace lux::cxx::ser
     concept Sequence =
         std::ranges::input_range<T> && !StringLike<T> && !Map<T> && !TupleLike<T> && !ByteSequence<T>;
 
+    namespace detail
+    {
+        // Bounded recursion: deeply-nested (especially untrusted) input must not
+        // overflow the stack. A thread_local depth counter, scoped via RAII, caps
+        // nesting without threading a depth parameter through every save/load branch.
+        inline constexpr int ser_max_depth =
+#ifdef LUX_SER_MAX_DEPTH
+            LUX_SER_MAX_DEPTH;
+#else
+            256;
+#endif
+        inline thread_local int g_ser_depth = 0;
+        struct depth_scope
+        {
+            depth_scope()  noexcept { ++g_ser_depth; }
+            ~depth_scope() noexcept { --g_ser_depth; }
+            [[nodiscard]] bool overflow() const noexcept { return g_ser_depth > ser_max_depth; }
+        };
+
+        // True if a field value should be omitted under field_options::omit_empty:
+        // disengaged optional, empty container/string, or value-initialized default.
+        template <class V>
+        [[nodiscard]] bool is_empty_for_omit(const V& v)
+        {
+            using U = std::remove_cvref_t<V>;
+            if constexpr (Nullable<U>)                  return !static_cast<bool>(v);
+            else if constexpr (requires { v.empty(); }) return v.empty();
+            else if constexpr (std::is_default_constructible_v<U>
+                               && requires (const U& a, const U& b) { static_cast<bool>(a == b); })
+                                                        return static_cast<bool>(v == U{});
+            else                                        return false;
+        }
+    }
+
     // ---- L2: serialize (the single traversal) --------------------------------
     template <class Ar, class T>
     void save(Ar& ar, const T& v)
     {
+        detail::depth_scope ds_;
+        if (ds_.overflow())
+            throw std::length_error("lux::cxx::ser::save: maximum nesting depth exceeded");
+
         using U = std::remove_cvref_t<T>;
         if constexpr (HasCustom<U>)
         {
@@ -197,6 +236,8 @@ namespace lux::cxx::ser
             ar.begin_object(field_count_v<U>);
             meta_info<U>::for_each_field([&](auto fd) {
                 if (fd.options.skip) return;
+                // Honor omit_empty: skip emitting a key whose value is empty/default.
+                if (fd.options.omit_empty && detail::is_empty_for_omit(v.*(fd.pointer))) return;
                 ar.key(fd.name, fd.options.xml_attribute);
                 save(ar, v.*(fd.pointer));
             });
@@ -280,6 +321,14 @@ namespace lux::cxx::ser
     template <class Cur, class T>
     bool load(const Cur& cur, T& out, error* err = nullptr)
     {
+        // Bound recursion so untrusted deeply-nested input can't overflow the stack.
+        detail::depth_scope ds_;
+        if (ds_.overflow())
+        {
+            detail::set_error(err, error_code::parse_error, "maximum nesting depth exceeded", {});
+            return false;
+        }
+
         using U = std::remove_cvref_t<T>;
         if constexpr (HasCustom<U>)
         {

@@ -91,7 +91,7 @@ Apply on a field as `LUX_META(serializable, <key>[, <key>=<value>...])`.
 | `name="x"`      | Override the serialized key / option name                        | all      |
 | `skip`          | Never (de)serialize this field                                   | all      |
 | `required`      | Error if the field is missing on load                            | all      |
-| `omit_empty`    | Don't emit empty/default values (reserved)                       | json/xml |
+| `omit_empty`    | Skip emitting the field when its value is empty/default          | json/xml |
 | `flatten`       | Inline a nested struct (no extra path segment)                   | all      |
 | `short="p"`     | Short option name (`-p`)                                         | args     |
 | `xml_attribute` | Emit a scalar as an XML attribute instead of a child element     | xml      |

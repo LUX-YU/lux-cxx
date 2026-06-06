@@ -110,7 +110,7 @@ namespace lux::cxx::ser
 
     // ---- public API (templated wrappers; no third-party types leak) ----------
     template <class T>
-    std::string to_json(const T& v, int indent = -1)
+    [[nodiscard]] std::string to_json(const T& v, int indent = -1)
     {
         JsonOutputArchive ar;
         save(ar, v);
@@ -118,7 +118,7 @@ namespace lux::cxx::ser
     }
 
     template <class T>
-    result<T> from_json(std::string_view text)
+    [[nodiscard]] result<T> from_json(std::string_view text)
     {
         auto doc = JsonDocument::parse(text);
         if (!doc) return lux::cxx::unexpected<error>(doc.error());

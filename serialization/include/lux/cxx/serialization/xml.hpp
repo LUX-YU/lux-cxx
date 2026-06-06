@@ -117,7 +117,7 @@ namespace lux::cxx::ser
 
     // ---- public API ----------------------------------------------------------
     template <class T>
-    std::string to_xml(const T& v, std::string_view root_name = "root", bool pretty = true)
+    [[nodiscard]] std::string to_xml(const T& v, std::string_view root_name = "root", bool pretty = true)
     {
         XmlOutputArchive ar(root_name);
         save(ar, v);
@@ -125,7 +125,7 @@ namespace lux::cxx::ser
     }
 
     template <class T>
-    result<T> from_xml(std::string_view text)
+    [[nodiscard]] result<T> from_xml(std::string_view text)
     {
         auto doc = XmlDocument::parse(text);
         if (!doc) return lux::cxx::unexpected<error>(doc.error());

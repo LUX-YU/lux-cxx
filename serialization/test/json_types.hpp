@@ -21,6 +21,13 @@ struct LUX_META(serializable) Required
     int         value;
 };
 
+// Exercises omit_empty: an empty field tagged omit_empty must not be emitted.
+struct LUX_META(serializable) WithOmit
+{
+    int              keep = 5;
+    std::vector<int> LUX_META(serializable, omit_empty) maybe;
+};
+
 // Exercises: scalar / enum / sequence / optional / nested reflected / string-keyed map.
 struct LUX_META(serializable) Profile
 {
