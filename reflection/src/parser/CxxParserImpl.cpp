@@ -149,10 +149,15 @@ namespace lux::cxx::reflection
 		decl.mangling    = cursor.mangling().to_std();
 		decl.is_variadic = cursor.isVariadic();
 
-		for (size_t i = 0; i < cursor.numArguments(); i++)
+		// numArguments() wraps clang_Cursor_getNumArguments, which returns int and
+		// yields -1 for non-function/invalid cursors. Comparing a size_t against
+		// that -1 (→ SIZE_MAX) would spin ~2^64 times calling getArgument() out of
+		// bounds. Capture into a signed int and guard.
+		const int num_args = cursor.numArguments();
+		for (int i = 0; i < num_args; ++i)
 		{
 			auto param_decl = std::make_unique<ParmVarDecl>();
-			parseParamDecl(cursor.getArgument(i), static_cast<int>(i), *param_decl);
+			parseParamDecl(cursor.getArgument(static_cast<unsigned>(i)), i, *param_decl);
 			auto* param_raw = registerDeclaration(std::move(param_decl));
 			decl.params.push_back(param_raw->index);
 		}

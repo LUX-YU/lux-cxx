@@ -983,9 +983,19 @@ namespace lux::cxx::reflection
 
     void deserializeMetaUnitData(const nlohmann::json& root, MetaUnitData& data)
     {
+        // Map each node's *serialized* (JSON array) position to the created object.
+        // Entries whose __kind cannot be instantiated are dropped, which shifts the
+        // position of every later node; trusting the JSON index (for fixup pairing,
+        // cross-references, and marked_* lists) after such a shift silently binds to
+        // the wrong node or runs out of bounds. These maps let everything resolve by
+        // the original serialized index regardless of drops.
+        std::unordered_map<std::size_t, Decl*> declByJsonIndex;
+        std::unordered_map<std::size_t, Type*> typeByJsonIndex;
+
         //------------------ 先处理 Declarations ------------------//
         if (root.contains("declarations") && root["declarations"].is_array())
         {
+            std::size_t jsonIdx = 0;
             for (auto& item : root["declarations"])
             {
                 auto d = createDeclFirstPass(item);
@@ -995,14 +1005,17 @@ namespace lux::cxx::reflection
                     if (!raw->id.empty()) {
                         data.declaration_map[raw->id] = raw;
                     }
+                    declByJsonIndex[jsonIdx] = raw;
                     data.declarations.push_back(std::move(d));
                 }
+                ++jsonIdx;
             }
         }
 
         //------------------ 先处理 Types ------------------//
         if (root.contains("types") && root["types"].is_array())
         {
+            std::size_t jsonIdx = 0;
             for (auto& item : root["types"])
             {
                 auto t = createTypeFirstPass(item);
@@ -1012,19 +1025,32 @@ namespace lux::cxx::reflection
                     if (!raw->id.empty()) {
                         data.type_map[raw->id] = raw;
                     }
+                    typeByJsonIndex[jsonIdx] = raw;
                     data.types.push_back(std::move(t));
                 }
+                ++jsonIdx;
             }
         }
+
+        // Reconcile each node's index with its TRUE position before fixup. Cross-
+        // references are resolved by id but stored as it->second->index (and later
+        // consumed via getDeclAt/getTypeAt), so the index field MUST equal the real
+        // vector position — otherwise a dropped earlier node makes every reference
+        // point at the wrong node or past the end.
+        for (std::size_t i = 0; i < data.declarations.size(); ++i)
+            data.declarations[i]->index = i;
+        for (std::size_t i = 0; i < data.types.size(); ++i)
+            data.types[i]->index = i;
 
         //------------------ 二阶段fixup: Declarations ------------------//
         if (root.contains("declarations") && root["declarations"].is_array())
         {
             const auto& arr = root["declarations"];
-            for (size_t i = 0; i < data.declarations.size() && i < arr.size(); i++)
+            for (std::size_t j = 0; j < arr.size(); ++j)
             {
-                auto* d = data.declarations[i].get();
-                fixupDecl(d, arr[i], data.declaration_map, data.type_map);
+                auto it = declByJsonIndex.find(j);
+                if (it != declByJsonIndex.end())
+                    fixupDecl(it->second, arr[j], data.declaration_map, data.type_map);
             }
         }
 
@@ -1032,10 +1058,11 @@ namespace lux::cxx::reflection
         if (root.contains("types") && root["types"].is_array())
         {
             const auto& arr = root["types"];
-            for (size_t i = 0; i < data.types.size() && i < arr.size(); i++)
+            for (std::size_t j = 0; j < arr.size(); ++j)
             {
-                auto* t = data.types[i].get();
-                fixupType(t, arr[i], data.type_map, data.declaration_map);
+                auto it = typeByJsonIndex.find(j);
+                if (it != typeByJsonIndex.end())
+                    fixupType(it->second, arr[j], data.type_map, data.declaration_map);
             }
         }
 
@@ -1055,9 +1082,11 @@ namespace lux::cxx::reflection
 			}
         }
 
-        // marked declarations
-		auto deserialize_marked_decl = 
-        [&data, &root]<typename T>(const char* name, std::vector<T*>& decls)
+        // marked declarations — the JSON stores serialized indices, so resolve them
+        // through declByJsonIndex (drop-safe) rather than indexing data.declarations
+        // directly (which is misaligned once any node was dropped).
+		auto deserialize_marked_decl =
+        [&root, &declByJsonIndex]<typename T>(const char* name, std::vector<T*>& decls)
         {
             if (!root.contains(name) || !root[name].is_array())
             {
@@ -1066,9 +1095,10 @@ namespace lux::cxx::reflection
 			for (auto& id : root[name])
 			{
 				auto idx = id.get<size_t>();
-				if (idx == INVALID_DECL_INDEX || idx >= data.declarations.size())
+				auto it = declByJsonIndex.find(idx);
+				if (it == declByJsonIndex.end())
 					continue;
-				if (auto* casted = dynamic_cast<T*>(data.declarations[idx].get()))
+				if (auto* casted = dynamic_cast<T*>(it->second))
 					decls.push_back(casted);
 			}
 		};

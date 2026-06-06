@@ -161,22 +161,25 @@ namespace lux::cxx::reflection
 			if (_string.data) clang_disposeString(_string);
 		}
 
+		// clang_getCString returns nullptr for invalid/empty CXStrings (e.g.
+		// spelling/mangling/comment of cursors that have none). Constructing a
+		// std::string from nullptr or calling strlen(nullptr) is UB, so guard.
 		[[nodiscard]] std::string to_std() const
 		{
 			const char* c_str = clang_getCString(_string);
-			std::string ret(c_str);
-			return ret;
+			return c_str ? std::string(c_str) : std::string();
 		}
 
 		[[nodiscard]] std::size_t size() const
 		{
 			const char* c_str = clang_getCString(_string);
-			return std::strlen(c_str);
+			return c_str ? std::strlen(c_str) : 0;
 		}
 
 		[[nodiscard]] const char* c_str() const
 		{
-			return clang_getCString(_string);
+			const char* c_str = clang_getCString(_string);
+			return c_str ? c_str : "";
 		}
 
 	private:

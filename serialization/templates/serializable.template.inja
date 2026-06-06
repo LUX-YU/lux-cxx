@@ -19,14 +19,14 @@ namespace lux::cxx::ser
     {
         static constexpr bool reflected = true;
         using type = ::{{ decl.fq_name }};
-        static constexpr ::std::string_view name           = "{{ decl.name }}";
-        static constexpr ::std::string_view qualified_name = "{{ decl.fq_name }}";
+        static constexpr ::std::string_view name           = "{{ cxx_str(decl.name) }}";
+        static constexpr ::std::string_view qualified_name = "{{ cxx_str(decl.fq_name) }}";
 
         template <class F>
         static constexpr void for_each_field([[maybe_unused]] F&& f)
         {
 {% for field_id in decl.field_decls %}{% set field = decl_from_id(field_id) %}{% if field.visibility == 1 %}            f(::lux::cxx::ser::field_descriptor<type, {{ field.type_id }}>{
-                .name    = "{{ annotation_get_for_or(field, "serializable", "name", field.name) }}",
+                .name    = "{{ cxx_str(annotation_get_for_or(field, "serializable", "name", field.name)) }}",
                 .pointer = &type::{{ field.name }},
                 .options = ::lux::cxx::ser::field_options{
                     .skip       = {{ annotation_get_for_or(field, "serializable", "skip", false) }},
@@ -34,7 +34,7 @@ namespace lux::cxx::ser
                     .flatten    = {{ annotation_get_for_or(field, "serializable", "flatten", false) }},
                     .omit_empty = {{ annotation_get_for_or(field, "serializable", "omit_empty", false) }},
                     .xml_attribute = {{ annotation_get_for_or(field, "serializable", "xml_attribute", false) }},
-                    .short_name = "{{ annotation_get_for_or(field, "serializable", "short", "") }}"
+                    .short_name = "{{ cxx_str(annotation_get_for_or(field, "serializable", "short", "")) }}"
                 }
             });
 {% endif %}{% endfor %}        }
@@ -48,7 +48,7 @@ namespace lux::cxx::ser
         using type = ::{{ decl.fq_name }};
         static constexpr ::std::size_t count = {{ length(decl.enumerators) }};
         static constexpr ::std::array<::std::pair<::std::string_view, type>, {{ length(decl.enumerators) }}> entries{ {
-{% for e in decl.enumerators %}            { "{{ e.name }}", type::{{ e.name }} }{% if not loop.is_last %},{% endif %}
+{% for e in decl.enumerators %}            { "{{ cxx_str(e.name) }}", type::{{ e.name }} }{% if not loop.is_last %},{% endif %}
 {% endfor %}        } };
     };
 {% endfor %}

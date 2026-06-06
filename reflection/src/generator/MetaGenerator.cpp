@@ -582,6 +582,46 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
         const nlohmann::json* meta_json = nullptr;
     } current{};
 
+    // Escape a value so it is safe to embed inside a generated C++ string literal.
+    // Values originate from libclang spellings and user annotations and may contain
+    // backslashes (Windows paths), quotes, newlines or other control characters;
+    // emitting them raw produces malformed or injectable generated code. Templates
+    // must wrap any value that lands inside "..." with cxx_str(...).
+    inja_env.add_callback(
+        "cxx_str",
+        [](const inja::Arguments& args) -> std::string {
+            const std::string s = args.at(0)->get<std::string>();
+            static constexpr char hex[] = "0123456789ABCDEF";
+            std::string out;
+            out.reserve(s.size() + 8);
+            for (unsigned char c : s)
+            {
+                switch (c)
+                {
+                    case '\\': out += "\\\\"; break;
+                    case '\"': out += "\\\""; break;
+                    case '\n': out += "\\n";  break;
+                    case '\r': out += "\\r";  break;
+                    case '\t': out += "\\t";  break;
+                    default:
+                        if (c < 0x20 || c == 0x7F)
+                        {
+                            out += "\\x";
+                            out += hex[(c >> 4) & 0xF];
+                            out += hex[c & 0xF];
+                            out += "\"\""; // terminate the \x run so following chars aren't absorbed
+                        }
+                        else
+                        {
+                            out += static_cast<char>(c);
+                        }
+                        break;
+                }
+            }
+            return out;
+        }
+    );
+
     // Callback to retrieve a declaration based on its unique ID from the meta data.
     // The meta_unit_list is used to locate the declaration, and then the corresponding JSON data is returned.
     inja_env.add_callback(

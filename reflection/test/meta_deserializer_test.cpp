@@ -13,6 +13,7 @@
 //   4. writes the deserialised JSON next to the executable for inspection
 
 #include <lux/cxx/reflection/runtime/MetaUnit.hpp>
+#include <lux/cxx/reflection/runtime/Declaration.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -59,6 +60,47 @@ namespace
         "marked_function_decls":[],
         "marked_enum_decls":[]
     })";
+
+    // Regression for index reconciliation: an un-instantiable (UNKNOWN __kind)
+    // declaration sits at array position 0, so every later node shifts down by one
+    // when it is dropped. The record at JSON index 1 references the field at JSON
+    // index 2 by id, and is itself referenced by marked_record_decls = [1]. With the
+    // old position-trusting deserializer the record would not be marked (the marked
+    // index pointed at the shifted field), fixup would pair nodes with the wrong
+    // JSON, and the field cross-reference would point out of bounds. After the fix
+    // everything must resolve to the right node.
+    void test_drop_reindex()
+    {
+        using namespace lux::cxx::reflection;
+        constexpr const char* kJson = R"({
+            "name":"drop","version":"1.0",
+            "declarations":[
+                { "__kind":"TotallyUnknownKind", "id":"dropme", "index":0 },
+                { "__kind":"CXXRecordDecl", "id":"rec", "index":1, "name":"Rec", "fq_name":"Rec", "field_decls":["fld"] },
+                { "__kind":"FieldDecl", "id":"fld", "index":2, "name":"x" }
+            ],
+            "types":[],
+            "marked_record_decls":[1],
+            "marked_function_decls":[],
+            "marked_enum_decls":[]
+        })";
+
+        MetaUnit unit = MetaUnit::fromJson(kJson);
+
+        const auto& recs = unit.markedRecordDecls();
+        check(recs.size() == 1, "drop-reindex: record is still marked despite a dropped earlier node");
+        if (recs.size() == 1)
+        {
+            check(recs[0]->name == "Rec", "drop-reindex: marked record resolves to the right node");
+            check(recs[0]->field_decls.size() == 1, "drop-reindex: record has its one field");
+            if (recs[0]->field_decls.size() == 1)
+            {
+                auto* fld = unit.getDeclAs<FieldDecl>(recs[0]->field_decls[0]);
+                check(fld != nullptr, "drop-reindex: field cross-reference resolves to a FieldDecl");
+                check(fld && fld->name == "x", "drop-reindex: field cross-reference points at the correct field");
+            }
+        }
+    }
 }
 
 int main(int argc, char* argv[])
@@ -92,6 +134,9 @@ int main(int argc, char* argv[])
     const std::string dump2 = roundtrip.toJson(4);
 
     check(dump1 == dump2, "idempotent round-trip (fromJson . toJson is stable)");
+
+    // Index-reconciliation regression (independent of the input document).
+    test_drop_reindex();
 
     // Write for offline inspection.
     {

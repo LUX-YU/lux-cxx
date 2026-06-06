@@ -11,21 +11,21 @@ static_assert({{ annotation_get_or(rec, "priority", 0) }} == 50, "priority annot
 static_assert({{ annotation_get_or(rec, "enabled", false) }}, "enabled annotation must be parsed as bool");
 static_assert({{ length(annotation_heads(rec)) }} >= 2, "annotation_heads() should expose parsed heads");
 
-constexpr std::string_view kFeatureName_{{ rec_i }} = "{{ annotation_get_or(rec, "name", "Unknown") }}";
+constexpr std::string_view kFeatureName_{{ rec_i }} = "{{ cxx_str(annotation_get_or(rec, "name", "Unknown")) }}";
 static_assert(kFeatureName_{{ rec_i }} == "Skybox", "annotation_get_or(name) should return string value");
 
-constexpr std::string_view kDeps_{{ rec_i }} = "{{ annotation_get_for_or(rec, "render::feature", "deps", "") }}";
+constexpr std::string_view kDeps_{{ rec_i }} = "{{ cxx_str(annotation_get_for_or(rec, "render::feature", "deps", "")) }}";
 static_assert(kDeps_{{ rec_i }} == "DepthPrepass|ForwardOpaque", "annotation_get_for_or(head,key) should read scoped kv");
 
 {% for field_id in rec.field_decls %}
 {% set field = decl_from_id(field_id) %}
-constexpr std::string_view kDisplayName_{{ rec_i }}_{{ loop.index }} = "{{ annotation_get_for_or(field, "luxref::property::member", "display_name", "") }}";
+constexpr std::string_view kDisplayName_{{ rec_i }}_{{ loop.index }} = "{{ cxx_str(annotation_get_for_or(field, "luxref::property::member", "display_name", "")) }}";
 static_assert(kDisplayName_{{ rec_i }}_{{ loop.index }} == "World Position", "field display_name annotation must be parsed");
 
 static_assert({{ annotation_get_for_or(field, "luxref::property::member", "readonly", false) }},
               "field readonly annotation must be parsed as bool");
 
-constexpr std::string_view kLabels_{{ rec_i }}_{{ loop.index }} = "{{ annotation_get_for_or(field, "luxref::property::member", "labels", "") }}";
+constexpr std::string_view kLabels_{{ rec_i }}_{{ loop.index }} = "{{ cxx_str(annotation_get_for_or(field, "luxref::property::member", "labels", "")) }}";
 static_assert(kLabels_{{ rec_i }}_{{ loop.index }} == "X|Y|Z", "field labels annotation must be parsed");
 {% endfor %}
 {% endfor %}
