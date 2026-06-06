@@ -397,6 +397,14 @@ namespace lux::cxx
 
         const std::size_t n_orig = pool.size();   // 初始 token 数
 
+        // The loop below holds string_views (tok/key/inline_val) into pool[i] and,
+        // for inline "--opt=value" args, push_token() appends to `pool`. Each
+        // iteration appends at most one token, so reserving 2*n_orig up front
+        // guarantees `pool` never reallocates during the loop — otherwise an
+        // emplace_back would free the storage those string_views point into and
+        // the very next add_index(key, …) would read freed memory (use-after-free).
+        pool.reserve(n_orig * 2);
+
         for (std::size_t i = 1; i < n_orig; ++i)
         {
             sv tok = pool[i];
