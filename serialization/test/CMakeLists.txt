@@ -29,7 +29,6 @@ lux_target_add_serialization(
     HEADERS   ${CMAKE_CURRENT_SOURCE_DIR}/test_serialize.hpp
     GENERATOR $<TARGET_FILE:lux_meta_generator>
     ALWAYS_REGENERATE
-    ECHO
 )
 
 #[[==========================  JSON backend round-trip  ==========================]]
