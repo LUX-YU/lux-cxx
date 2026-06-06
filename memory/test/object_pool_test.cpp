@@ -14,6 +14,8 @@
 #include <atomic>
 #include <algorithm>
 #include <memory>
+#include <mutex>
+#include <stdexcept>
 
 #include <lux/cxx/memory/ObjectPool.hpp>
 
@@ -421,6 +423,110 @@ void test_large_aligned_objects()
     std::cout << "passed\n";
 }
 
+// ─── 15. lock-free: ctor/dtor balance + no aliasing under contention ────────
+
+void test_lockfree_balance_and_uniqueness()
+{
+    std::cout << "  lock-free balance & uniqueness ... ";
+    reset_counters();
+
+    constexpr int NUM_THREADS    = 8;
+    constexpr int OPS_PER_THREAD = 4000;
+    constexpr int BATCH          = 16;
+
+    lux::cxx::ObjectPool<Tracked, 16, true> pool;
+
+    std::mutex            live_mtx;
+    std::set<void*>       live;          // currently-acquired addresses
+    std::atomic<bool>     ok{true};
+
+    auto worker = [&]()
+    {
+        std::vector<Tracked*> batch;
+        batch.reserve(BATCH);
+        for (int i = 0; i < OPS_PER_THREAD; ++i)
+        {
+            auto* p = pool.acquire(i);
+            if (p->value != i) ok = false;     // slot constructed with our args
+            {
+                std::lock_guard<std::mutex> lk(live_mtx);
+                // A live address must never be handed to two callers at once.
+                if (!live.insert(p).second) ok = false;
+            }
+            batch.push_back(p);
+            if (batch.size() == BATCH)
+            {
+                for (auto* q : batch)
+                {
+                    {
+                        std::lock_guard<std::mutex> lk(live_mtx);
+                        live.erase(q);
+                    }
+                    pool.release(q);
+                }
+                batch.clear();
+            }
+        }
+        for (auto* q : batch)
+        {
+            { std::lock_guard<std::mutex> lk(live_mtx); live.erase(q); }
+            pool.release(q);
+        }
+    };
+
+    std::vector<std::thread> threads;
+    for (int i = 0; i < NUM_THREADS; ++i) threads.emplace_back(worker);
+    for (auto& t : threads) t.join();
+
+    assert(ok.load());
+    assert(live.empty());
+    // Every acquire constructed exactly one T and every release destroyed it.
+    assert(g_ctor_count.load() == NUM_THREADS * OPS_PER_THREAD);
+    assert(g_dtor_count.load() == g_ctor_count.load());
+
+    std::cout << "passed\n";
+}
+
+// ─── 16. lock-free: reserve / capacity ──────────────────────────────────────
+
+void test_lockfree_reserve()
+{
+    std::cout << "  lock-free reserve/capacity ... ";
+
+    lux::cxx::ObjectPool<int, 8, true> pool;
+    assert(pool.capacity() == 0);
+    assert(pool.chunk_count() == 0);
+
+    pool.reserve(20);                 // ceil(20/8) = 3 chunks → 24 slots
+    assert(pool.capacity() >= 20);
+    assert(pool.chunk_count() >= 3);
+
+    std::cout << "passed\n";
+}
+
+// ─── 17. lock-free: max_chunks hard cap throws ──────────────────────────────
+
+void test_lockfree_capacity_limit()
+{
+    std::cout << "  lock-free capacity limit ... ";
+
+    // ChunkSize=4, max_chunks=2  →  hard cap of 8 live slots.
+    lux::cxx::ObjectPool<int, 4, true> pool(/*initial_capacity*/0, /*max_chunks*/2);
+
+    std::vector<int*> held;
+    for (int i = 0; i < 8; ++i)
+        held.push_back(pool.acquire(i));     // fills both chunks
+
+    bool threw = false;
+    try { (void)pool.acquire(999); }         // 9th must fail to grow
+    catch (const std::length_error&) { threw = true; }
+    assert(threw);
+
+    for (auto* p : held) pool.release(p);
+
+    std::cout << "passed\n";
+}
+
 // ─── main ───────────────────────────────────────────────────────────────────
 
 int main()
@@ -442,6 +548,9 @@ int main()
     test_lockfree_pool_ptr();
     test_mt_stress();
     test_mt_pool_ptr();
+    test_lockfree_balance_and_uniqueness();
+    test_lockfree_reserve();
+    test_lockfree_capacity_limit();
 
     std::cout << "\nAll ObjectPool tests passed!\n";
     return 0;
