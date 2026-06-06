@@ -124,15 +124,7 @@ namespace lux::cxx
          */
         [[nodiscard]] bool contains(Key key) const noexcept
         {
-            if (!Traits::is_addressable(key))
-                return false;
-            const auto si = Traits::sparse_index(key);
-            if (si >= sparse_.size())
-                return false;
-            const auto di = sparse_[si];
-            if (di == INVALID_INDEX)
-                return false;
-            return Traits::equals(dense_keys_[di], key);
+            return dense_index_of(key) != INVALID_INDEX;
         }
 
         /**
@@ -140,17 +132,15 @@ namespace lux::cxx
          */
         [[nodiscard]] Value* tryGet(Key key) noexcept
         {
-            if (!contains(key))
-                return nullptr;
-            return &dense_values_[sparse_[Traits::sparse_index(key)]];
+            const auto di = dense_index_of(key);
+            return di == INVALID_INDEX ? nullptr : &dense_values_[di];
         }
 
         /// @overload const version
         [[nodiscard]] const Value* tryGet(Key key) const noexcept
         {
-            if (!contains(key))
-                return nullptr;
-            return &dense_values_[sparse_[Traits::sparse_index(key)]];
+            const auto di = dense_index_of(key);
+            return di == INVALID_INDEX ? nullptr : &dense_values_[di];
         }
 
         /**
@@ -158,17 +148,19 @@ namespace lux::cxx
          */
         [[nodiscard]] Value& at(Key key)
         {
-            if (!contains(key))
+            const auto di = dense_index_of(key);
+            if (di == INVALID_INDEX)
                 throw std::out_of_range("BasicSparseSet::at: key not found");
-            return dense_values_[sparse_[Traits::sparse_index(key)]];
+            return dense_values_[di];
         }
 
         /// @overload const version
         [[nodiscard]] const Value& at(Key key) const
         {
-            if (!contains(key))
+            const auto di = dense_index_of(key);
+            if (di == INVALID_INDEX)
                 throw std::out_of_range("BasicSparseSet::at: key not found");
-            return dense_values_[sparse_[Traits::sparse_index(key)]];
+            return dense_values_[di];
         }
 
         // ---- insert ---------------------------------------------------------
@@ -259,11 +251,11 @@ namespace lux::cxx
          */
         bool erase(Key key)
         {
-            if (!contains(key))
+            const auto di = dense_index_of(key);
+            if (di == INVALID_INDEX)
                 return false;
 
-            const auto si   = Traits::sparse_index(key);
-            const auto di   = sparse_[si];
+            const auto si   = Traits::sparse_index(key);   // cheap: no sparse_ load
             const auto last = dense_keys_.size() - 1;
 
             if (di != last)
@@ -286,9 +278,10 @@ namespace lux::cxx
          */
         bool extract(Key key, Value& value)
         {
-            if (!contains(key))
+            const auto di = dense_index_of(key);
+            if (di == INVALID_INDEX)
                 return false;
-            value = std::move(dense_values_[sparse_[Traits::sparse_index(key)]]);
+            value = std::move(dense_values_[di]);
             erase(key);
             return true;
         }
@@ -312,6 +305,40 @@ namespace lux::cxx
         }
 
     private:
+        /**
+         * @brief Single-lookup key resolution: returns the dense index for @p key,
+         *        or INVALID_INDEX if absent.
+         *
+         * This is the one place that validates a key (addressable -> in-range ->
+         * live slot -> full-key equality). contains()/tryGet()/at()/erase() all go
+         * through it so the (potentially cache-missing) sparse_ load and the
+         * stale-handle equals() check happen exactly ONCE per lookup, instead of
+         * contains() computing the dense index and the caller re-deriving it.
+         */
+        // Whether lookup must do a full-key equality check. Generational keys
+        // (SlotKey) need it to reject stale handles; injective integral keys don't,
+        // so they save the extra dense_keys_ load. Traits that don't declare the
+        // flag default to checking (safe).
+        static constexpr bool needs_full_key_check_v = []
+        {
+            if constexpr (requires { Traits::needs_full_key_check; })
+                return Traits::needs_full_key_check;
+            else
+                return true;
+        }();
+
+        [[nodiscard]] size_type dense_index_of(Key key) const noexcept
+        {
+            if (!Traits::is_addressable(key))      return INVALID_INDEX;
+            const auto si = Traits::sparse_index(key);
+            if (si >= sparse_.size())              return INVALID_INDEX;
+            const auto di = sparse_[si];
+            if (di == INVALID_INDEX)               return INVALID_INDEX;
+            if constexpr (needs_full_key_check_v)
+                if (!Traits::equals(dense_keys_[di], key)) return INVALID_INDEX;
+            return di;
+        }
+
         /**
          * @brief Ensures the sparse array is large enough for @p key.
          */

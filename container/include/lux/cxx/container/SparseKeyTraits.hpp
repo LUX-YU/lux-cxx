@@ -64,6 +64,11 @@ namespace lux::cxx
     {
         using key_type = Key;
 
+        // sparse_index is injective for plain integral keys, so a non-INVALID sparse
+        // slot already proves THIS key is present — no full-key equality (and its
+        // extra dense_keys_ cache miss) is needed on lookup.
+        static constexpr bool needs_full_key_check = false;
+
         static constexpr bool is_addressable(key_type /*k*/) noexcept
         {
             return true;
@@ -93,6 +98,10 @@ namespace lux::cxx
     {
         using key_type = Key;
 
+        // (k - Offset) is injective on the addressable range, so lookup can skip the
+        // full-key equality check (see plain-integral traits above).
+        static constexpr bool needs_full_key_check = false;
+
         static constexpr bool is_addressable(key_type k) noexcept
         {
             return k >= Offset;
@@ -120,6 +129,10 @@ namespace lux::cxx
     struct sparse_key_traits<SlotKey<Tag, IndexType, GenerationType>>
     {
         using key_type = SlotKey<Tag, IndexType, GenerationType>;
+
+        // Distinct handles (same index, different generation) map to the SAME sparse
+        // slot, so lookup MUST do a full-key equality check to reject stale handles.
+        static constexpr bool needs_full_key_check = true;
 
         static constexpr bool is_addressable(key_type k) noexcept
         {
