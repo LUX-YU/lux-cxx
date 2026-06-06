@@ -482,7 +482,11 @@ static void testCommandBuffer()
     Entity already = world.create();
     cb.emplace<Position>(already, 9.f, 9.f);
 
-    assert(cb.size() == 3);
+    // size() counts (#deferred entities) + (#real-entity commands). The bullet's
+    // create<Position,Velocity>() + emplace<Health>() BATCH into ONE deferred entity
+    // (single-allocation contract), and emplace<Position>(already) is one real command,
+    // so size() == 2 — not the number of individual emplace calls.
+    assert(cb.size() == 2);
     cb.commit(world);
     assert(cb.empty());
 
@@ -490,23 +494,28 @@ static void testCommandBuffer()
     assert(world.has<Position>(already));
     assert(world.get<Position>(already).x == 9.f);
 
-    // Mutating during view iteration via CommandBuffer.
+    // Position entities now: bullet (P,V,H) and `already` (P, set via the real
+    // command above) — both match view<Position>.
+    assert(world.view<Position>().size() == 2);
+
+    // Mutating during view iteration via CommandBuffer: reap EVERY Position entity.
     for (int i = 0; i < 3; ++i) world.create<Position>(Position{(float)i, 0.f});
     int reaped = 0;
     world.view<Position>().each([&](Entity e, Position&) {
         cb.destroy(e);
         ++reaped;
     });
-    assert(reaped == 4); // 1 bullet (has Position) + 3 we just made
+    assert(reaped == 5); // bullet + already + 3 we just made
     cb.commit(world);
-    assert(world.view<Position>().size() == 1); // just `already`
+    assert(world.view<Position>().size() == 0); // all reaped
 
-    // clear() discards without applying.
-    cb.destroy(already);
+    // clear() discards queued ops without applying them.
+    Entity survivor = world.create<Position>(Position{ 7.f, 7.f });
+    cb.destroy(survivor);
     assert(!cb.empty());
     cb.clear();
     assert(cb.empty());
-    assert(world.valid(already));
+    assert(world.valid(survivor)); // clear() discarded the destroy, so it lives
 
     std::cout << "[OK] testCommandBuffer passed.\n\n";
 }

@@ -85,8 +85,10 @@ int main() {
     d.reset();          // ref reaches 0 here → Foo(42) destroyed
     base.reset();       // ref reaches 0 for Derived/Base instance
 
-    std::cout << "All done. Press <Enter> to exit..." << std::endl;
-    std::cin.get();
+    std::cout << "All done.\n";
+    // NOTE: no interactive std::cin.get() pause here — it blocks forever when the
+    // test runs non-interactively (CTest / IDE / redirected stdin). Guard a manual
+    // pause behind an env var if you want one for local debugging.
     return 0;
 }
 // ============================================================================

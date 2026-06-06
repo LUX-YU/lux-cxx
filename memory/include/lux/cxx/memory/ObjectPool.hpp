@@ -112,7 +112,7 @@ namespace lux::cxx
 
         /** @brief Releases ownership and returns the raw pointer. The caller is
          *         responsible for eventually calling @c pool.release(). */
-        T* release() noexcept
+        [[nodiscard]] T* release() noexcept
         {
             T* p = ptr_;
             ptr_  = nullptr;
