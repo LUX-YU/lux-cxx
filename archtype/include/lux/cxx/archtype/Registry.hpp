@@ -36,10 +36,18 @@ namespace lux::cxx::archtype {
         template<class>    friend class ComponentIndex;
     public:
         Registry()  = default;
-        ~Registry() = default;
+        // Mark the shared liveness token dead before any member (notably signals_)
+        // is destroyed, so an Observer outliving this Registry can skip touching
+        // the now-dead Signals instead of dereferencing dangling pointers.
+        ~Registry() { *alive_ = false; }
 
         Registry(const Registry&)            = delete;
         Registry& operator=(const Registry&) = delete;
+
+        /// Shared liveness token for objects that hold raw pointers into this
+        /// Registry (e.g. Observer's Signal*). The pointed-to bool is true while
+        /// the Registry is alive and set false in its destructor.
+        [[nodiscard]] std::shared_ptr<bool> aliveToken() const { return alive_; }
 
         // ====================== Entity lifecycle ======================
 
@@ -110,6 +118,19 @@ namespace lux::cxx::archtype {
             for (auto& slot : migration_callbacks_) slot.cb(e, src, dst, row);
         }
 
+        // A swap-on-remove relocated `moved` to `row` within the SAME archetype
+        // `arch_id` (it changed chunk/row, hence its component addresses, but no
+        // construct/destroy fired for it). Record the new location and fire a
+        // src==dst migration so pointer caches (e.g. ComponentIndex) refresh —
+        // otherwise they keep a dangling/stale C* for the moved entity.
+        void noteRelocation(Entity moved, std::uint16_t arch_id, std::uint32_t row) noexcept {
+            if (!moved.valid()) return;
+            auto& mslot   = slots_[moved.id()];
+            mslot.arch_id = arch_id;
+            mslot.row     = row;
+            fireMigration(moved, arch_id, arch_id, row);
+        }
+
         // ====================== Low-level allocation =====================
         // These are advanced primitives used by CommandBuffer's batched commit.
         // Most users should NOT call these directly — use create<Cs...>().
@@ -177,12 +198,8 @@ namespace lux::cxx::archtype {
                 for (auto& ci : arch->comps()) {
                     signals_[ci.type_id].on_destroy.publish(*this, e);
                 }
-                Entity moved = arch->removeEntity(ch, idx);
-                if (moved.valid()) {
-                    auto& mslot = slots_[moved.id()];
-                    mslot.arch_id = slot.arch_id;
-                    mslot.row     = packRow(ch->chunk_index(), idx);
-                }
+                noteRelocation(arch->removeEntity(ch, idx), slot.arch_id,
+                               packRow(ch->chunk_index(), idx));
             }
             // Bump generation, mark slot free, and link onto the intrusive
             // free list via the row field. The row field is unused while the
@@ -210,18 +227,23 @@ namespace lux::cxx::archtype {
                 const std::uint32_t src_idx = idxInChunk(slot.row);
 
                 if (src->has(type_id)) {
-                    // Overwrite in place.
+                    // Overwrite in place. Build the replacement first so a throwing
+                    // constructor leaves the existing component intact rather than
+                    // destroyed-but-still-counted (which would be destroyed again
+                    // later — double destruction / UB).
                     const auto& ci = src->comps()[src->localIndex(type_id)];
                     C* p = static_cast<C*>(src_chunk->comp_ptr(ci, src_idx));
-                    if constexpr (std::is_trivially_destructible_v<C>) {
-                        ::new (p) C(std::forward<Args>(args)...);
-                    } else {
-                        p->~C();
-                        ::new (p) C(std::forward<Args>(args)...);
-                    }
+                    C tmp(std::forward<Args>(args)...);
+                    if constexpr (!std::is_trivially_destructible_v<C>) p->~C();
+                    ::new (p) C(std::move(tmp));
                     signals_[type_id].on_update.publish(*this, e);
                     return *p;
                 }
+
+                // Build the new component up-front: a throwing constructor must not
+                // leave the entity half-migrated (dst row allocated + the other
+                // components already moved out of src) with the exception escaping.
+                C tmp(std::forward<Args>(args)...);
 
                 Archetype* dst = src->addEdge(type_id);
                 if (!dst) {
@@ -234,18 +256,14 @@ namespace lux::cxx::archtype {
                 auto [new_chunk, new_idx] = dst->addEntity(e);
                 moveExistingComponents(*src, src_chunk, src_idx, *dst, new_chunk, new_idx);
 
-                // Construct the new component
+                // Move the pre-built component into place (move is typically noexcept).
                 const auto& d_ci = dst->comps()[dst->localIndex(type_id)];
                 C* np = static_cast<C*>(new_chunk->comp_ptr(d_ci, new_idx));
-                ::new (np) C(std::forward<Args>(args)...);
+                ::new (np) C(std::move(tmp));
 
                 // Remove source slot (components already moved out, so don't destroy them).
-                Entity moved = src->removeEntityRaw(src_chunk, src_idx);
-                if (moved.valid()) {
-                    auto& mslot = slots_[moved.id()];
-                    mslot.arch_id = slot.arch_id;
-                    mslot.row     = packRow(src_chunk->chunk_index(), src_idx);
-                }
+                noteRelocation(src->removeEntityRaw(src_chunk, src_idx), slot.arch_id,
+                               packRow(src_chunk->chunk_index(), src_idx));
 
                 const std::uint16_t old_arch_id = slot.arch_id;
                 slot.arch_id = archIdAs16(dst->arch_id_);
@@ -255,13 +273,16 @@ namespace lux::cxx::archtype {
                 return *np;
             }
 
-            // No archetype yet — entity has 0 components.
+            // No archetype yet — entity has 0 components. Build the component
+            // before touching the destination archetype so a throwing constructor
+            // leaves no phantom (counted-but-uninitialized) row behind.
             Signature ns; ns.set(type_id);
+            C tmp(std::forward<Args>(args)...);
             Archetype* dst = getOrCreateArchetype(ns);
             auto [new_chunk, new_idx] = dst->addEntity(e);
             const auto& d_ci = dst->comps()[dst->localIndex(type_id)];
             C* p = static_cast<C*>(new_chunk->comp_ptr(d_ci, new_idx));
-            ::new (p) C(std::forward<Args>(args)...);
+            ::new (p) C(std::move(tmp));
 
             slot.arch_id = archIdAs16(dst->arch_id_);
             slot.row     = packRow(new_chunk->chunk_index(), new_idx);
@@ -322,12 +343,8 @@ namespace lux::cxx::archtype {
                     if (s_ci.destroy) {
                         s_ci.destroy(src_chunk->comp_ptr(s_ci, src_idx));
                     }
-                    Entity moved = src->removeEntityRaw(src_chunk, src_idx);
-                    if (moved.valid()) {
-                        auto& mslot = slots_[moved.id()];
-                        mslot.arch_id = slot.arch_id;
-                        mslot.row     = packRow(src_chunk->chunk_index(), src_idx);
-                    }
+                    noteRelocation(src->removeEntityRaw(src_chunk, src_idx), slot.arch_id,
+                                   packRow(src_chunk->chunk_index(), src_idx));
                     // Entity is still alive — clear archetype location, keep gen.
                     slot.arch_id = kNoArchSlot;
                     slot.row     = 0;
@@ -360,12 +377,8 @@ namespace lux::cxx::archtype {
                 }
             }
 
-            Entity moved = src->removeEntityRaw(src_chunk, src_idx);
-            if (moved.valid()) {
-                auto& mslot = slots_[moved.id()];
-                mslot.arch_id = slot.arch_id;
-                mslot.row     = packRow(src_chunk->chunk_index(), src_idx);
-            }
+            noteRelocation(src->removeEntityRaw(src_chunk, src_idx), slot.arch_id,
+                           packRow(src_chunk->chunk_index(), src_idx));
 
             const std::uint16_t old_arch_id = slot.arch_id;
             slot.arch_id = archIdAs16(dst->arch_id_);
@@ -420,12 +433,8 @@ namespace lux::cxx::archtype {
                         s_ci.destroy(src_chunk->comp_ptr(s_ci, src_idx));
                     }
                 }
-                Entity moved = src->removeEntityRaw(src_chunk, src_idx);
-                if (moved.valid()) {
-                    auto& mslot = slots_[moved.id()];
-                    mslot.arch_id = slot.arch_id;
-                    mslot.row     = packRow(src_chunk->chunk_index(), src_idx);
-                }
+                noteRelocation(src->removeEntityRaw(src_chunk, src_idx), slot.arch_id,
+                               packRow(src_chunk->chunk_index(), src_idx));
                 // Entity still alive, no archetype, generation preserved.
                 slot.arch_id = kNoArchSlot;
                 slot.row     = 0;
@@ -453,12 +462,8 @@ namespace lux::cxx::archtype {
                 }
             }
 
-            Entity moved = src->removeEntityRaw(src_chunk, src_idx);
-            if (moved.valid()) {
-                auto& mslot = slots_[moved.id()];
-                mslot.arch_id = slot.arch_id;
-                mslot.row     = packRow(src_chunk->chunk_index(), src_idx);
-            }
+            noteRelocation(src->removeEntityRaw(src_chunk, src_idx), slot.arch_id,
+                           packRow(src_chunk->chunk_index(), src_idx));
             const std::uint16_t old_arch_id_multi = slot.arch_id;
             slot.arch_id = archIdAs16(dst->arch_id_);
             slot.row     = packRow(new_chunk->chunk_index(), new_idx);
@@ -724,6 +729,9 @@ namespace lux::cxx::archtype {
         std::uint64_t                              archetype_version_ = 0;
         std::vector<MigrationSlot>                 migration_callbacks_;
         std::size_t                                next_migration_id_ = 1;
+        // Liveness token shared with Observers (see aliveToken()). Declared last-ish
+        // and reset in the destructor body, which runs before members are torn down.
+        std::shared_ptr<bool>                      alive_ = std::make_shared<bool>(true);
 
         // unique_ptr so reference into entry survives view_cache_ reallocation.
         mutable std::vector<std::unique_ptr<ViewCacheEntry>> view_cache_;

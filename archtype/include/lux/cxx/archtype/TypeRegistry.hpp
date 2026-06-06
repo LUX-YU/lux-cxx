@@ -1,6 +1,9 @@
 #pragma once
+#include <atomic>
+#include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <stdexcept>
 #include <type_traits>
 #include <typeinfo>
 
@@ -69,12 +72,21 @@ namespace lux::cxx::archtype {
             return type_infos_[id].ops;
         }
 
-        static ComponentTypeID getTypeCount() noexcept { return type_count_; }
+        static ComponentTypeID getTypeCount() noexcept { return type_count_.load(std::memory_order_relaxed); }
 
     private:
         template<typename T>
         static ComponentTypeID registerType() {
-            const ComponentTypeID id = type_count_++;
+            // fetch_add reserves a slot atomically, so distinct T's registering
+            // concurrently (function-local-static init across templates is only
+            // serialized per-T) can't race on the counter.
+            const ComponentTypeID id = type_count_.fetch_add(1, std::memory_order_relaxed);
+            // The 65th distinct component type would write past type_infos_ and
+            // corrupt adjacent statics; fail loudly instead. (Signature is 64-bit,
+            // so kMaxComponents is a hard architectural limit.)
+            assert(id < kMaxComponents && "TypeRegistry: too many distinct component types (raise kMaxComponents)");
+            if (id >= kMaxComponents)
+                throw std::length_error("TypeRegistry: exceeded kMaxComponents distinct component types");
             auto& info = type_infos_[id];
 
             info.name      = typeid(T).name();
@@ -124,8 +136,8 @@ namespace lux::cxx::archtype {
             return id;
         }
 
-        static inline ComponentTypeInfo type_infos_[kMaxComponents]{};
-        static inline ComponentTypeID   type_count_ = 0;
+        static inline ComponentTypeInfo            type_infos_[kMaxComponents]{};
+        static inline std::atomic<ComponentTypeID> type_count_{0};
     };
 
 } // namespace lux::cxx::archtype
