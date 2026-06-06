@@ -63,3 +63,21 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::container
 )
+
+# ---- Microbenchmark (opt-in, build Release for meaningful numbers) ----
+# ENABLE_CONTAINER_BENCH builds the std/self comparisons (SmallVector vs
+# std::vector; SparseSet/BasicSparseSet/SlotMap vs std::unordered_map). If
+# ENABLE_COMPARE_WITH_ENTT is ALSO on, the EnTT comparison section is compiled
+# in (LUX_BENCH_WITH_ENTT) and EnTT::EnTT is linked. Reuses the shared
+# bench_common.hpp harness from archtype/test.
+set(ENABLE_CONTAINER_BENCH false CACHE BOOL "Build the container microbenchmark")
+if(ENABLE_CONTAINER_BENCH)
+	add_executable(container_bench container_bench.cpp)
+	target_link_libraries(container_bench PRIVATE lux::cxx::container)
+	target_include_directories(container_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../archtype/test)
+	if(ENABLE_COMPARE_WITH_ENTT)
+		find_package(EnTT CONFIG REQUIRED)
+		target_link_libraries(container_bench PRIVATE EnTT::EnTT)
+		target_compile_definitions(container_bench PRIVATE LUX_BENCH_WITH_ENTT=1)
+	endif()
+endif()
