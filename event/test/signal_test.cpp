@@ -371,6 +371,63 @@ static void test_recursive_emit()
     assert(received[3] == 0);
 }
 
+// Regression: a callback that unsubscribes another slot (marking the signal
+// dirty) and THEN triggers a nested emit on the same signal. Pre-fix, the nested
+// emit rebuilt sorted_keys_ (erase_if + sort) while the outer emit was still
+// iterating it with a stale size → out-of-bounds read.
+static void test_nested_emit_after_unsubscribe()
+{
+    std::puts("  test_nested_emit_after_unsubscribe");
+    using namespace lux::cxx::event;
+
+    Signal<IntEvent> sig;
+
+    struct Ctx
+    {
+        Signal<IntEvent> *sig;
+        ScopedSubscription *b;  // slot to unsubscribe mid-emit
+        int a_calls = 0;
+        int b_calls = 0;
+        int c_calls = 0;
+        bool nested = false;
+    } ctx;
+    ctx.sig = &sig;
+
+    // C: lowest priority, just counts.
+    auto subC = sig.subscribe(&ctx, +[](void *raw, const IntEvent &)
+                              { static_cast<Ctx *>(raw)->c_calls++; }, /*priority*/ -10);
+
+    // B: middle priority; will be unsubscribed by A during the outer emit.
+    ScopedSubscription subB = sig.subscribe(&ctx, +[](void *raw, const IntEvent &)
+                                            { static_cast<Ctx *>(raw)->b_calls++; }, /*priority*/ 0);
+    ctx.b = &subB;
+
+    // A: highest priority. On the outermost emit, unsubscribe B (sets the signal
+    // dirty) then trigger a nested emit on the same signal.
+    auto subA = sig.subscribe(&ctx, +[](void *raw, const IntEvent &)
+                              {
+        auto* c = static_cast<Ctx*>(raw);
+        c->a_calls++;
+        if (!c->nested)
+        {
+            c->nested = true;
+            c->b->reset();          // unsubscribe B during emit -> sorted_dirty_
+            c->sig->emit({999});    // nested emit on the same signal
+        } }, /*priority*/ 10);
+
+    sig.emit({1});
+
+    // A: once in the outer emit + once in the nested emit.
+    assert(ctx.a_calls == 2);
+    // B was unsubscribed before the nested emit and must never fire afterwards.
+    assert(ctx.b_calls == 0);
+    // C: once per emit (outer + nested).
+    assert(ctx.c_calls == 2);
+
+    (void)subA;
+    (void)subC;
+}
+
 static void test_event_type_id()
 {
     std::puts("  test_event_type_id");
@@ -695,6 +752,68 @@ static void test_thread_safe_signal_concurrent_emit()
     assert(count.load() == kThreads * kPerThread);
 }
 
+// Unsubscribing one of several subscribers must remove exactly that one. This
+// exercises the full 64-bit id pack/unpack through the SubscriptionHandle.
+static void test_thread_safe_unsubscribe_correct()
+{
+    std::puts("  test_thread_safe_unsubscribe_correct");
+
+    lux::cxx::event::ThreadSafeSignal<IntEvent> sig;
+    std::atomic<int> a{0}, b{0}, c{0};
+
+    auto sa = sig.subscribe(lux::cxx::event::SlotCallback<IntEvent>{
+        [&a](const IntEvent &) { a.fetch_add(1, std::memory_order_relaxed); }});
+    auto sb = sig.subscribe(lux::cxx::event::SlotCallback<IntEvent>{
+        [&b](const IntEvent &) { b.fetch_add(1, std::memory_order_relaxed); }});
+    auto sc = sig.subscribe(lux::cxx::event::SlotCallback<IntEvent>{
+        [&c](const IntEvent &) { c.fetch_add(1, std::memory_order_relaxed); }});
+
+    sig.emit({1});
+    assert(a.load() == 1 && b.load() == 1 && c.load() == 1);
+
+    sb.reset();              // unsubscribe only B
+    sig.emit({1});
+    assert(a.load() == 2 && b.load() == 1 && c.load() == 2);  // B unchanged
+}
+
+// Stress: a background thread emits continuously while the main thread keeps
+// subscribing and unsubscribing. After unsubscribe() returns, the callback (and
+// the captured object) must never be touched again — verified here by destroying
+// the captured counter right after reset() and relying on ASan to catch any UAF.
+static void test_thread_safe_concurrent_churn()
+{
+    std::puts("  test_thread_safe_concurrent_churn");
+
+    lux::cxx::event::ThreadSafeSignal<IntEvent> sig;
+    std::atomic<bool> stop{false};
+    std::atomic<long long> total{0};
+
+    // A permanent subscriber so the emitter always has work.
+    auto perm = sig.subscribe(lux::cxx::event::SlotCallback<IntEvent>{
+        [&total](const IntEvent &e) { total.fetch_add(e.value, std::memory_order_relaxed); }});
+
+    std::thread emitter([&]
+                        {
+        while (!stop.load(std::memory_order_relaxed))
+            sig.emit({1}); });
+
+    for (int i = 0; i < 2000; ++i)
+    {
+        // Heap-allocate the captured state so ASan flags any callback that runs
+        // after unsubscribe() returned (which frees it).
+        auto hits = std::make_unique<std::atomic<int>>(0);
+        std::atomic<int> *raw = hits.get();
+        auto sub = sig.subscribe(lux::cxx::event::SlotCallback<IntEvent>{
+            [raw](const IntEvent &) { raw->fetch_add(1, std::memory_order_relaxed); }});
+        sub.reset();          // must quiesce: no in-flight emit may use `raw` after this
+        hits.reset();         // free the captured state; a late callback => UAF
+    }
+
+    stop.store(true, std::memory_order_relaxed);
+    emitter.join();
+    assert(total.load() > 0);
+}
+
 // ══════════════════════════════════════════════════════════════
 // Phase 4 Tests: InterceptableSignal, FilteredSignal
 // ══════════════════════════════════════════════════════════════
@@ -924,6 +1043,7 @@ int main()
     test_unsubscribe_during_emit();
     test_subscribe_during_emit();
     test_recursive_emit();
+    test_nested_emit_after_unsubscribe();
     test_event_type_id();
     test_event_traits();
     test_concepts();
@@ -947,6 +1067,8 @@ int main()
 
     test_thread_safe_signal_basic();
     test_thread_safe_signal_concurrent_emit();
+    test_thread_safe_unsubscribe_correct();
+    test_thread_safe_concurrent_churn();
 
     std::puts("\n=== Phase 4 Tests: InterceptableSignal + FilteredSignal ===");
 

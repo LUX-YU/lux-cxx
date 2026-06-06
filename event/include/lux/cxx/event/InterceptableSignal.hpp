@@ -302,7 +302,10 @@ namespace lux::cxx::event
 
         EventResult emit(const E &event)
         {
-            if (sorted_dirty_)
+            // Rebuild only at the outermost emit; a nested emit must not mutate
+            // sorted_keys_ while an outer emit iterates it (stale-size OOB). See
+            // the matching note in Signal::emit.
+            if (emit_depth_ == 0 && sorted_dirty_)
                 rebuild_sorted();
 
             ++emit_depth_;

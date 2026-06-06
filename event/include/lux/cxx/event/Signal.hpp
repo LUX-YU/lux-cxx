@@ -129,7 +129,13 @@ namespace lux::cxx::event
 
         void emit(const E &event)
         {
-            if (sorted_dirty_)
+            // Only (re)build the sorted list at the OUTERMOST emit. A nested emit
+            // must not call rebuild_sorted(): its erase_if/stable_sort would mutate
+            // sorted_keys_ while an outer emit is mid-iteration over it (with a
+            // stale size) → out-of-bounds. During any emit sorted_keys_ is otherwise
+            // immutable (adds defer to pending_key_adds_, removes only set the dirty
+            // flag); stale keys are skipped below via slots_.find() == nullptr.
+            if (emit_depth_ == 0 && sorted_dirty_)
                 rebuild_sorted();
 
             ++emit_depth_;

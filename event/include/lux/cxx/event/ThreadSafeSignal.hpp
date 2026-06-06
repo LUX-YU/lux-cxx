@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstdint>
+#include <thread>
 #include "EventTraits.hpp"
 #include "Subscription.hpp"
 #include "SlotCallback.hpp"
@@ -159,30 +160,51 @@ namespace lux::cxx::event
 
         ScopedSubscription make_subscription(uint64_t id)
         {
-            // Encode the unique ID into a SubscriptionHandle using the index field
+            // Pack the full 64-bit id across the handle's two 32-bit fields
+            // (index = low, gen = high). Stuffing it into `index` alone truncated
+            // it, so after 2^32 subscriptions the id collided with a live one and
+            // unsubscribe removed the wrong entry (or leaked).
             return ScopedSubscription{
                 ScopedSubscription::Token{},
                 +[](void *owner, SubscriptionHandle h)
                 {
-                    static_cast<ThreadSafeSignal *>(owner)->unsubscribe_by_id(
-                        static_cast<uint64_t>(h.index));
+                    const uint64_t full =
+                        (static_cast<uint64_t>(h.gen) << 32) |
+                        static_cast<uint64_t>(h.index);
+                    static_cast<ThreadSafeSignal *>(owner)->unsubscribe_by_id(full);
                 },
                 this,
-                SubscriptionHandle{static_cast<uint32_t>(id), 0}
+                SubscriptionHandle{
+                    static_cast<uint32_t>(id & 0xFFFFFFFFull),
+                    static_cast<uint32_t>(id >> 32)
+                }
             };
         }
 
         void unsubscribe_by_id(uint64_t id)
         {
-            std::unique_lock lock(mutex_);
-            auto new_snap = std::make_shared<Snapshot>();
-            new_snap->entries.reserve(snapshot_->entries.size());
-            for (auto &e : snapshot_->entries)
+            std::shared_ptr<const Snapshot> old;
             {
-                if (e->id != id)
-                    new_snap->entries.push_back(e);
+                std::unique_lock lock(mutex_);
+                auto new_snap = std::make_shared<Snapshot>();
+                new_snap->entries.reserve(snapshot_->entries.size());
+                for (auto &e : snapshot_->entries)
+                {
+                    if (e->id != id)
+                        new_snap->entries.push_back(e);
+                }
+                old = std::move(snapshot_);     // hold the old snapshot to observe quiescence
+                snapshot_ = std::move(new_snap);
             }
-            snapshot_ = std::move(new_snap);
+
+            // Quiescence: an emit that grabbed the old snapshot before the swap may
+            // still be invoking the just-removed callback. Wait until no in-flight
+            // emit references the old snapshot (use_count drops to 1 = only `old`),
+            // so that once unsubscribe returns it is safe to destroy the object the
+            // callback captured. New emits already see the new snapshot, so the
+            // count only decreases — no risk of waiting forever.
+            while (old.use_count() > 1)
+                std::this_thread::yield();
         }
     };
 } // namespace lux::cxx::event
