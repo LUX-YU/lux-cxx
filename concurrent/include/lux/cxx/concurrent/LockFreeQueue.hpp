@@ -83,7 +83,7 @@ namespace lux::cxx
          * @warning      Must be called only from the *single producer* thread.
          */
         template <class... Args>
-        bool emplace(Args&&... args) noexcept
+        bool emplace(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args...>)
         {
             if (closed_.load(std::memory_order_acquire)) return false;
 
@@ -102,7 +102,10 @@ namespace lux::cxx
          * @return Same semantics as #emplace.
          */
         template <class U>
-        bool push(U&& value) noexcept { return emplace(std::forward<U>(value)); }
+        bool push(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>)
+        {
+            return emplace(std::forward<U>(value));
+        }
 
         /**
          * @brief  Pop the front element into @p out.
@@ -111,7 +114,8 @@ namespace lux::cxx
          *         false — queue is empty.
          * @warning      Must be called only from the *single consumer* thread.
          */
-        bool pop(T& out) noexcept
+        bool pop(T& out) noexcept(std::is_nothrow_move_assignable_v<T> &&
+                                  std::is_nothrow_destructible_v<T>)
         {
             const auto head = head_.load(std::memory_order_relaxed);
             if (head == tail_.load(std::memory_order_acquire)) return false; // empty

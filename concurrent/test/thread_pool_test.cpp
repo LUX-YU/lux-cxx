@@ -4,6 +4,7 @@
 #include <cassert>
 #include <chrono>
 #include <iostream>
+#include <string>
 #include <vector>
 
 int main()
@@ -35,6 +36,58 @@ int main()
     f_void.get();
     try { (void)f_throw.get(); assert(false); }
     catch (const std::runtime_error& e) { std::cout << "Caught: " << e.what() << '\n'; }
+
+    /*------------------------------------------------------------
+     * 1b. submit_copy：值语义，临时实参安全（submit 会悬空）
+     *-----------------------------------------------------------*/
+    {
+        ThreadPool cpool(4, 64);
+
+        // Temporary std::string passed by value: would dangle via submit(),
+        // but submit_copy() decay-copies it into the task.
+        auto fs = cpool.submit_copy(
+            [](std::string s) { std::this_thread::sleep_for(20ms); return s + "!"; },
+            std::string("hello"));
+
+        // Temporary vector argument.
+        auto fv = cpool.submit_copy(
+            [](std::vector<int> v) {
+                std::this_thread::sleep_for(20ms);
+                int sum = 0; for (int x : v) sum += x; return sum;
+            },
+            std::vector<int>{ 1, 2, 3, 4 });
+
+        // stop_token overload, void return, by-value temporary.
+        std::atomic<int> got{ 0 };
+        auto ht = cpool.submit_copy(
+            [&got](std::stop_token, std::string s) { got = static_cast<int>(s.size()); },
+            std::string("abcd"));
+
+        assert(fs.get() == "hello!");
+        assert(fv.get() == 10);
+        ht.get();
+        assert(got.load() == 4);
+        std::cout << "submit_copy value-semantics OK\n";
+    }
+
+    /*------------------------------------------------------------
+     * 1c. close() 必须排空已入队任务（不得产生 broken_promise）
+     *-----------------------------------------------------------*/
+    {
+        ThreadPool dpool(2, 256);
+        std::atomic<int> done{ 0 };
+        std::vector<std::future<int>> futs;
+        for (int i = 0; i < 200; ++i)
+            futs.emplace_back(dpool.submit_copy(
+                [&done](int x) { std::this_thread::sleep_for(1ms); done.fetch_add(1); return x; }, i));
+
+        dpool.close();   // graceful: drains ALL 200 before returning
+
+        for (int i = 0; i < 200; ++i)
+            assert(futs[i].get() == i);     // every future fulfilled, no broken_promise
+        assert(done.load() == 200);
+        std::cout << "close() drained all queued tasks OK\n";
+    }
 
     /*------------------------------------------------------------
      * 2. 新接口：可取消任务

@@ -149,6 +149,14 @@ namespace lux::cxx
          * 
          * This overload is for functions that explicitly accept a stop_token as their
          * first parameter, enabling cooperative cancellation.
+         *
+         * @warning The arguments @p args are captured **by reference** (via
+         *          std::forward_as_tuple) and are dereferenced later, when a worker
+         *          thread runs the task. The referenced objects MUST stay alive until
+         *          the task finishes executing. Do NOT pass temporaries / rvalues or
+         *          any local that may go out of scope before the task runs — doing so
+         *          is a use-after-free. When in doubt, use submit_copy(), which
+         *          decay-copies the arguments into the task.
          */
         template <typename Func, typename... Args>
         requires std::invocable<Func, std::stop_token, Args...>
@@ -217,6 +225,14 @@ namespace lux::cxx
          * 
          * This overload is for regular functions that don't accept a stop_token.
          * These tasks cannot be cancelled once submitted.
+         *
+         * @warning The arguments @p args are captured **by reference** (via
+         *          std::forward_as_tuple) and are dereferenced later, when a worker
+         *          thread runs the task. The referenced objects MUST stay alive until
+         *          the task finishes executing. Do NOT pass temporaries / rvalues or
+         *          any local that may go out of scope before the task runs — doing so
+         *          is a use-after-free. When in doubt, use submit_copy(), which
+         *          decay-copies the arguments into the task.
          */
         template <typename Func, typename... Args>
         requires (!std::invocable<Func, std::stop_token, Args...>) &&
@@ -257,12 +273,129 @@ namespace lux::cxx
         }
 
         /**
-         * @brief Closes the thread pool, preventing new tasks from being submitted
-         * 
-         * This method closes the task queue and requests all worker threads to stop
-         * after they finish their current tasks. It then waits for all workers to join.
+         * @brief Value-semantics variant of submit() (cancellable overload).
+         *
+         * Behaves like submit(), but every argument is **decay-copied** into the
+         * task before it is enqueued, so temporaries / rvalues / soon-to-expire
+         * locals are all safe. Move-only arguments passed by value are moved into
+         * the stored tuple and moved again into @p func at call time. Prefer this
+         * overload unless you specifically need by-reference capture and can
+         * guarantee the arguments outlive task execution.
+         */
+        template <typename Func, typename... Args>
+        requires std::invocable<Func, std::stop_token, Args...>
+        auto submit_copy(Func&& func, Args&&... args)
+        {
+            using Ret = std::invoke_result_t<Func, std::stop_token, Args...>;
+
+            std::promise<Ret> pr;
+            auto fut = pr.get_future();
+
+            std::stop_source src;
+            std::stop_token  tok = src.get_token();
+
+            RawTask wrapped =
+                [pr = std::move(pr), func = std::forward<Func>(func),
+                tup = std::make_tuple(std::forward<Args>(args)...),
+                tok]() mutable
+                {
+#if ENABLE_EXCEPTIONS
+                    try {
+#endif
+                        if constexpr (std::is_void_v<Ret>)
+                        {
+                            std::apply(
+                                [&](auto&... xs) { func(tok, std::move(xs)...); },
+                                tup);
+                            pr.set_value();
+                        }
+                        else
+                        {
+                            pr.set_value(std::apply(
+                                [&](auto&... xs) { return func(tok, std::move(xs)...); },
+                                tup));
+                        }
+#if ENABLE_EXCEPTIONS
+                    }
+                    catch (...) { pr.set_exception(std::current_exception()); }
+#endif
+                };
+
+            if (!_tasks.push(std::move(wrapped)))
+                throw std::runtime_error("ThreadPool queue closed");
+
+            return task_handle<Ret>{ std::move(fut), std::move(src) };
+        }
+
+        /**
+         * @brief Value-semantics variant of submit() (non-cancellable overload).
+         * @see The cancellable submit_copy() above; arguments are decay-copied so
+         *      temporaries are safe (unlike submit()).
+         */
+        template <typename Func, typename... Args>
+        requires (!std::invocable<Func, std::stop_token, Args...>) &&
+        std::invocable<Func, Args...>
+        auto submit_copy(Func&& func, Args&&... args)
+        {
+            using Ret = std::invoke_result_t<Func, Args...>;
+            std::promise<Ret> pr;
+            auto fut = pr.get_future();
+
+            RawTask wrapped =
+                [pr = std::move(pr),
+                func = std::forward<Func>(func),
+                tup = std::make_tuple(std::forward<Args>(args)...)]() mutable
+                {
+#if ENABLE_EXCEPTIONS
+                    try {
+#endif
+                        if constexpr (std::is_void_v<Ret>)
+                        {
+                            std::apply([&](auto&... xs) { func(std::move(xs)...); }, tup);
+                            pr.set_value();
+                        }
+                        else
+                        {
+                            pr.set_value(std::apply(
+                                [&](auto&... xs) { return func(std::move(xs)...); }, tup));
+                        }
+#if ENABLE_EXCEPTIONS
+                    }
+                    catch (...) { pr.set_exception(std::current_exception()); }
+#endif
+                };
+
+            if (!_tasks.push(std::move(wrapped)))
+                throw std::runtime_error("ThreadPool queue closed");
+
+            return fut;
+        }
+
+        /**
+         * @brief Gracefully closes the pool: stop accepting new tasks, let the
+         *        workers drain *all* already-queued work, then join them.
+         *
+         * Every task that was successfully submitted before close() runs to
+         * completion, so no waiting future is ever left broken. Workers are NOT
+         * asked to stop — they exit naturally once the queue is closed and empty
+         * (BlockingQueue::pop returns false only then). For an immediate teardown
+         * that abandons still-queued tasks, use shutdown_now().
          */
         void close()
+        {
+            _tasks.close();   // refuse new pushes; pop() drains the rest, then returns false
+            join();           // deliberately no request_stop: workers drain before exiting
+        }
+
+        /**
+         * @brief Immediately shuts the pool down, abandoning still-queued tasks.
+         *
+         * Requests stop on every worker so each exits right after its current task
+         * instead of draining the queue. Tasks that never started have their
+         * promises destroyed unfulfilled, so their futures observe
+         * std::future_error(broken_promise). Use close() for a graceful drain.
+         */
+        void shutdown_now()
         {
             _tasks.close();
             for (auto& w : _workers)
@@ -300,7 +433,11 @@ namespace lux::cxx
             }
         }
 
-        std::vector<std::jthread> _workers;  ///< Collection of worker threads
+        // Declaration order matters: _tasks must outlive _workers so that workers
+        // (which pop from _tasks) are destroyed first. ~ThreadPool also calls
+        // close()/join() before any member is destroyed, so workers are already
+        // finished by the time these are torn down.
         BlockingQueue<RawTask>    _tasks;    ///< Thread-safe queue of pending tasks
+        std::vector<std::jthread> _workers;  ///< Collection of worker threads
     };
 }

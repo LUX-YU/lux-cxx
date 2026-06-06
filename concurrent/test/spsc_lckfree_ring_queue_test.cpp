@@ -2,12 +2,47 @@
 #include <thread>
 #include <vector>
 #include <cassert>
+#include <type_traits>
+#include <utility>
 
 #include <lux/cxx/concurrent/LockFreeQueue.hpp>
 
 static const int TEST_CAPACITY = 8;
 
 using lux::cxx::SpscLockFreeRingQueue;
+
+// ── conditional-noexcept contract (compile-time) ─────────────────────────────
+// emplace/push/pop must be noexcept for nothrow element types, and must NOT be
+// noexcept for throwing ones (otherwise a throwing T turns a normal failure into
+// std::terminate inside a noexcept function).
+namespace
+{
+    struct NothrowElem
+    {
+        NothrowElem() noexcept {}
+        explicit NothrowElem(int) noexcept {}
+        NothrowElem(NothrowElem&&) noexcept = default;
+        NothrowElem& operator=(NothrowElem&&) noexcept = default;
+    };
+    struct ThrowingElem
+    {
+        ThrowingElem() {}
+        ThrowingElem(ThrowingElem&&) {}                              // may throw
+        ThrowingElem& operator=(ThrowingElem&&) { return *this; }    // may throw
+    };
+
+    static_assert(noexcept(std::declval<SpscLockFreeRingQueue<NothrowElem>&>().emplace()),
+                  "emplace must be noexcept for nothrow-constructible T");
+    static_assert(noexcept(std::declval<SpscLockFreeRingQueue<NothrowElem>&>().pop(
+                      std::declval<NothrowElem&>())),
+                  "pop must be noexcept for nothrow move/destroy T");
+    static_assert(!noexcept(std::declval<SpscLockFreeRingQueue<ThrowingElem>&>().emplace(
+                      std::declval<ThrowingElem>())),
+                  "emplace must NOT be noexcept for throwing-constructible T");
+    static_assert(!noexcept(std::declval<SpscLockFreeRingQueue<ThrowingElem>&>().pop(
+                      std::declval<ThrowingElem&>())),
+                  "pop must NOT be noexcept for throwing move T");
+}
 
 /**
  * @brief Single-thread test to verify basic push/pop without concurrency.
