@@ -87,9 +87,17 @@ target_compile_definitions(
     LUX_CXX_LIBRARY
 )
 
+# Consumers that link reflection_parser pull in LibClang::LibClang transitively,
+# so the import must be able to find_package(LibClang). Ship FindLibClang.cmake
+# with the parser and point CMAKE_MODULE_PATH at its installed cmake_scripts/ dir.
+component_add_cmake_scripts(
+    reflection_parser
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindLibClang.cmake
+)
+
 component_add_transitive_commands(
     reflection_parser
-    "list(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}\")"
+    "list(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}/cmake_scripts\")"
     "find_package(LibClang REQUIRED)"
 )
 
