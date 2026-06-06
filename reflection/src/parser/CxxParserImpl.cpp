@@ -529,8 +529,13 @@ namespace lux::cxx::reflection
 		type.is_const = clang_type.isConstQualifiedType();
 		type.is_volatile = clang_type.isVolatileQualifiedType();
 		type.name = clang_type.typeSpelling().to_std();
-		type.size = clang_type.typeSizeof();
-		type.align = clang_type.typeAlignOf();
+		// clang_Type_getSizeOf/AlignOf return negative CXTypeLayoutError codes for
+		// incomplete/dependent types; clamp those to 0 instead of wrapping into a
+		// huge size_t.
+		const long long sz = static_cast<long long>(clang_type.typeSizeof());
+		const long long al = static_cast<long long>(clang_type.typeAlignOf());
+		type.size  = sz < 0 ? std::size_t{0} : static_cast<std::size_t>(sz);
+		type.align = al < 0 ? std::size_t{0} : static_cast<std::size_t>(al);
 	}
 
 	void CxxParserImpl::parseBuiltinType(const ClangType& clang_type, BuiltinType::EBuiltinKind kind, BuiltinType& type)

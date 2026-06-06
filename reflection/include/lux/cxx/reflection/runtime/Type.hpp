@@ -140,8 +140,8 @@ namespace lux::cxx::reflection {
         ETypeKinds  kind        = ETypeKinds::Unknown; ///< The classification of this type (e.g. BUILTIN, POINTER).
         bool        is_const    = false;           ///< True if the type is marked as const.
         bool        is_volatile = false;           ///< True if the type is marked as volatile.
-        int         size        = 0;               ///< Size in bytes (if known), otherwise 0.
-        int         align       = 0;               ///< Alignment requirement in bytes (if known).
+        std::size_t size        = 0;               ///< Size in bytes (if known), otherwise 0.
+        std::size_t align       = 0;               ///< Alignment requirement in bytes (if known).
         size_t      index       = static_cast<size_t>(-1); ///< Index of this type in MetaUnitData::types.
 
         /**

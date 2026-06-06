@@ -20,6 +20,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#include <cctype>
 #include <string>
 #include <string_view>
 
@@ -29,11 +30,13 @@ namespace lux::cxx::algorithm
 		size_t start = 0;
 		size_t end = text.size();
 
-		while (start < end && std::isspace(text[start])) {
+		// Cast to unsigned char before std::isspace: passing a (possibly negative)
+		// plain char is undefined behaviour for the <cctype> functions.
+		while (start < end && std::isspace(static_cast<unsigned char>(text[start]))) {
 			start++;
 		}
 
-		while (end > start && std::isspace(text[end - 1])) {
+		while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1]))) {
 			end--;
 		}
 

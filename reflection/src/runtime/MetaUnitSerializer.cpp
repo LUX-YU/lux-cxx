@@ -744,8 +744,8 @@ namespace lux::cxx::reflection
         raw->name = j.value("name", "");
         raw->is_const = j.value("is_const", false);
         raw->is_volatile = j.value("is_volatile", false);
-        raw->size = j.value("size", 0);
-        raw->align = j.value("align", 0);
+        raw->size = j.value("size", std::size_t{0});
+        raw->align = j.value("align", std::size_t{0});
         raw->index = j.value("index", static_cast<size_t>(-1));
 
         switch (k)

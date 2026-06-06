@@ -175,7 +175,7 @@ install(
     RUNTIME DESTINATION bin
 )
 
-set(ENABLE_REFLECTION_TEST true BOOL "Enable reflection test")
+option(ENABLE_REFLECTION_TEST "Enable reflection test" ON)
 if(ENABLE_REFLECTION_TEST)
     set(TEST_TEMPLATE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/templates)
     add_subdirectory(test)    

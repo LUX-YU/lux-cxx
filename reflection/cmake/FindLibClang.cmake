@@ -73,8 +73,10 @@ if(UNIX AND NOT APPLE)
         list(APPEND LLVM_SEARCH_PATHS "${path}/include")
     endforeach()
     
-    # Sort to prefer higher version numbers
-    list(SORT LLVM_SEARCH_PATHS ORDER DESCENDING)
+    # Sort to prefer higher version numbers. COMPARE NATURAL so llvm-9 does NOT
+    # sort after llvm-19/llvm-20 (plain lexicographic SORT put '9' before '1...').
+    list(REMOVE_DUPLICATES LLVM_SEARCH_PATHS)
+    list(SORT LLVM_SEARCH_PATHS COMPARE NATURAL ORDER DESCENDING)
 elseif(APPLE)
     # macOS: search Homebrew and system paths
     set(LLVM_SEARCH_PATHS
@@ -115,14 +117,14 @@ find_path(LibClang_INCLUDE_DIR
     DOC "LibClang include directory"
 )
 
-# Find the library
+# Find the library. Do NOT list *.dll here: the link input on Windows must be the
+# import library (libclang.lib), which find_library locates from the base name; a
+# runtime .dll cannot be consumed by the linker as an import library.
 find_library(LibClang_LIBRARY
-    NAMES 
+    NAMES
         clang
         libclang
-        clang.dll
-        libclang.dll
-    HINTS 
+    HINTS
         ${PC_LibClang_LIBRARY_DIRS}
         ${LLVM_SEARCH_PATHS}
     PATHS
