@@ -11,6 +11,11 @@ namespace lux::cxx::event
     // ── Connection ───────────────────────────────────────────────
     // Lightweight, copyable handle to a signal-slot connection.
     // Does NOT auto-disconnect on destruction. Use ScopedConnection for RAII.
+    //
+    // NOTE: copies are ALIASES, not independent connections. All copies share one
+    // underlying subscription (a shared_ptr<Impl>); disconnect()ing any copy — or
+    // the ScopedConnection that owns it — disconnects them all. To get N independent
+    // connections, call connect() N times.
 
     class Connection
     {

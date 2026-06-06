@@ -29,16 +29,23 @@ namespace lux::cxx::event
         return signal.connect(SlotCallback<E>{std::forward<F>(slot)}, priority);
     }
 
-    // ── Lambda + receiver (for Trackable support) ────────────
+    // ── Lambda + receiver overload ───────────────────────────
     //   connect(window.on_key, this, [this](const KeyEvent& e) { ... })
-
+    //
+    // @warning This does NOT wire any auto-disconnect: @p receiver is currently
+    //          IGNORED. The returned ScopedConnection is the sole owner of the
+    //          subscription, exactly like the no-receiver overload. For lifetime-
+    //          tied auto-disconnect, derive the receiver from Trackable and hand
+    //          the connection to it:  receiver->track(connect(signal, slot));
+    //          (the @p receiver parameter is retained for source compatibility and
+    //          a possible future Trackable-aware overload, not because it does
+    //          anything here).
     template <Event E, typename T, typename F>
         requires std::invocable<F, const E &>
               && (!std::is_same_v<std::decay_t<T>, int16_t>) // avoid ambiguity with priority
     [[nodiscard]] ScopedConnection connect(Signal<E> &signal, T *receiver, F &&slot, int16_t priority = 0)
     {
-        // receiver is available for Trackable auto-disconnect.
-        (void)receiver;
+        (void)receiver;  // intentionally unused — see the @warning above
         return signal.connect(SlotCallback<E>{std::forward<F>(slot)}, priority);
     }
 

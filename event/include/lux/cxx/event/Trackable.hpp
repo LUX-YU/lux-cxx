@@ -10,7 +10,15 @@ namespace lux::cxx::event
     // when destroyed. Any ScopedConnection tracked by this object
     // will be disconnected in ~Trackable().
     //
-    // Thread-safe: track() can be called from any thread.
+    // Thread-safety: this object's own mutex makes track()/disconnect_all()/move
+    // safe to call concurrently on the SAME Trackable. It does NOT make the
+    // disconnect itself safe against a concurrent emit() of the connected signal.
+    // @warning Auto-disconnect is only thread-safe with a thread-safe signal
+    //          (ThreadSafeSignal<E>, whose unsubscribe waits for in-flight emits).
+    //          Destroying / disconnecting a Trackable bound to a plain Signal<E>
+    //          concurrently with that signal's emit() is undefined behaviour — plain
+    //          Signal is single-threaded by design. Pair cross-thread Trackables
+    //          with ThreadSafeSignal.
     //
     // Usage:
     //   class UIWidget : public lux::cxx::event::Trackable
