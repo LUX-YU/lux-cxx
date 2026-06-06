@@ -80,9 +80,12 @@ namespace lux::cxx
          */
         [[nodiscard]] constexpr std::array<Scalar, Dim> center() const noexcept
         {
+            // min + (max-min)*0.5 rather than (min+max)*0.5: the latter can overflow
+            // the intermediate sum near the type's magnitude limit. (Scalar is
+            // required to be floating-point — see the static_assert on OrthTree.)
             std::array<Scalar, Dim> c{};
             for (std::size_t i = 0; i < Dim; ++i)
-                c[i] = (min[i] + max[i]) * Scalar(0.5);
+                c[i] = min[i] + (max[i] - min[i]) * Scalar(0.5);
             return c;
         }
 
@@ -175,6 +178,15 @@ namespace lux::cxx
      * The tree is parameterised over an allocator so that node and point storage can be
      * backed by any standard-compliant allocator (including PMR allocators).
      *
+     * @note Internal nodes are NOT reclaimed: once a leaf splits into an internal
+     *       node, that node (and any children created) persist for the tree's
+     *       lifetime even if all their points are later soft-deleted/compacted.
+     *       Compaction shrinks per-leaf point storage only, not the node arena
+     *       (`node_id` is an index into a monotonically growing vector). Memory is
+     *       reclaimed in full only by clear()/destruction, so churn-heavy workloads
+     *       that repeatedly fill and empty regions should periodically rebuild the
+     *       tree rather than relying on in-place shrink.
+     *
      * @tparam PointT        Type of the spatial points stored in the tree.
      * @tparam Dim           Number of spatial dimensions (must be >= 1).
      * @tparam Scalar        Scalar type used for bounding-box coordinates.
@@ -190,6 +202,11 @@ namespace lux::cxx
     class Orthtree
     {
         static_assert(Dim >= 1, "Dim must be >= 1");
+        // Box::center() and the spatial split planes assume real-number midpoints;
+        // an integral Scalar truncates `* 0.5` to 0 and can overflow the subtraction,
+        // silently mis-routing points. Require floating-point.
+        static_assert(std::is_floating_point_v<Scalar>,
+                      "Orthtree Scalar must be a floating-point type");
 
     public:
         using point_type = PointT;
@@ -739,6 +756,10 @@ namespace lux::cxx
         /// Allocates a new node and returns its ID.
         node_id allocateNode()
         {
+            // node_id is the index into nodes_; refuse to mint an id that collides
+            // with the kInvalidNode sentinel (and would also overflow the 32-bit id).
+            if (nodes_.size() >= static_cast<std::size_t>(kInvalidNode))
+                throw std::length_error("Orthtree: exceeded maximum node count");
             node_id id = static_cast<node_id>(nodes_.size());
             nodes_.emplace_back(point_allocator(base_alloc_), byte_allocator(base_alloc_));
             return id;
@@ -1007,7 +1028,9 @@ namespace lux::cxx
                 }
 
                 Node& child = nodes_[child_id];
-                child.points.push_back(p);
+                // old_points is a moved-out local that is discarded at end of scope,
+                // and `p`/`pos` were already read above — move instead of copying.
+                child.points.push_back(std::move(old_points[i]));
                 child.alive.push_back(1);
                 child.dirty = true;
             }

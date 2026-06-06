@@ -24,6 +24,7 @@
 #include <array>
 #include <vector>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 
@@ -468,7 +469,7 @@ namespace lux::cxx
             if (rootIndex_ != -1) {
                 throw std::runtime_error("Root already exists!");
             }
-            int newIndex = static_cast<int>(values_.size());
+            int newIndex = allocNodeIndexChecked();
 
             values_.push_back(val);
             parents_.push_back(-1);    // Root has no parent
@@ -494,7 +495,7 @@ namespace lux::cxx
             if (rootIndex_ != -1) {
                 throw std::runtime_error("Root already exists!");
             }
-            int newIndex = static_cast<int>(values_.size());
+            int newIndex = allocNodeIndexChecked();
 
             values_.emplace_back(std::forward<Args>(args)...);
             parents_.push_back(-1);    // Root has no parent
@@ -524,7 +525,7 @@ namespace lux::cxx
                 throw std::runtime_error("Child slot is already occupied.");
             }
 
-            int newIndex = static_cast<int>(values_.size());
+            int newIndex = allocNodeIndexChecked();
 
             values_.push_back(val);
             parents_.push_back(parentIdx);
@@ -556,7 +557,7 @@ namespace lux::cxx
                 throw std::runtime_error("Child slot is already occupied.");
             }
 
-            int newIndex = static_cast<int>(values_.size());
+            int newIndex = allocNodeIndexChecked();
 
             values_.emplace_back(std::forward<Args>(args)...);
             parents_.push_back(parentIdx);
@@ -784,6 +785,16 @@ namespace lux::cxx
         }
 
     private:
+        // Node indices are stored as `int` (with -1 as the no-node sentinel), so the
+        // structure caps at INT_MAX nodes; static_cast<int>(values_.size()) past that
+        // would be implementation-defined / negative. Fail loudly instead.
+        int allocNodeIndexChecked() const
+        {
+            if (values_.size() >= static_cast<std::size_t>(std::numeric_limits<int>::max()))
+                throw std::length_error("IndexedNaryTreeSoA: exceeded maximum node count (INT_MAX)");
+            return static_cast<int>(values_.size());
+        }
+
         // ---------------------- SoA Data Members ---------------------- //
 
         /// (1) Stores the values of all nodes.

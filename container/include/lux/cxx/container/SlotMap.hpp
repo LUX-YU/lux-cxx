@@ -26,6 +26,7 @@
  */
 
 #include <vector>
+#include <cassert>
 #include <cstdint>
 #include <cstddef>
 #include <limits>
@@ -217,9 +218,17 @@ namespace lux::cxx
 
             // Increment generation so stale handles are detected.
             slot.generation++;
-            // Push this slot onto the free list.
-            slot.dense_index = free_head_;
-            free_head_ = key.index;
+            // Recycle the slot unless its generation just reached the maximum: at
+            // that point RETIRE it (leave it off the free list) so a future erase
+            // can never wrap the counter back to a value an old handle still holds
+            // (ABA). The cost is one leaked slot per 2^bits reuses of that slot —
+            // negligible for the default uint32 generation. A wider GenerationType
+            // pushes this even further out.
+            if (slot.generation != std::numeric_limits<generation_t>::max())
+            {
+                slot.dense_index = free_head_;
+                free_head_ = key.index;
+            }
 
             return true;
         }
@@ -277,11 +286,13 @@ namespace lux::cxx
          */
         [[nodiscard]] Value& operator[](key_t key) noexcept
         {
+            assert(is_valid(key) && "SlotMap::operator[] called with an invalid/stale key");
             return dense_[slots_[key.index].dense_index];
         }
 
         [[nodiscard]] const Value& operator[](key_t key) const noexcept
         {
+            assert(is_valid(key) && "SlotMap::operator[] called with an invalid/stale key");
             return dense_[slots_[key.index].dense_index];
         }
 

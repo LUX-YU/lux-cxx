@@ -318,6 +318,13 @@ namespace lux::cxx
         void ensure_sparse(Key key)
         {
             const auto si = Traits::sparse_index(key);
+            // sparse_ is indexed directly by si, so the array grows to si+1. Guard
+            // against a pathological key whose sparse_index is SIZE_MAX: `si + 1`
+            // would wrap to 0, defeating the bounds check and then indexing
+            // sparse_[SIZE_MAX] out of bounds. (This container is meant for compact
+            // keys; arbitrary huge/negative integral keys should use a hash map.)
+            if (si == INVALID_INDEX)
+                throw std::length_error("BasicSparseSet: key sparse-index too large");
             if (si >= sparse_.size())
                 sparse_.resize(si + 1, INVALID_INDEX);
         }

@@ -719,11 +719,17 @@ namespace lux::cxx
             }
             else   // Single‑pass InputIterator
             {
-                for (; first != last; ++first)
-                {
-                    pos = insert(pos, *first);
-                    ++pos;           // Skip over the just‑inserted element.
-                }
+                // Can't measure the range, and inserting one element at a time is
+                // O(n*m) (each insert shifts the whole tail) and can't honor the
+                // strong guarantee (earlier inserts are already committed if a later
+                // element throws). Drain the input into a temporary first — built
+                // fully before *this is touched — then splice it in with a single
+                // make_gap, restoring O(n+m).
+                SmallVector<value_type, N> tmp;
+                for (; first != last; ++first) tmp.emplace_back(*first);
+                if (tmp.empty()) return;
+                pointer p = make_gap(idx, tmp.size());
+                std::uninitialized_move(tmp.begin(), tmp.end(), p);
             }
         }
 
