@@ -52,3 +52,14 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::container
 )
+
+add_executable(
+	small_vector_test
+	small_vector_test.cpp
+)
+
+target_link_libraries(
+	small_vector_test
+	PRIVATE
+	lux::cxx::container
+)

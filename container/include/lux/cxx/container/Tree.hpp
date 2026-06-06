@@ -51,7 +51,9 @@ namespace lux::cxx
     public:
         using value_type = T;
 
-        /// destructor to allow polymorphic deletion.
+        /// Non-virtual destructor. Children are owned as unique_ptr<self_type>
+        /// (the concrete derived type), so nodes are never deleted through a
+        /// TreeNodeBase* — no vtable is needed and none is added.
         ~TreeNodeBase() = default;
 
         // ---------------------- Constructors / Assignment ---------------------- //
@@ -188,7 +190,8 @@ namespace lux::cxx
             }
         }
 
-        /// Virtual destructor; inherited from base.
+        /// Defaulted, non-virtual destructor (the base destructor is non-virtual;
+        /// nodes are owned by value / unique_ptr<self_type>, never via a base ptr).
         ~StaticTreeNode() = default;
 
         // ---------------------- Child Management ---------------------- //
@@ -334,8 +337,10 @@ namespace lux::cxx
         {
         }
 
-        /// Virtual destructor; inherited from base.
-        ~DynamicTreeNode() override = default;
+        /// Defaulted destructor. The base destructor is non-virtual and this
+        /// type is never deleted polymorphically, so `override` would be
+        /// ill-formed here.
+        ~DynamicTreeNode() = default;
 
         // ---------------------- Child Management ---------------------- //
 

@@ -256,24 +256,40 @@ namespace lux::cxx
             }
             else
             {
-                size_type moved = 0;
+                // Open a gap of `count` at [pos, pos+count) by shifting the
+                // `tail` elements [pos, _size) right by `count`.
+                //
+                //   * The top min(count, tail) elements move-CONSTRUCT into the
+                //     raw memory just past the old end ([_size, _size+count)).
+                //   * Any remaining lower elements move-ASSIGN backward into the
+                //     slots that are still occupied — we must NOT placement-new
+                //     over a live (moved-from) object, or its destructor never
+                //     runs (leak) and it is later destroyed twice.
+                //   * The moved-from objects left in the gap are then destroyed
+                //     so the caller receives raw storage.
+                const size_type n_construct = (count < tail) ? count : tail;
+
+                size_type constructed = 0;
                 try
                 {
-                    while (moved < tail)
+                    for (; constructed < n_construct; ++constructed)
                     {
-                        pointer src = _data + _size - 1 - moved;
+                        pointer src = _data + _size - 1 - constructed;
                         pointer dst = src + count;
                         new (dst) value_type(std::move_if_noexcept(*src));
-                        ++moved;
                     }
                 }
                 catch (...)
                 {
-                    destroy_range(_data + _size - moved + count,
+                    destroy_range(_data + _size - constructed + count,
                         _data + _size + count);
                     throw;
                 }
-                destroy_range(pos, pos + tail);
+
+                if (count < tail)
+                    std::move_backward(_data + idx, _data + _size - count, _data + _size);
+
+                destroy_range(pos, pos + n_construct);
                 _size += count;
                 return pos;
             }

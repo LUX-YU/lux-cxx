@@ -1,5 +1,7 @@
 #include <lux/cxx/container/Tree.hpp>
 #include <iostream>
+#include <cassert>
+#include <memory>
 
 template<typename T> using BinaryTreeNode = lux::cxx::StaticTreeNode<T, 2>;
 template<typename T> using OctreeNode = lux::cxx::StaticTreeNode<T, 8>;
@@ -59,11 +61,31 @@ int main()
         );
 
         std::cout << "\n--- Postorder ---\n";
-        tree.postorderTraverse(root, 
+        tree.postorderTraverse(root,
             [&](int idx, const int& val) {
                 std::cout << "node=" << idx << ", value=" << val << "\n";
             }
         );
+    }
+
+    {
+        // DynamicTreeNode: this instantiation is what surfaced the ill-formed
+        // `~DynamicTreeNode() override` on a non-virtual base destructor. It must
+        // now compile and behave correctly.
+        auto root = std::make_unique<DynamicTreeNode<int>>(1);
+        root->addChild(std::make_unique<DynamicTreeNode<int>>(2));
+        root->addChild(std::make_unique<DynamicTreeNode<int>>(3));
+
+        assert(root->childCount() == 2);
+        assert(root->getChild(0)->value() == 2);
+        assert(root->getChild(1)->value() == 3);
+
+        auto removed = root->removeChild(0);
+        assert(removed && removed->value() == 2);
+        assert(root->childCount() == 1);
+        assert(root->getChild(0)->value() == 3);
+
+        std::cout << "\nDynamicTreeNode OK\n";
     }
 
     return 0;
