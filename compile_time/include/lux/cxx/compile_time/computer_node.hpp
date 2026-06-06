@@ -55,9 +55,12 @@ namespace lux::cxx
 		using bindings_tuple_t = std::tuple<Bindings...>;
 	};
 
-	// Converts a node_descriptor into a tuple of reference types, e.g. (T1&, T2&, ...).
-	// This is used for passing references into the node’s execution function.
-	template<typename Descriptor>
+	// Converts a node_descriptor into a tuple of reference types. With Const=false
+	// the references are mutable (T1&, T2&, ...) — used for OUTPUTS. With Const=true
+	// they are `const T&` — used for INPUTS, so a node genuinely cannot mutate its
+	// inputs (the previous non-const tuple let execute() write through to upstream
+	// outputs despite the `const in_param_t&` signature).
+	template<typename Descriptor, bool Const = false>
 	class descriptor_to_params
 	{
 	private:
@@ -65,7 +68,9 @@ namespace lux::cxx
 
 		template<size_t... I>
 		static constexpr auto to_tuple(std::index_sequence<I...>)
-			-> std::tuple<typename std::tuple_element_t<I, typename Descriptor::bindings_tuple_t>::value_t&...>;
+			-> std::tuple<std::conditional_t<Const,
+					const typename std::tuple_element_t<I, typename Descriptor::bindings_tuple_t>::value_t&,
+					typename std::tuple_element_t<I, typename Descriptor::bindings_tuple_t>::value_t&>...>;
 
 	public:
 		using type = decltype(to_tuple(std::make_index_sequence<N>{}));
@@ -105,9 +110,10 @@ namespace lux::cxx
 		using input_descriptor = InDesc;
 		using output_descriptor = OutDesc;
 
-		// in_param_t/out_param_t: e.g. (int&, double&) for inputs, (float&, bool&) for outputs
-		using in_param_t = typename descriptor_to_params<InDesc>::type;
-		using out_param_t = typename descriptor_to_params<OutDesc>::type;
+		// in_param_t: tuple of const refs (read-only inputs); out_param_t: tuple of
+		// mutable refs (writable outputs).
+		using in_param_t = typename descriptor_to_params<InDesc, /*Const=*/true>::type;
+		using out_param_t = typename descriptor_to_params<OutDesc, /*Const=*/false>::type;
 
 		// Arrays of "location" extracted from each binding
 		static constexpr auto in_loc_seq = descriptor_to_locations<InDesc>::loc_seq;

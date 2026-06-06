@@ -218,7 +218,7 @@ namespace lux::cxx
         }
 
         // The main run function => returns false if a node fails
-        bool run()
+        [[nodiscard]] bool run()
         {
             // Every node must have been created via emplaceNode(); the node
             // pointers are otherwise null and execute() would dereference null.
@@ -233,7 +233,7 @@ namespace lux::cxx
         }
 
         /// @return true iff every node slot has been populated by emplaceNode().
-        bool all_nodes_emplaced() const noexcept
+        [[nodiscard]] bool all_nodes_emplaced() const noexcept
         {
             return all_nodes_emplaced_impl(
                 std::make_index_sequence<std::tuple_size_v<NodePtrStorage>>{});
@@ -408,8 +408,8 @@ namespace lux::cxx
             using in_tuple_t = typename N::in_param_t;
             return in_tuple_t{
                 getInputRef<N, N::in_loc_seq[I],
-                    std::remove_reference_t<std::tuple_element_t<I, in_tuple_t>>
-                >()...
+                    std::remove_cvref_t<std::tuple_element_t<I, in_tuple_t>>
+                >()...   // in_tuple_t elements are `const T&`; bind from the mutable data_ slot
             };
         }
 

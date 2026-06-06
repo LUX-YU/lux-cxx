@@ -91,7 +91,11 @@ namespace lux::cxx
          *            Must satisfy invoke<F, Args...> -> R
          */
         template <class F, class = std::enable_if_t<
-                std::is_invocable_r_v<R, F&, Args...>>>
+                std::is_invocable_r_v<R, F&, Args...>
+                // Exclude move_only_function itself so `move_only_function g(std::move(f));`
+                // resolves to the move ctor instead of self-wrapping, matching
+                // std::move_only_function.
+                && !std::is_same_v<std::remove_cvref_t<F>, move_only_function>>>
         move_only_function(F&& f)
             : _manager(nullptr)
         {

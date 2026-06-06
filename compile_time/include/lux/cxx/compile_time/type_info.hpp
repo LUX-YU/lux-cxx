@@ -95,6 +95,19 @@ namespace lux::cxx
         return erase_elaborated_specifier(value);
     }
 
+    /**
+     * @brief A compile-time hash of the (compiler-formatted) type name.
+     *
+     * @warning This id is **per-compiler / per-build**, NOT an ABI-stable
+     *          cross-compiler identifier. It is derived from the compiler-specific
+     *          spelling in __PRETTY_FUNCTION__/__FUNCSIG__ (see strip_type_name),
+     *          so MSVC, GCC and Clang can and do produce different values for the
+     *          same type, and the value may change across toolchain versions. Use
+     *          it only for identity WITHIN a single build (e.g. a runtime type map);
+     *          do NOT persist it or compare it across builds/compilers. It is also a
+     *          64-bit FNV-1a hash, so treat equality as "very likely same type", not
+     *          a proof (compare type_name() as a tie-breaker if collisions matter).
+     */
     template<typename Type, typename hash_str_t = detail::hash_string<char>>
     [[nodiscard]] constexpr typename hash_str_t::hash_type type_hash() noexcept
     {

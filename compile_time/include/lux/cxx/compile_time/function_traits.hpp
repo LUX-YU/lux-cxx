@@ -37,12 +37,43 @@ namespace lux::cxx
 
     template<typename Ret, typename... Args>
     struct function_traits_impl<Ret(*)(Args...)> : function_traits_impl<Ret(Args...)> {};
+    template<typename Ret, typename... Args>
+    struct function_traits_impl<Ret(*)(Args...) noexcept> : function_traits_impl<Ret(Args...)> {};
 
-    template<typename Ret, typename Class, typename... Args>
-    struct function_traits_impl<Ret(Class::*)(Args...)> : function_traits_impl<Ret(Args...)> {};
+    // Member call operators come in a cross-product of cv / ref / noexcept
+    // qualifiers. Without all of them, a noexcept or ref-qualified lambda's
+    // operator() falls through to the functor fallback below and mis-resolves
+    // (it tries to take operator() of a member-pointer type). Generate them all.
+#define LUX_FN_TRAITS_MEMBER(CV, REF, NE)                                        \
+    template<typename Ret, typename Class, typename... Args>                     \
+    struct function_traits_impl<Ret(Class::*)(Args...) CV REF NE>                \
+        : function_traits_impl<Ret(Args...)> {};
 
-    template<typename Ret, typename Class, typename... Args>
-    struct function_traits_impl<Ret(Class::*)(Args...) const> : function_traits_impl<Ret(Args...)> {};
+    LUX_FN_TRAITS_MEMBER(,               ,    )
+    LUX_FN_TRAITS_MEMBER(const,          ,    )
+    LUX_FN_TRAITS_MEMBER(volatile,       ,    )
+    LUX_FN_TRAITS_MEMBER(const volatile, ,    )
+    LUX_FN_TRAITS_MEMBER(,               &,   )
+    LUX_FN_TRAITS_MEMBER(const,          &,   )
+    LUX_FN_TRAITS_MEMBER(volatile,       &,   )
+    LUX_FN_TRAITS_MEMBER(const volatile, &,   )
+    LUX_FN_TRAITS_MEMBER(,               &&,  )
+    LUX_FN_TRAITS_MEMBER(const,          &&,  )
+    LUX_FN_TRAITS_MEMBER(volatile,       &&,  )
+    LUX_FN_TRAITS_MEMBER(const volatile, &&,  )
+    LUX_FN_TRAITS_MEMBER(,               ,    noexcept)
+    LUX_FN_TRAITS_MEMBER(const,          ,    noexcept)
+    LUX_FN_TRAITS_MEMBER(volatile,       ,    noexcept)
+    LUX_FN_TRAITS_MEMBER(const volatile, ,    noexcept)
+    LUX_FN_TRAITS_MEMBER(,               &,   noexcept)
+    LUX_FN_TRAITS_MEMBER(const,          &,   noexcept)
+    LUX_FN_TRAITS_MEMBER(volatile,       &,   noexcept)
+    LUX_FN_TRAITS_MEMBER(const volatile, &,   noexcept)
+    LUX_FN_TRAITS_MEMBER(,               &&,  noexcept)
+    LUX_FN_TRAITS_MEMBER(const,          &&,  noexcept)
+    LUX_FN_TRAITS_MEMBER(volatile,       &&,  noexcept)
+    LUX_FN_TRAITS_MEMBER(const volatile, &&,  noexcept)
+#undef LUX_FN_TRAITS_MEMBER
 
     template<typename Func>
     struct function_traits_impl {
