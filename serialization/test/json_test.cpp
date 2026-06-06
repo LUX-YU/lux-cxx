@@ -7,6 +7,7 @@
 #include <lux/cxx/serialization/json.hpp>
 
 #include <iostream>
+#include <map>
 #include <string>
 
 using namespace lux::cxx::ser;
@@ -108,6 +109,17 @@ int main()
     check(!has(jo_empty, "\"maybe\""),  "omit_empty: empty tagged field is omitted");
     wo.maybe = { 1, 2 };
     check(has(to_json(wo), "\"maybe\":[1,2]"), "omit_empty: non-empty tagged field is emitted");
+
+    // ---- large StringKeyMap: exercises the single-pass for_each_member path ----
+    {
+        const int N = 5000;
+        std::string big = "{";
+        for (int i = 0; i < N; ++i) { if (i) big += ','; big += "\"k" + std::to_string(i) + "\":" + std::to_string(i); }
+        big += "}";
+        const auto m = from_json<std::map<std::string, int>>(big);
+        check(m.has_value() && m.value().size() == static_cast<std::size_t>(N), "large map: all entries loaded");
+        check(m.has_value() && m.value().at("k0") == 0 && m.value().at("k4999") == 4999, "large map: values correct");
+    }
 
     std::cout << "\n=== Results ===\nFailures: " << g_failures << "\n";
     return g_failures;

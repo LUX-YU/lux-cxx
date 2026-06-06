@@ -76,6 +76,12 @@ namespace lux::cxx::ser
         std::string_view member_key(std::size_t) const;
         JsonInputArchive member_value(std::size_t) const;
 
+        // Single-pass O(n) visitors (see archive.hpp). for_each_member visits an
+        // object's (key, value-cursor) pairs; for_each_element an array's
+        // (index, element-cursor). No-op on a non-object / non-array cursor.
+        void for_each_member (function_ref<void(std::string_view, const JsonInputArchive&)>) const;
+        void for_each_element(function_ref<void(std::size_t, const JsonInputArchive&)>) const;
+
         bool read(bool&)         const;
         bool read(std::int64_t&)  const;
         bool read(std::uint64_t&) const;

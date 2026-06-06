@@ -451,20 +451,21 @@ namespace lux::cxx::ser
             out.clear();
             using V = typename U::mapped_type;
             bool ok = true;
-            const std::size_t n = cur.member_count();
-            for (std::size_t i = 0; i < n; ++i)
+            // Single O(n) pass over members (the indexed member_value/member_key form
+            // is O(n^2) on ordered-map JSON objects and XML child lists).
+            cur.for_each_member([&](std::string_view k, const Cur& v)
             {
                 V val{};
                 error e;
-                if (load(cur.member_value(i), val, &e)) out.emplace(std::string(cur.member_key(i)), std::move(val));
+                if (load(v, val, &e)) out.emplace(std::string(k), std::move(val));
                 else
                 {
                     ok = false;
                     detail::set_error(err, e.code == error_code::ok ? error_code::load_failed : e.code,
                         e.message.empty() ? "map value failed" : std::move(e.message),
-                        detail::prefix_path(std::string(cur.member_key(i)), e.path));
+                        detail::prefix_path(std::string(k), e.path));
                 }
-            }
+            });
             return ok;
         }
         else if constexpr (Map<U>)
@@ -478,14 +479,13 @@ namespace lux::cxx::ser
             using K = typename U::key_type;
             using V = typename U::mapped_type;
             bool ok = true;
-            for (std::size_t i = 0; i < cur.size(); ++i)
+            cur.for_each_element([&](std::size_t i, const Cur& e)   // single O(n) pass
             {
-                const auto e = cur.element(i);
-                if (e.size() < 2) { ok = false; detail::set_error(err, error_code::type_mismatch, "map entry must be a [key,value] pair", "[" + std::to_string(i) + "]"); continue; }
+                if (e.size() < 2) { ok = false; detail::set_error(err, error_code::type_mismatch, "map entry must be a [key,value] pair", "[" + std::to_string(i) + "]"); return; }
                 K k{}; V val{};
                 if (load(e.element(0), k) && load(e.element(1), val)) out.emplace(std::move(k), std::move(val));
                 else { ok = false; detail::set_error(err, error_code::load_failed, "map entry failed", "[" + std::to_string(i) + "]"); }
-            }
+            });
             return ok;
         }
         else if constexpr (Sequence<U>)
@@ -498,11 +498,11 @@ namespace lux::cxx::ser
             out.clear();
             using V = std::ranges::range_value_t<U>;
             bool ok = true;
-            for (std::size_t i = 0; i < cur.size(); ++i)
+            cur.for_each_element([&](std::size_t i, const Cur& el)   // single O(n) pass
             {
                 V e{};
                 error ee;
-                if (load(cur.element(i), e, &ee)) detail::seq_insert(out, std::move(e));
+                if (load(el, e, &ee)) detail::seq_insert(out, std::move(e));
                 else
                 {
                     ok = false;
@@ -510,7 +510,7 @@ namespace lux::cxx::ser
                         ee.message.empty() ? "sequence element failed" : std::move(ee.message),
                         detail::prefix_path("[" + std::to_string(i) + "]", ee.path));
                 }
-            }
+            });
             return ok;
         }
         else

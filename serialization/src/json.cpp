@@ -103,6 +103,24 @@ namespace lux::cxx::ser
         return JsonInputArchive(&it.value());
     }
 
+    void JsonInputArchive::for_each_member(
+        function_ref<void(std::string_view, const JsonInputArchive&)> fn) const
+    {
+        const json* j = as_json(node_);
+        if (!j || !j->is_object()) return;
+        for (auto it = j->begin(); it != j->end(); ++it)   // single O(n) pass
+            fn(std::string_view{ it.key() }, JsonInputArchive(&it.value()));
+    }
+
+    void JsonInputArchive::for_each_element(
+        function_ref<void(std::size_t, const JsonInputArchive&)> fn) const
+    {
+        const json* j = as_json(node_);
+        if (!j || !j->is_array()) return;
+        std::size_t i = 0;
+        for (const auto& el : *j) fn(i++, JsonInputArchive(&el));   // single O(n) pass
+    }
+
     bool JsonInputArchive::read(bool& o) const
     {
         const json* j = as_json(node_);

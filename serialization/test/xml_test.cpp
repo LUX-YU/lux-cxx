@@ -8,6 +8,7 @@
 
 #include <iostream>
 #include <string>
+#include <vector>
 
 using namespace lux::cxx::ser;
 
@@ -82,6 +83,17 @@ int main()
     const auto r4 = from_xml<Settings>("<settings>oops</settings>");
     check(!r4.has_value() && r4.error().code == error_code::type_mismatch,
           "scalar element where object expected -> type_mismatch");
+
+    // ---- large sequence: exercises the single-pass for_each_element path ----
+    {
+        const int N = 5000;
+        std::string big = "<root>";
+        for (int i = 0; i < N; ++i) big += "<item>" + std::to_string(i) + "</item>";
+        big += "</root>";
+        const auto v = from_xml<std::vector<int>>(big);
+        check(v.has_value() && v.value().size() == static_cast<std::size_t>(N), "large seq: all items loaded");
+        check(v.has_value() && v.value().front() == 0 && v.value().back() == 4999, "large seq: values correct");
+    }
 
     std::cout << "\n=== Results ===\nFailures: " << g_failures << "\n";
     return g_failures;

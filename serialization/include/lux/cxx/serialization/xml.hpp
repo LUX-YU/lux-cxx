@@ -79,6 +79,12 @@ namespace lux::cxx::ser
         std::string_view member_key(std::size_t) const;   // i-th child's tag name
         XmlInputArchive member_value(std::size_t) const;  // i-th child element
 
+        // Single-pass O(n) visitors (see archive.hpp). for_each_member walks the
+        // child-element chain once yielding (tag-name, element-cursor); for_each_element
+        // walks the <item> chain once yielding (index, item-cursor).
+        void for_each_member (function_ref<void(std::string_view, const XmlInputArchive&)>) const;
+        void for_each_element(function_ref<void(std::size_t, const XmlInputArchive&)>) const;
+
         bool read(bool&)         const;
         bool read(std::int64_t&)  const;
         bool read(std::uint64_t&) const;

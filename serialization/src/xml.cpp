@@ -214,6 +214,25 @@ namespace lux::cxx::ser
         return XmlInputArchive(c);
     }
 
+    void XmlInputArchive::for_each_member(
+        function_ref<void(std::string_view, const XmlInputArchive&)> fn) const
+    {
+        const XMLElement* e = as_elem(node_);
+        if (!e) return;
+        for (const XMLElement* c = e->FirstChildElement(); c; c = c->NextSiblingElement())  // single O(n) walk
+            fn(std::string_view{ c->Name() }, XmlInputArchive(c));
+    }
+
+    void XmlInputArchive::for_each_element(
+        function_ref<void(std::size_t, const XmlInputArchive&)> fn) const
+    {
+        const XMLElement* e = as_elem(node_);
+        if (!e) return;
+        std::size_t i = 0;
+        for (const XMLElement* c = e->FirstChildElement("item"); c; c = c->NextSiblingElement("item"))  // single O(n) walk
+            fn(i++, XmlInputArchive(c));
+    }
+
     namespace
     {
         // Scalar text of a cursor: an attribute value, or an element's text.
