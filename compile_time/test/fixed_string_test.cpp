@@ -95,6 +95,18 @@ void test_construction()
     TEST_ASSERT(from_ptr.size() == 3);
     TEST_ASSERT(from_ptr == std::string_view("ptr"));
 
+    // Boundary: a source of exactly N characters must fit without overflowing
+    // data_[N+1] (the bounds check clamps strictly-greater lengths; an over-long
+    // source asserts in debug / is clamped in release).
+    fixed_string<3> exact(std::string_view("xyz"));
+    TEST_ASSERT(exact.size() == 3);
+    TEST_ASSERT(exact == std::string_view("xyz"));
+    TEST_ASSERT(exact.c_str()[3] == '\0');
+
+    fixed_string<4> exact_fill(4, 'q');
+    TEST_ASSERT(exact_fill.size() == 4);
+    TEST_ASSERT(exact_fill.c_str()[4] == '\0');
+
     std::cout << "  construction tests passed" << std::endl;
 }
 

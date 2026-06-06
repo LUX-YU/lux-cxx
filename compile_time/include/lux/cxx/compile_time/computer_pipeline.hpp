@@ -220,9 +220,23 @@ namespace lux::cxx
         // The main run function => returns false if a node fails
         bool run()
         {
+            // Every node must have been created via emplaceNode(); the node
+            // pointers are otherwise null and execute() would dereference null.
+            assert(all_nodes_emplaced() &&
+                "ComputerPipeline::run(): a node was never emplaced via emplaceNode()");
+            if (!all_nodes_emplaced())
+                return false;
+
             return runImpl<SortedOrLayeredNodes>(
                 std::make_index_sequence<std::tuple_size_v<SortedOrLayeredNodes>>{}
             );
+        }
+
+        /// @return true iff every node slot has been populated by emplaceNode().
+        bool all_nodes_emplaced() const noexcept
+        {
+            return all_nodes_emplaced_impl(
+                std::make_index_sequence<std::tuple_size_v<NodePtrStorage>>{});
         }
 
         // Access input references
@@ -346,11 +360,18 @@ namespace lux::cxx
         {
             constexpr size_t idx = findNodeIndex<N>();
             auto& uptr = std::get<idx>(nodes_);
+            if (!uptr) return false;   // node never emplaced -> fail instead of UB
 
             auto in = build_in_param<N>();
             auto out = build_out_param<N>();
 
             return uptr->execute(in, out);
+        }
+
+        template <size_t... I>
+        bool all_nodes_emplaced_impl(std::index_sequence<I...>) const noexcept
+        {
+            return (... && (std::get<I>(nodes_) != nullptr));
         }
 
         //--------------------------------------------------------------------------

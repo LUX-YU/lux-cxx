@@ -1,6 +1,7 @@
 #include "lux/cxx/compile_time/computer_node.hpp"
 #include "lux/cxx/compile_time/computer_node_sort.hpp"
 #include "lux/cxx/compile_time/computer_pipeline.hpp"
+#include <cassert>
 #include <iostream>
 #include <string>
 
@@ -62,7 +63,20 @@ int main()
     pipeline.emplaceNode<NodeB>();
 
     // 5) Run => NodeA executes, then NodeB
-    pipeline.run();
+    bool ran = pipeline.run();
+    assert(ran);
+
+    // 6) Guard: a pipeline missing a node reports not-fully-emplaced and refuses
+    //    to run() instead of dereferencing a null node pointer.
+    {
+        ComputerPipeline<NodeList, DepList> p2;
+        p2.emplaceNode<NodeA>();
+        assert(!p2.all_nodes_emplaced());   // NodeB not emplaced yet
+        p2.emplaceNode<NodeB>();
+        assert(p2.all_nodes_emplaced());
+        assert(p2.run());
+        std::cout << "pipeline emplace-guard OK\n";
+    }
 
     return 0;
 }

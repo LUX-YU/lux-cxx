@@ -29,6 +29,7 @@
  */
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <ostream>
 #include <string_view>
@@ -76,28 +77,37 @@ namespace lux::cxx
             data_[size_] = CharT{};
         }
 
-        /** @brief Constructs from a string_view (length must fit). */
+        /** @brief Constructs from a string_view.
+         *
+         *  @note Unlike the array-literal constructor (which static_asserts), the
+         *        length here is only known at runtime, so it is bounds-checked:
+         *        an over-long source asserts in debug and is clamped to @p N in
+         *        release rather than overflowing @c data_. In a constant-evaluated
+         *        context an over-long source is a hard compile error. */
         constexpr explicit fixed_string(view_type sv) noexcept
-            : size_(sv.size())
+            : size_(sv.size() <= N ? sv.size() : N)
         {
+            assert(sv.size() <= N && "fixed_string: source view exceeds capacity N");
             for (size_type i = 0; i < size_; ++i)
                 data_[i] = sv[i];
             data_[size_] = CharT{};
         }
 
-        /** @brief Constructs from a pointer and a length. */
+        /** @brief Constructs from a pointer and a length (bounds-checked, see view ctor). */
         constexpr fixed_string(const CharT* ptr, size_type len) noexcept
-            : size_(len)
+            : size_(len <= N ? len : N)
         {
+            assert(len <= N && "fixed_string: source length exceeds capacity N");
             for (size_type i = 0; i < size_; ++i)
                 data_[i] = ptr[i];
             data_[size_] = CharT{};
         }
 
-        /** @brief Constructs a string filled with @p count copies of @p ch. */
+        /** @brief Constructs a string filled with @p count copies of @p ch (bounds-checked). */
         constexpr fixed_string(size_type count, CharT ch) noexcept
-            : size_(count)
+            : size_(count <= N ? count : N)
         {
+            assert(count <= N && "fixed_string: count exceeds capacity N");
             for (size_type i = 0; i < size_; ++i)
                 data_[i] = ch;
             data_[size_] = CharT{};
