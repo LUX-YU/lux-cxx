@@ -123,8 +123,13 @@ namespace lux::cxx::ser
         auto doc = JsonDocument::parse(text);
         if (!doc) return lux::cxx::unexpected<error>(doc.error());
         T out{};
-        if (!load(doc->root(), out))
-            return make_error(error_code::load_failed, "JSON deserialization failed");
+        error err;
+        if (!load(doc->root(), out, &err))
+        {
+            if (err.code == error_code::ok)
+                err = error{ error_code::load_failed, "JSON deserialization failed", {} };
+            return lux::cxx::unexpected<error>(std::move(err));
+        }
         return out;
     }
 } // namespace lux::cxx::ser

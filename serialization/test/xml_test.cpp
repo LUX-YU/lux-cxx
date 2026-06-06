@@ -78,6 +78,11 @@ int main()
     const auto r3 = from_xml<Settings>("<settings><unclosed>");
     check(!r3.has_value() && r3.error().code == error_code::parse_error, "malformed XML -> parse_error");
 
+    // ---- shape is now distinguished: a scalar element can't masquerade as a struct ----
+    const auto r4 = from_xml<Settings>("<settings>oops</settings>");
+    check(!r4.has_value() && r4.error().code == error_code::type_mismatch,
+          "scalar element where object expected -> type_mismatch");
+
     std::cout << "\n=== Results ===\nFailures: " << g_failures << "\n";
     return g_failures;
 }

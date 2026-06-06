@@ -14,6 +14,13 @@ struct LUX_META(serializable) Address
     int         zip;
 };
 
+// Exercises structured load-error reporting (required field + nested path).
+struct LUX_META(serializable) Required
+{
+    std::string LUX_META(serializable, required) id;
+    int         value;
+};
+
 // Exercises: scalar / enum / sequence / optional / nested reflected / string-keyed map.
 struct LUX_META(serializable) Profile
 {

@@ -83,6 +83,24 @@ int main()
     const auto r4 = from_json<Profile>("not json");
     check(!r4.has_value() && r4.error().code == error_code::parse_error, "malformed JSON -> parse_error");
 
+    // ---- structured load errors: code + dotted field path ----
+    const auto e_top = from_json<Profile>("123");
+    check(!e_top.has_value() && e_top.error().code == error_code::type_mismatch,
+          "scalar where object expected -> type_mismatch");
+
+    const auto e_nested = from_json<Profile>(R"({"address":{"zip":"not-a-number"}})");
+    check(!e_nested.has_value() && e_nested.error().code == error_code::type_mismatch
+          && e_nested.error().path == "address.zip",
+          "nested type mismatch reports dotted field path");
+
+    const auto e_req = from_json<Required>(R"({"value":7})");
+    check(!e_req.has_value() && e_req.error().code == error_code::missing_required
+          && e_req.error().path == "id",
+          "missing required field -> missing_required with field path");
+
+    const auto e_ok = from_json<Required>(R"({"id":"abc","value":7})");
+    check(e_ok.has_value() && e_ok.value().id == "abc", "required field present -> success");
+
     std::cout << "\n=== Results ===\nFailures: " << g_failures << "\n";
     return g_failures;
 }

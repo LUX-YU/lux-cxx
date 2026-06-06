@@ -21,6 +21,7 @@
 #include <type_traits>
 #include <utility>
 
+#include <lux/cxx/serialization/error.hpp>
 #include <lux/cxx/serialization/meta_info.hpp>
 
 namespace lux::cxx::ser
@@ -250,70 +251,154 @@ namespace lux::cxx::ser
     }
 
     // ---- L2: deserialize ------------------------------------------------------
+    namespace detail
+    {
+        // Record the FIRST failure only (deepest call sets it, outer calls prepend
+        // path segments). `err == nullptr` means the caller doesn't want details.
+        inline void set_error(error* err, error_code code, std::string msg, std::string path)
+        {
+            if (err && err->code == error_code::ok)
+            {
+                err->code    = code;
+                err->message = std::move(msg);
+                err->path    = std::move(path);
+            }
+        }
+        // Prepend a path segment: "field" + "sub" -> "field.sub"; "field" + "[0]" ->
+        // "field[0]"; "[0]" + "x" -> "[0].x".
+        inline std::string prefix_path(std::string head, const std::string& rest)
+        {
+            if (rest.empty()) return head;
+            if (rest.front() == '[') return head + rest;
+            return head + "." + rest;
+        }
+    }
+
+    // Deserialize `cur` into `out`. Returns true on success. When `err` is non-null
+    // it is populated (code + dotted field path) on the first failure, so callers
+    // can tell a missing required field from a type mismatch and name the field.
     template <class Cur, class T>
-    bool load(const Cur& cur, T& out)
+    bool load(const Cur& cur, T& out, error* err = nullptr)
     {
         using U = std::remove_cvref_t<T>;
         if constexpr (HasCustom<U>)
         {
-            return serializer<U>::load(cur, out);
+            if (!serializer<U>::load(cur, out))
+            {
+                detail::set_error(err, error_code::load_failed, "custom load failed", {});
+                return false;
+            }
+            return true;
         }
         else if constexpr (Reflected<U>)
         {
-            if (!cur.is_object()) return false;
+            if (!cur.is_object())
+            {
+                detail::set_error(err, error_code::type_mismatch, "expected an object", {});
+                return false;
+            }
             bool ok = true;
             meta_info<U>::for_each_field([&](auto fd) {
                 if (fd.options.skip) return;
                 const auto child = cur.member(fd.name, fd.options.xml_attribute);
-                if (child) { if (!load(child, out.*(fd.pointer))) ok = false; }
-                else if (fd.options.required) ok = false;
+                if (child)
+                {
+                    error child_err;
+                    if (!load(child, out.*(fd.pointer), &child_err))
+                    {
+                        ok = false;
+                        detail::set_error(err,
+                            child_err.code == error_code::ok ? error_code::load_failed : child_err.code,
+                            child_err.message.empty() ? "field failed to load" : std::move(child_err.message),
+                            detail::prefix_path(std::string(fd.name), child_err.path));
+                    }
+                }
+                else if (fd.options.required)
+                {
+                    ok = false;
+                    detail::set_error(err, error_code::missing_required,
+                        "missing required field", std::string(fd.name));
+                }
             });
             return ok;
         }
-        else if constexpr (BoolLike<U>)               { return cur.read(out); }
-        else if constexpr (std::same_as<U, std::string>) { return cur.read(out); }
+        else if constexpr (BoolLike<U>)
+        {
+            if (!cur.read(out)) { detail::set_error(err, error_code::type_mismatch, "expected bool", {}); return false; }
+            return true;
+        }
+        else if constexpr (std::same_as<U, std::string>)
+        {
+            if (!cur.read(out)) { detail::set_error(err, error_code::type_mismatch, "expected string", {}); return false; }
+            return true;
+        }
         else if constexpr (ReflectedEnum<U>)
         {
             std::string s;
             if (cur.read(s) && enum_from_string(s, out)) return true;   // by name
             std::underlying_type_t<U> u{};                              // tolerate legacy integer form
             if (detail::get_arith(cur, u)) { out = static_cast<U>(u); return true; }
+            detail::set_error(err, error_code::type_mismatch, "expected enum (name or integer)", {});
             return false;
         }
         else if constexpr (EnumType<U>)
         {
             std::underlying_type_t<U> u{};
-            if (!detail::get_arith(cur, u)) return false;
+            if (!detail::get_arith(cur, u)) { detail::set_error(err, error_code::type_mismatch, "expected enum integer", {}); return false; }
             out = static_cast<U>(u);
             return true;
         }
-        else if constexpr (Arithmetic<U>) { return detail::get_arith(cur, out); }
+        else if constexpr (Arithmetic<U>)
+        {
+            if (!detail::get_arith(cur, out)) { detail::set_error(err, error_code::type_mismatch, "expected number", {}); return false; }
+            return true;
+        }
         else if constexpr (Nullable<U>)
         {
             if (cur.is_null()) { out = U{}; return true; }
             typename detail::nullable_traits<U>::elem tmp{};
-            if (!load(cur, tmp)) return false;
+            if (!load(cur, tmp, err)) return false;
             detail::nullable_traits<U>::assign(out, std::move(tmp));
             return true;
         }
         else if constexpr (ByteSequence<U>)
         {
             std::string s;
-            if (!cur.read(s)) return false;
-            return detail::base64_decode(s, out);
+            if (!cur.read(s)) { detail::set_error(err, error_code::type_mismatch, "expected base64 string", {}); return false; }
+            if (!detail::base64_decode(s, out)) { detail::set_error(err, error_code::parse_error, "invalid base64", {}); return false; }
+            return true;
         }
         else if constexpr (TupleLike<U>)
         {
-            if (!cur.is_array() || cur.size() < std::tuple_size_v<U>) return false;
+            if (!cur.is_array() || cur.size() < std::tuple_size_v<U>)
+            {
+                detail::set_error(err, error_code::type_mismatch, "expected array (tuple)", {});
+                return false;
+            }
             bool ok = true;
             [&]<std::size_t... I>(std::index_sequence<I...>) {
-                ((ok = load(cur.element(I), std::get<I>(out)) && ok), ...);
+                auto load_elem = [&](auto i_const, auto& elem) {
+                    constexpr std::size_t I0 = decltype(i_const)::value;
+                    error e;
+                    if (!load(cur.element(I0), elem, &e))
+                    {
+                        ok = false;
+                        detail::set_error(err, e.code == error_code::ok ? error_code::load_failed : e.code,
+                            e.message.empty() ? "tuple element failed" : std::move(e.message),
+                            detail::prefix_path("[" + std::to_string(I0) + "]", e.path));
+                    }
+                };
+                (load_elem(std::integral_constant<std::size_t, I>{}, std::get<I>(out)), ...);
             }(std::make_index_sequence<std::tuple_size_v<U>>{});
             return ok;
         }
         else if constexpr (StringKeyMap<U>)
         {
-            if (!cur.is_object()) return false;
+            if (!cur.is_object())
+            {
+                detail::set_error(err, error_code::type_mismatch, "expected an object (map)", {});
+                return false;
+            }
             out.clear();
             using V = typename U::mapped_type;
             bool ok = true;
@@ -321,14 +406,25 @@ namespace lux::cxx::ser
             for (std::size_t i = 0; i < n; ++i)
             {
                 V val{};
-                if (load(cur.member_value(i), val)) out.emplace(std::string(cur.member_key(i)), std::move(val));
-                else ok = false;
+                error e;
+                if (load(cur.member_value(i), val, &e)) out.emplace(std::string(cur.member_key(i)), std::move(val));
+                else
+                {
+                    ok = false;
+                    detail::set_error(err, e.code == error_code::ok ? error_code::load_failed : e.code,
+                        e.message.empty() ? "map value failed" : std::move(e.message),
+                        detail::prefix_path(std::string(cur.member_key(i)), e.path));
+                }
             }
             return ok;
         }
         else if constexpr (Map<U>)
         {
-            if (!cur.is_array()) return false;
+            if (!cur.is_array())
+            {
+                detail::set_error(err, error_code::type_mismatch, "expected array (map entries)", {});
+                return false;
+            }
             out.clear();
             using K = typename U::key_type;
             using V = typename U::mapped_type;
@@ -336,24 +432,35 @@ namespace lux::cxx::ser
             for (std::size_t i = 0; i < cur.size(); ++i)
             {
                 const auto e = cur.element(i);
-                if (e.size() < 2) { ok = false; continue; }
+                if (e.size() < 2) { ok = false; detail::set_error(err, error_code::type_mismatch, "map entry must be a [key,value] pair", "[" + std::to_string(i) + "]"); continue; }
                 K k{}; V val{};
                 if (load(e.element(0), k) && load(e.element(1), val)) out.emplace(std::move(k), std::move(val));
-                else ok = false;
+                else { ok = false; detail::set_error(err, error_code::load_failed, "map entry failed", "[" + std::to_string(i) + "]"); }
             }
             return ok;
         }
         else if constexpr (Sequence<U>)
         {
-            if (!cur.is_array()) return false;
+            if (!cur.is_array())
+            {
+                detail::set_error(err, error_code::type_mismatch, "expected array (sequence)", {});
+                return false;
+            }
             out.clear();
             using V = std::ranges::range_value_t<U>;
             bool ok = true;
             for (std::size_t i = 0; i < cur.size(); ++i)
             {
                 V e{};
-                if (load(cur.element(i), e)) detail::seq_insert(out, std::move(e));
-                else ok = false;
+                error ee;
+                if (load(cur.element(i), e, &ee)) detail::seq_insert(out, std::move(e));
+                else
+                {
+                    ok = false;
+                    detail::set_error(err, ee.code == error_code::ok ? error_code::load_failed : ee.code,
+                        ee.message.empty() ? "sequence element failed" : std::move(ee.message),
+                        detail::prefix_path("[" + std::to_string(i) + "]", ee.path));
+                }
             }
             return ok;
         }

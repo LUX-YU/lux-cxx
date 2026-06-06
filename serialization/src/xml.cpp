@@ -132,8 +132,30 @@ namespace lux::cxx::ser
 
     // ===================== XmlInputArchive ===============================
     bool XmlInputArchive::is_null()   const noexcept { return node_ == nullptr && attr_ == nullptr; }
-    bool XmlInputArchive::is_object() const noexcept { return node_ != nullptr; }   // attribute cursor is a scalar
-    bool XmlInputArchive::is_array()  const noexcept { return node_ != nullptr; }
+
+    // Distinguish shape so load-time type guards actually fire. The writer emits a
+    // sequence as <item> children and an object as named (non-item) children and/or
+    // attributes; a scalar carries text only. An empty element is shape-ambiguous and
+    // is accepted as either an empty object or an empty sequence (so empty containers
+    // still round-trip). An attribute cursor (node_ == nullptr) is a scalar → neither.
+    bool XmlInputArchive::is_object() const noexcept
+    {
+        const XMLElement* e = as_elem(node_);
+        if (!e) return false;
+        if (e->FirstChildElement("item")) return false;                 // <item>s ⇒ sequence
+        if (e->FirstChildElement() || e->FirstAttribute()) return true; // named members / attrs ⇒ object
+        if (e->GetText() != nullptr) return false;                      // text only ⇒ scalar
+        return true;                                                    // empty element ⇒ empty object OK
+    }
+    bool XmlInputArchive::is_array() const noexcept
+    {
+        const XMLElement* e = as_elem(node_);
+        if (!e) return false;
+        if (e->FirstChildElement("item")) return true;                  // has sequence items
+        if (e->FirstChildElement() || e->FirstAttribute()) return false;// named members / attrs ⇒ object
+        if (e->GetText() != nullptr) return false;                      // text only ⇒ scalar
+        return true;                                                    // empty element ⇒ empty sequence OK
+    }
 
     XmlInputArchive XmlInputArchive::member(std::string_view k, bool as_attribute) const
     {
