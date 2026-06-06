@@ -39,8 +39,8 @@ Modern command-line argument parsing library with type safety and automatic help
 
 **Key Features**: Type-safe parsing, multi-value support, custom type extensions, descriptive errors
 
-### 🔧 [Dynamic Reflection](dynamic_reflection/README.md)
-Runtime reflection system based on Clang LibTooling for code analysis and metadata generation.
+### 🔧 [Reflection](reflection/README.md)
+Reflection system based on Clang LibTooling for code analysis and metadata generation.
 
 **Key Features**: Clang-based analysis, JSON metadata export, runtime type queries
 
@@ -55,8 +55,6 @@ Concurrent programming infrastructure (under development).
 ### 🧠 [Memory](memory/README.md)
 Memory management tools and optimizations (under development).
 
-### 🔍 [Static Reflection](static_reflection/README.md)
-Compile-time reflection system (under development).
 
 ## Build Requirements
 

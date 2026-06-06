@@ -15,10 +15,10 @@ generate_visibility_header(
     GENERATE_FILE_PATH  lux/cxx/visibility.h
 )
 
+add_subdirectory(third_party)
 add_subdirectory(container)
 add_subdirectory(memory)
 add_subdirectory(concurrent)
-add_subdirectory(static_reflection)
 add_subdirectory(compile_time)
 add_subdirectory(subprogram)
 add_subdirectory(arguments)
@@ -27,6 +27,8 @@ add_subdirectory(archtype)
 add_subdirectory(event)
 
 set(ENABLE_COMPONENTS 
+    nlohmann_json
+    tinyxml2
     container
     memory
     concurrent
@@ -35,17 +37,22 @@ set(ENABLE_COMPONENTS
     compile_time
     algorithm
     archtype
-    static_reflection
     event
+    serialization
+    serialization_json
+    serialization_xml
+    serialization_arguments
 )
 
-set(ENABLE_DYNAMIC_REFLECTION OFF CACHE BOOL "ENABLE REFLECTION SUPPORT")
-if(ENABLE_DYNAMIC_REFLECTION)
-    add_subdirectory(dynamic_reflection)
-    list(APPEND ENABLE_COMPONENTS dynamic_reflection_parser)
-    list(APPEND ENABLE_COMPONENTS dynamic_reflection_runtime)
-    list(APPEND ENABLE_COMPONENTS dynamic_reflection_generator)
+set(ENABLE_REFLECTION OFF CACHE BOOL "ENABLE REFLECTION SUPPORT")
+if(ENABLE_REFLECTION)
+    add_subdirectory(reflection)
+    list(APPEND ENABLE_COMPONENTS reflection_parser)
+    list(APPEND ENABLE_COMPONENTS reflection_runtime)
+    list(APPEND ENABLE_COMPONENTS reflection_generator)
 endif()
+
+add_subdirectory(serialization)
 
 install_components(
     PROJECT_NAME    lux-cxx

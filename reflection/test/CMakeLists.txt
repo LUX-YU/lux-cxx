@@ -1,0 +1,125 @@
+get_filename_component(PARENT_DIR ../ ABSOLUTE)
+set(REFLECTION_PUBLIC_DIR ${PARENT_DIR}/include)
+
+include_component_cmake_scripts(reflection_generator)
+
+add_executable(
+	meta_parse_test
+	${CMAKE_CURRENT_SOURCE_DIR}/meta_parse_test.cpp
+)
+
+target_link_libraries(
+	meta_parse_test
+	PRIVATE
+		lux::cxx::reflection_parser
+)
+
+add_executable(
+	meta_deserializer_test
+	${CMAKE_CURRENT_SOURCE_DIR}/meta_deserializer_test.cpp
+)
+
+target_link_libraries(
+	meta_deserializer_test
+	PRIVATE
+		lux::cxx::reflection_runtime
+)
+
+add_executable(
+	extended_coverage_test
+	${CMAKE_CURRENT_SOURCE_DIR}/extended_coverage_test.cpp
+)
+
+target_link_libraries(
+	extended_coverage_test
+	PRIVATE
+		lux::cxx::reflection_parser
+)
+
+add_executable(
+	meta_roundtrip_test
+	${CMAKE_CURRENT_SOURCE_DIR}/meta_roundtrip_test.cpp
+)
+
+target_link_libraries(
+	meta_roundtrip_test
+	PRIVATE
+		lux::cxx::reflection_parser
+)
+
+get_filename_component(REFLECTION_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/.. ABSOLUTE)
+message(STATUS "REFLECTION_BINARY_DIR: ${REFLECTION_BINARY_DIR}")
+find_program(
+	LUX_GENERATOR
+	lux_meta_generator
+	PATHS ${REFLECTION_BINARY_DIR}
+	NO_CACHE
+	NO_DEFAULT_PATH
+	NO_CMAKE_INSTALL_PREFIX
+	NO_PACKAGE_ROOT_PATH
+	NO_CMAKE_PATH
+)
+if(LUX_GENERATOR)
+	add_executable(
+		generator_test
+		${CMAKE_CURRENT_SOURCE_DIR}/generator_test.cpp
+	)
+
+	target_link_libraries(
+		generator_test
+		PRIVATE
+			lux::cxx::reflection_runtime
+	)
+
+	add_meta(
+		NAME			test_meta
+		GENERATOR		${LUX_GENERATOR}
+		OUT_DIR			${CMAKE_BINARY_DIR}/metagen
+		META_SUFFIX     "meta.hpp"
+		MARKER          "marked"
+		META_GENERATOR  ${GENERATOR}
+		TEMPLATE		${TEST_TEMPLATE_DIR}/test_meta.template.inja
+		TARGET_FILES	${CMAKE_CURRENT_SOURCE_DIR}/test_header.hpp
+		JSON_FIELD		"{\"foo\":123,\"bar\":[1,2,3]}"
+						"{\"foo2\":345,\"bar2\":[456]}"
+		ECHO
+	)
+
+	add_meta(
+		NAME			test_annotation_meta
+		GENERATOR		${LUX_GENERATOR}
+		OUT_DIR			${CMAKE_BINARY_DIR}/metagen
+		META_SUFFIX     "anno.hpp"
+		MARKER          "marked"
+		META_GENERATOR  ${GENERATOR}
+		TEMPLATE		${TEST_TEMPLATE_DIR}/annotation_callbacks_test.template.inja
+		TARGET_FILES	${CMAKE_CURRENT_SOURCE_DIR}/test_annotation_callbacks.hpp
+		ECHO
+	)
+
+	target_add_meta(
+		TARGET			generator_test
+		NAME			test_meta
+		ALWAYS_REGENERATE
+		DONT_ADD_TO_SOURCE
+		ECHO
+	)
+
+	target_add_meta(
+		TARGET			generator_test
+		NAME			test_annotation_meta
+		ALWAYS_REGENERATE
+		DONT_ADD_TO_SOURCE
+		ECHO
+	)
+
+	add_dependencies(
+		test_meta_gen
+		lux_meta_generator
+	)
+
+	add_dependencies(
+		test_annotation_meta_gen
+		lux_meta_generator
+	)
+endif()
