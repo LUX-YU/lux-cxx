@@ -7,6 +7,27 @@ endif()
 set(_COMPONENT_META_TOOLS_INCLUDED_ TRUE)
 
 # -------------------------------------------------
+# _meta_json_escape(<out_var> <in_string>)
+#   Escape a string so it is safe inside a JSON string literal. The generator's
+#   *_meta_config.json is hand-written with file(WRITE/APPEND), so any value that
+#   contains a backslash (Windows paths like C:\Users\...) or a double-quote would
+#   otherwise produce invalid JSON (\U / \b / \t are illegal-or-wrong escapes).
+#   Order matters: escape backslash FIRST, then the double-quote — otherwise the
+#   backslash added for the quote escape would itself get doubled.
+#
+#   This is a function (NOT a macro): a macro substitutes its arguments textually,
+#   so a value containing backslashes/quotes would be re-parsed as code at expansion
+#   ("Invalid character escape '\U'"). A function binds the argument as a real
+#   variable value, so the special characters are handled correctly.
+# -------------------------------------------------
+function(_meta_json_escape _out _in)
+    set(_t "${_in}")
+    string(REPLACE "\\" "\\\\" _t "${_t}")
+    string(REPLACE "\"" "\\\"" _t "${_t}")
+    set(${_out} "${_t}" PARENT_SCOPE)
+endfunction()
+
+# -------------------------------------------------
 # add_meta:
 #   Defines a meta information generation object. Parameters (required/optional):
 #
@@ -159,7 +180,10 @@ endfunction()
 function(target_add_meta)
     set(one_value_args NAME TARGET)
     set(optional_args ALWAYS_REGENERATE ECHO DONT_ADD_TO_SOURCE DONT_INCLUDE)
-    cmake_parse_arguments(ARGS "" "${one_value_args}" "" ${ARGN})
+    # NOTE: the option list must be passed as the <options> argument; it used to be
+    # "" here, so ALWAYS_REGENERATE / ECHO / DONT_ADD_TO_SOURCE / DONT_INCLUDE were
+    # silently never parsed (always false).
+    cmake_parse_arguments(ARGS "${optional_args}" "${one_value_args}" "" ${ARGN})
 
     if(NOT ARGS_NAME)
         message(FATAL_ERROR "[target_add_meta] NAME parameter is required")
@@ -246,40 +270,50 @@ function(target_add_meta)
     # Convert _meta_target_files (semicolon-separated) to a list
     set(_meta_files ${_meta_target_files})
 
-    # Generate JSON configuration file with new parameters
+    # Generate JSON configuration file with new parameters.
+    # Every interpolated value is JSON-escaped (paths may contain backslashes on
+    # Windows, e.g. C:\Users\...; raw insertion would emit invalid JSON escapes).
     set(_config_file "${_meta_out_dir}/${_meta_name}_meta_config.json")
+    _meta_json_escape(_e_marker   "${_meta_marker}")
+    _meta_json_escape(_e_template "${_meta_template}")
+    _meta_json_escape(_e_outdir   "${_meta_out_dir}")
+    _meta_json_escape(_e_cc       "${_meta_cc_json}")
+    _meta_json_escape(_e_src      "${_main_src}")
+    _meta_json_escape(_e_suffix   "${_meta_meta_suffix}")
+
     file(WRITE "${_config_file}" "{\n")
-    file(APPEND "${_config_file}" "  \"marker\": \"${_meta_marker}\",\n")
-    file(APPEND "${_config_file}" "  \"template_path\": \"${_meta_template}\",\n")
-    file(APPEND "${_config_file}" "  \"out_dir\": \"${_meta_out_dir}\",\n")
-    file(APPEND "${_config_file}" "  \"compile_commands\": \"${_meta_cc_json}\",\n")
-    file(APPEND "${_config_file}" "  \"source_file\": \"${_main_src}\",\n")
+    file(APPEND "${_config_file}" "  \"marker\": \"${_e_marker}\",\n")
+    file(APPEND "${_config_file}" "  \"template_path\": \"${_e_template}\",\n")
+    file(APPEND "${_config_file}" "  \"out_dir\": \"${_e_outdir}\",\n")
+    file(APPEND "${_config_file}" "  \"compile_commands\": \"${_e_cc}\",\n")
+    file(APPEND "${_config_file}" "  \"source_file\": \"${_e_src}\",\n")
     file(APPEND "${_config_file}" "  \"target_files\": [\n")
     list(LENGTH _meta_files _mf_len)
     math(EXPR _last_idx "${_mf_len} - 1")
     foreach(i RANGE 0 ${_last_idx})
         list(GET _meta_files ${i} mf)
+        _meta_json_escape(_e_mf "${mf}")
         if(i LESS _last_idx)
-            file(APPEND "${_config_file}" "    \"${mf}\",\n")
+            file(APPEND "${_config_file}" "    \"${_e_mf}\",\n")
         else()
-            file(APPEND "${_config_file}" "    \"${mf}\"\n")
+            file(APPEND "${_config_file}" "    \"${_e_mf}\"\n")
         endif()
     endforeach()
     file(APPEND "${_config_file}" "  ],\n")
-    file(APPEND "${_config_file}" "  \"meta_suffix\": \"${_meta_meta_suffix}\",\n")
+    file(APPEND "${_config_file}" "  \"meta_suffix\": \"${_e_suffix}\",\n")
     file(APPEND "${_config_file}" "  \"extra_compile_options\": [\n")
     if(_meta_extra_compile_options)
         # Target properties keep CMake lists as semicolon-separated values already.
-        # Re-parsing them as a command line can strip backslashes in Windows paths.
         set(_compile_opts ${_meta_extra_compile_options})
         list(LENGTH _compile_opts _co_len)
         math(EXPR _co_last "${_co_len} - 1")
         foreach(i RANGE 0 ${_co_last})
             list(GET _compile_opts ${i} opt)
+            _meta_json_escape(_e_opt "${opt}")
             if(i LESS _co_last)
-                file(APPEND "${_config_file}" "    \"${opt}\",\n")
+                file(APPEND "${_config_file}" "    \"${_e_opt}\",\n")
             else()
-                file(APPEND "${_config_file}" "    \"${opt}\"\n")
+                file(APPEND "${_config_file}" "    \"${_e_opt}\"\n")
             endif()
         endforeach()
     endif()
@@ -306,7 +340,7 @@ function(target_add_meta)
     
         foreach(i RANGE 0 ${_last})
             list(GET _meta_json_fields ${i} field)
-            string(REPLACE "\"" "\\\"" field_escaped "${field}")
+            _meta_json_escape(field_escaped "${field}")
             if(i LESS ${_last})
                 file(APPEND "${_config_file}"
                     "    \"${field_escaped}\",\n")
@@ -353,26 +387,38 @@ function(target_add_meta)
         file(MAKE_DIRECTORY "${_meta_out_dir}")
     endif()
 
-    # Add a custom command: when any input file changes, regenerate the outputs
-    add_custom_command(
-        OUTPUT ${_all_generated_files}
-        COMMAND "${_meta_gen_exe}" "${_config_file}"
-        DEPENDS ${_meta_files} "${_meta_template}" "${_config_file}"
-        COMMENT "[target_add_meta] Generating meta information for '${_meta_name}', command: ${_meta_gen_exe} ${_config_file}"
-        VERBATIM
-    )
-
-    if(ARGS_ALWAYS_REGENERATE)
-        foreach(_gf IN LISTS _all_generated_files)
-            set_property(SOURCE "${_gf}" PROPERTY SKIP_CACHE TRUE)
-        endforeach()
-    endif()
-
-    # Define a custom target
     set(_meta_gen_target "${_meta_name}_gen")
-    add_custom_target("${_meta_gen_target}"
-        DEPENDS ${_all_generated_files}
-    )
+    if(ARGS_ALWAYS_REGENERATE)
+        # Force regeneration on EVERY build: a custom target's COMMAND always runs
+        # (unlike add_custom_command OUTPUT, which is skipped when the outputs are
+        # up to date). BYPRODUCTS lets consumers still depend on the generated files.
+        # (The previous set_property(SOURCE ... SKIP_CACHE) was a no-op — SKIP_CACHE
+        # is not a real source property and never forced anything.)
+        add_custom_target("${_meta_gen_target}" ALL
+            COMMAND "${_meta_gen_exe}" "${_config_file}"
+            BYPRODUCTS ${_all_generated_files}
+            DEPENDS ${_meta_files} "${_meta_template}" "${_config_file}"
+            COMMENT "[target_add_meta] (always) Generating meta for '${_meta_name}'"
+            VERBATIM
+        )
+        if(_generated_source_files)
+            # Generated .cpp added to a target's SOURCES must be flagged GENERATED
+            # since no add_custom_command OUTPUT declares them in this branch.
+            set_source_files_properties(${_generated_source_files} PROPERTIES GENERATED TRUE)
+        endif()
+    else()
+        # Incremental: regenerate only when an input (header / template / config) changes.
+        add_custom_command(
+            OUTPUT ${_all_generated_files}
+            COMMAND "${_meta_gen_exe}" "${_config_file}"
+            DEPENDS ${_meta_files} "${_meta_template}" "${_config_file}"
+            COMMENT "[target_add_meta] Generating meta information for '${_meta_name}', command: ${_meta_gen_exe} ${_config_file}"
+            VERBATIM
+        )
+        add_custom_target("${_meta_gen_target}"
+            DEPENDS ${_all_generated_files}
+        )
+    endif()
 
     # Add generated source files to the user's target (if any .cpp files were generated)
     if(_generated_source_files AND NOT ARGS_DONT_ADD_TO_SOURCE)
