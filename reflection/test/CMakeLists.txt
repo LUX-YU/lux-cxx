@@ -15,6 +15,17 @@ target_link_libraries(
 )
 
 add_executable(
+	external_reflect_test
+	${CMAKE_CURRENT_SOURCE_DIR}/external_reflect_test.cpp
+)
+
+target_link_libraries(
+	external_reflect_test
+	PRIVATE
+		lux::cxx::reflection_parser
+)
+
+add_executable(
 	meta_deserializer_test
 	${CMAKE_CURRENT_SOURCE_DIR}/meta_deserializer_test.cpp
 )

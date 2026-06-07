@@ -57,11 +57,38 @@ namespace lux::cxx::reflection
 		return raw_ptr;
 	}
 
+	void CxxParserImpl::addToMarkedList(Decl* decl)
+	{
+		const auto push_unique = [](auto& vec, auto* ptr)
+		{
+			if (std::find(vec.begin(), vec.end(), ptr) == vec.end())
+				vec.push_back(ptr);
+		};
+		switch (decl->kind)
+		{
+			case EDeclKind::CXX_RECORD_DECL:
+				push_unique(_meta_unit_data->marked_record_decls,   static_cast<CXXRecordDecl*>(decl));
+				break;
+			case EDeclKind::FUNCTION_DECL:
+				push_unique(_meta_unit_data->marked_function_decls, static_cast<FunctionDecl*>(decl));
+				break;
+			case EDeclKind::ENUM_DECL:
+				push_unique(_meta_unit_data->marked_enum_decls,     static_cast<EnumDecl*>(decl));
+				break;
+			default:
+				break;
+		}
+	}
+
 	Decl* CxxParserImpl::registerDeclaration(std::unique_ptr<Decl> decl, const bool is_marked)
 	{
 		auto [it, inserted] = _meta_unit_data->declaration_map.try_emplace(decl->id, decl.get());
 		if (!inserted)
 		{
+			// Already registered (e.g. earlier as a field-type dependency). Honor a
+			// late mark so the existing decl still lands in the marked list.
+			if (is_marked)
+				addToMarkedList(it->second);
 			return it->second;
 		}
 		// Assign the stable index before transferring ownership.
@@ -93,23 +120,8 @@ namespace lux::cxx::reflection
 		}
 
 		if (is_marked)
-		{
-			if (raw_ptr->kind == EDeclKind::CXX_RECORD_DECL)
-			{
-				auto record_decl = static_cast<CXXRecordDecl*>(raw_ptr);
-				_meta_unit_data->marked_record_decls.push_back(record_decl);
-			}
-			else if (raw_ptr->kind == EDeclKind::FUNCTION_DECL)
-			{
-				auto function_decl = static_cast<FunctionDecl*>(raw_ptr);
-				_meta_unit_data->marked_function_decls.push_back(function_decl);
-			}
-			else if (raw_ptr->kind == EDeclKind::ENUM_DECL)
-			{
-				auto enum_decl = static_cast<EnumDecl*>(raw_ptr);
-				_meta_unit_data->marked_enum_decls.push_back(enum_decl);
-			}
-		}
+			addToMarkedList(raw_ptr);
+
 		return raw_ptr;
 	}
 
@@ -384,9 +396,25 @@ namespace lux::cxx::reflection
 		_callback = std::move(callback);
 	}
 
+	bool CxxParserImpl::isExternalProxy(const Cursor& cursor)
+	{
+		const auto anns = parseAnnotations(cursor);
+		return std::find(anns.begin(), anns.end(), std::string{ "lux_external" }) != anns.end();
+	}
+
 	bool CxxParserImpl::parseMarkedDeclaration(const Cursor& cursor)
 	{
 		std::unique_ptr<Decl> decl = nullptr;
+
+		// External-registration proxy?  Detect the "lux_external" sentinel BEFORE
+		// the main-file guard: the proxy is fully macro-generated, so libclang
+		// reports its location as outside the main file even though the user wrote
+		// the macro there. Resolve _lux_target and parse the real foreign decl.
+		if (isExternalProxy(cursor))
+		{
+			return parseExternalProxy(cursor);
+		}
+
 		if (!cursor.isFromMainFile()) {
 			auto cursor_spell = cursor.cursorSpelling().to_std();
 			if (_callback) {
@@ -442,6 +470,68 @@ namespace lux::cxx::reflection
 		return true;
 	}
 
+	bool CxxParserImpl::parseExternalProxy(const Cursor& proxy)
+	{
+		// Find the `using _lux_target = X;` member, follow it to the foreign type's
+		// real declaration cursor, and run the normal record/enum parser on it.
+		// parseCXXRecordDecl / parseEnumDecl have no isFromMainFile guard, so the
+		// foreign type (in an included header) is parsed exactly like an intrusive
+		// one. The proxy record itself is never registered or emitted.
+		bool handled = false;
+		proxy.visitChildren(
+			[this, &handled](const Cursor& child, const Cursor& /*parent*/) -> CXChildVisitResult
+			{
+				const auto kind = child.cursorKind().kindEnum();
+				if ((kind != CXCursor_TypeAliasDecl && kind != CXCursor_TypedefDecl)
+					|| child.cursorSpelling().to_std() != "_lux_target")
+				{
+					return CXChildVisit_Continue;
+				}
+
+				const ClangType underlying = child.typedefDeclUnderlyingType();
+				const ClangType canonical  = underlying.canonicalType();
+				const Cursor    target     = Cursor::declOfType(canonical);
+
+				switch (target.cursorKind().kindEnum())
+				{
+					case CXCursor_StructDecl: [[fallthrough]];
+					case CXCursor_UnionDecl:  [[fallthrough]];
+					case CXCursor_ClassDecl:
+					{
+						auto record_decl = std::make_unique<CXXRecordDecl>();
+						parseCXXRecordDecl(target, *record_decl);
+						registerDeclaration(std::move(record_decl), /*is_marked=*/true);
+						break;
+					}
+					case CXCursor_EnumDecl:
+					{
+						auto enum_decl = std::make_unique<EnumDecl>();
+						parseEnumDecl(target, *enum_decl);
+						registerDeclaration(std::move(enum_decl), /*is_marked=*/true);
+						break;
+					}
+					default:
+					{
+						if (_callback)
+							_callback("lux_external target '" + target.cursorSpelling().to_std()
+								+ "' is not a record or enum — skipped");
+						_saw_unsupported_kind = true;
+						break;
+					}
+				}
+				handled = true;
+				return CXChildVisit_Break;
+			}
+		);
+
+		if (!handled && _callback)
+		{
+			_callback("lux_external proxy '" + proxy.cursorSpelling().to_std()
+				+ "' has no `using _lux_target = T;` member — skipped");
+		}
+		return true;
+	}
+
 	std::vector<Cursor> CxxParserImpl::findMarkedCursors(const Cursor& root_cursor) const
 	{
 		std::vector<Cursor> cursor_list;
@@ -451,7 +541,12 @@ namespace lux::cxx::reflection
 			{
 				if (!cursor.isFromMainFile())
 				{
-					return CXChildVisit_Continue;
+					// A LUX_REFLECT_EXTERNAL proxy is fully macro-generated, so
+					// libclang reports it as outside the main file. Recognise it by
+					// the lux_external sentinel and let it through; otherwise skip
+					// everything genuinely outside the main file.
+					if (!cursor.hasAttrs() || !isExternalProxy(cursor))
+						return CXChildVisit_Continue;
 				}
 
 				// CXCursor_LinkageSpec for some thing like extern "C"

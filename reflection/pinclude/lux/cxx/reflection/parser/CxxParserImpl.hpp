@@ -53,12 +53,22 @@ namespace lux::cxx::reflection
         TranslationUnit translate(std::string_view file, const std::vector<std::string>& commands) const;
         std::vector<Cursor> findMarkedCursors(const Cursor& root_cursor) const;
         bool parseMarkedDeclaration(const Cursor& cursor);
+        // True if the cursor is a LUX_REFLECT_EXTERNAL proxy (carries the
+        // "lux_external" annotation sentinel). A fully macro-generated proxy is
+        // reported by libclang as outside the main file, so this is checked
+        // ahead of the isFromMainFile guards.
+        static bool isExternalProxy(const Cursor& cursor);
+        // Resolve a LUX_REFLECT_EXTERNAL proxy: follow `using _lux_target = T;`
+        // to the foreign decl and parse it as if it were marked intrusively.
+        bool parseExternalProxy(const Cursor& proxy);
         bool hasDeclaration(const std::string& id) const;
         Decl* getDeclaration(const std::string& id) const;
         bool  hasType(const std::string& id) const;
         Type* getType(const std::string& id) const;
         Type* registerType(std::unique_ptr<Type> type);
         Decl* registerDeclaration(std::unique_ptr<Decl> decl, const bool is_marked = false);
+        // Append a decl to the matching marked_*_decls list (idempotent).
+        void  addToMarkedList(Decl* decl);
         static void parseBasicDecl(const Cursor& cursor, Decl& decl);
         void parseNamedDecl(const Cursor& cursor, NamedDecl& decl);
         void parseParamDecl(const Cursor& cursor, const int index, ParmVarDecl& decl);

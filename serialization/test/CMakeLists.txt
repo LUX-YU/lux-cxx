@@ -67,6 +67,42 @@ lux_target_add_serialization(
     ALWAYS_REGENERATE
 )
 
+#[[=================  External (non-intrusive) JSON round-trip  ==================]]
+add_executable(external_json_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/external_json_test.cpp
+)
+
+target_link_libraries(external_json_test
+    PRIVATE
+        lux::cxx::serialization_json
+        lux::cxx::reflection_runtime   # for <lux/cxx/reflection/runtime/Marker.hpp>
+)
+
+lux_target_add_serialization(
+    TARGET    external_json_test
+    HEADERS   ${CMAKE_CURRENT_SOURCE_DIR}/ext_json_register.hpp
+    GENERATOR $<TARGET_FILE:lux_meta_generator>
+    ALWAYS_REGENERATE
+)
+
+#[[==================  External (non-intrusive) XML round-trip  ==================]]
+add_executable(external_xml_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/external_xml_test.cpp
+)
+
+target_link_libraries(external_xml_test
+    PRIVATE
+        lux::cxx::serialization_xml
+        lux::cxx::reflection_runtime   # for <lux/cxx/reflection/runtime/Marker.hpp>
+)
+
+lux_target_add_serialization(
+    TARGET    external_xml_test
+    HEADERS   ${CMAKE_CURRENT_SOURCE_DIR}/ext_xml_register.hpp
+    GENERATOR $<TARGET_FILE:lux_meta_generator>
+    ALWAYS_REGENERATE
+)
+
 #[[========================  Arguments backend (CLI <-> struct)  ==================]]
 add_executable(serialization_arguments_test
     ${CMAKE_CURRENT_SOURCE_DIR}/arguments_test.cpp
