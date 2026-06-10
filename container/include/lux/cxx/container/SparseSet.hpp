@@ -510,6 +510,57 @@ namespace lux::cxx
         }
 
         /**
+         * @brief Constructs a value in-place at a CALLER-CHOSEN key, reconciling the
+         *        automatic allocation bookkeeping (free_ids_ / next_id_).
+         *
+         * Use case: restoring a previously erased element under its ORIGINAL key
+         * (e.g. undoing a removal where other data still references that key), or
+         * rebuilding a container from serialized data whose keys must be preserved.
+         * After a successful claim the key can never be handed out again by a later
+         * automatic insert/emplace:
+         * - If @p key was erased earlier, it is reclaimed from free_ids_.
+         * - If @p key >= next_id_, the skipped keys [next_id_, key) are pushed onto
+         *   free_ids_ (they stay allocatable) and next_id_ becomes key + 1. Note
+         *   this branch costs O(key - next_id_); callers restoring previously
+         *   allocated keys always hit the cheap branch.
+         *
+         * @tparam Args Parameter pack for Value's constructor.
+         * @param key  The key to claim. Must be >= Offset and not currently live.
+         * @param args Arguments used to construct the Value in-place.
+         * @return True if the key was claimed and the value constructed, false if
+         *         the key is below Offset or already occupied.
+         */
+        template <typename... Args>
+        bool try_emplace_at(Key key, Args&&... args)
+        {
+            if constexpr (Offset > 0) {
+                if (key < Offset) {
+                    return false;
+                }
+            }
+            if (BaseType::contains(key)) {
+                return false;
+            }
+            if (key >= next_id_) {
+                for (Key k = next_id_; k < key; ++k) {
+                    free_ids_.push_back(k);
+                }
+                next_id_ = key + 1;
+            } else {
+                // Previously erased: reclaim it from the free list (swap-remove).
+                for (size_type i = 0; i < free_ids_.size(); ++i) {
+                    if (free_ids_[i] == key) {
+                        free_ids_[i] = free_ids_.back();
+                        free_ids_.pop_back();
+                        break;
+                    }
+                }
+            }
+            BaseType::emplace(key, std::forward<Args>(args)...);
+            return true;
+        }
+
+        /**
          * @brief Erases the element associated with @p key if it exists.
          * @param key The key to remove.
          * @return True if the key was found and removed, false otherwise.
