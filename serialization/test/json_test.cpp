@@ -121,6 +121,31 @@ int main()
         check(m.has_value() && m.value().at("k0") == 0 && m.value().at("k4999") == 4999, "large map: values correct");
     }
 
+    // ---- reusable JsonParser: many documents through one amortized parser ----
+    {
+        JsonParser parser;
+        bool all_ok = true;
+        // Vary size each iteration so buffer reuse is exercised across documents;
+        // T owns its data, so each result stays valid after the next parse().
+        for (int i = 0; i < 1000; ++i)
+        {
+            Profile pi = p;
+            pi.age  = i;
+            pi.name = "u" + std::to_string(i);
+            const std::string ji = to_json(pi);
+            const auto ri = from_json<Profile>(parser, ji);
+            if (!ri || ri.value().age != i || ri.value().name != pi.name) { all_ok = false; break; }
+        }
+        check(all_ok, "JsonParser: 1000 reused parses round-trip correctly");
+
+        // Errors still surface cleanly, and reuse after an error keeps working.
+        const auto bad = from_json<Profile>(parser, "not json");
+        check(!bad.has_value() && bad.error().code == error_code::parse_error,
+              "JsonParser: malformed input -> parse_error");
+        const auto good = from_json<Profile>(parser, to_json(p));
+        check(good.has_value() && good.value().name == "Ada", "JsonParser: reuse after error still works");
+    }
+
     std::cout << "\n=== Results ===\nFailures: " << g_failures << "\n";
     return g_failures;
 }

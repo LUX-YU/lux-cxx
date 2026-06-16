@@ -32,7 +32,7 @@ namespace lux::cxx::ser
     class XmlOutputArchive
     {
     public:
-        explicit XmlOutputArchive(std::string_view root_name);
+        explicit XmlOutputArchive(std::string_view root_name, bool pretty = true);
         ~XmlOutputArchive();
         XmlOutputArchive(XmlOutputArchive&&) noexcept;
         XmlOutputArchive& operator=(XmlOutputArchive&&) noexcept;
@@ -51,7 +51,9 @@ namespace lux::cxx::ser
         void value(double);
         void value(std::string_view);
 
-        std::string str(bool pretty = true) const;
+        // Pretty/compact is fixed at construction (the writer streams directly,
+        // so the format is committed during save(), not deferred to here).
+        std::string str() const;
 
     private:
         struct Impl;
@@ -125,9 +127,9 @@ namespace lux::cxx::ser
     template <class T>
     [[nodiscard]] std::string to_xml(const T& v, std::string_view root_name = "root", bool pretty = true)
     {
-        XmlOutputArchive ar(root_name);
+        XmlOutputArchive ar(root_name, pretty);
         save(ar, v);
-        return ar.str(pretty);
+        return ar.str();
     }
 
     template <class T>

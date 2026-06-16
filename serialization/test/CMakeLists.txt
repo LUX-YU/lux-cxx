@@ -120,3 +120,23 @@ lux_target_add_serialization(
     GENERATOR $<TARGET_FILE:lux_meta_generator>
     ALWAYS_REGENERATE
 )
+
+#[[====================  Serialization throughput benchmark (opt-in)  ============]]
+option(ENABLE_SERIALIZATION_BENCH "Build the serialization throughput benchmark" OFF)
+if(ENABLE_SERIALIZATION_BENCH)
+    add_executable(serialization_bench
+        ${CMAKE_CURRENT_SOURCE_DIR}/serialization_bench.cpp
+    )
+    target_link_libraries(serialization_bench
+        PRIVATE
+            lux::cxx::serialization_json
+            lux::cxx::serialization_xml
+            lux::cxx::reflection_runtime
+    )
+    lux_target_add_serialization(
+        TARGET    serialization_bench
+        HEADERS   ${CMAKE_CURRENT_SOURCE_DIR}/bench_types.hpp
+        GENERATOR $<TARGET_FILE:lux_meta_generator>
+        ALWAYS_REGENERATE
+    )
+endif()

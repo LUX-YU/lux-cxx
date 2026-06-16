@@ -450,6 +450,10 @@ namespace lux::cxx::ser
             }
             out.clear();
             using V = typename U::mapped_type;
+            // unordered_map: reserve to avoid incremental rehashing (no-op for the
+            // node-based std::map, which has no reserve()).
+            if constexpr (requires { out.reserve(std::size_t{}); })
+                out.reserve(cur.member_count());
             bool ok = true;
             // Single O(n) pass over members (the indexed member_value/member_key form
             // is O(n^2) on ordered-map JSON objects and XML child lists).
@@ -478,6 +482,8 @@ namespace lux::cxx::ser
             out.clear();
             using K = typename U::key_type;
             using V = typename U::mapped_type;
+            if constexpr (requires { out.reserve(std::size_t{}); })
+                out.reserve(cur.size());   // unordered_map of entries: avoid rehashing
             bool ok = true;
             cur.for_each_element([&](std::size_t i, const Cur& e)   // single O(n) pass
             {
@@ -497,6 +503,11 @@ namespace lux::cxx::ser
             }
             out.clear();
             using V = std::ranges::range_value_t<U>;
+            // Reserve up front so a growing vector/basic_string doesn't reallocate
+            // O(log n) times while appending. size() is the actual parsed element
+            // count (bounded by the input), so it can't be abused to over-allocate.
+            if constexpr (requires { out.reserve(std::size_t{}); })
+                out.reserve(cur.size());
             bool ok = true;
             cur.for_each_element([&](std::size_t i, const Cur& el)   // single O(n) pass
             {

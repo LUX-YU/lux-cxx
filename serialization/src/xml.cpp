@@ -14,121 +14,223 @@ namespace lux::cxx::ser
     static const XMLElement* as_elem(const void* p) noexcept { return static_cast<const XMLElement*>(p); }
 
     // ===================== XmlOutputArchive ==============================
+    // Streaming writer: emits XML straight into a std::string as save() drives it,
+    // with NO intermediate tinyxml2 DOM (the old path allocated a full node tree,
+    // then printed it). Mirrors the JSON streaming writer. Each element's start tag
+    // is kept "open" (no '>') until its first child/text so scalar fields marked
+    // xml_attribute land as attributes. Per XML convention those fields precede the
+    // non-attribute ones (declaration order); should one arrive after a child is
+    // already written, it degrades to a child element — still well-formed, and it
+    // round-trips because the reader's member(..., as_attribute) falls back from an
+    // attribute to a same-named child element.
     struct XmlOutputArchive::Impl
     {
-        struct Frame { XMLElement* elem; bool is_array; };
-
-        XMLDocument        doc;
-        XMLElement*        root = nullptr;
-        std::vector<Frame> stack;
-        XMLElement*        pending = nullptr;   // object field <key> awaiting its value
-        bool               pending_attr = false;
-        std::string        pending_attr_name;
-
-        // If an attribute key is pending, returns the element to set it on (and
-        // consumes the flag, writing the name to `name`); otherwise nullptr.
-        XMLElement* attr_target(std::string& name)
+        struct Frame
         {
-            if (!pending_attr || stack.empty()) return nullptr;
-            pending_attr = false;
-            name = pending_attr_name;
-            return stack.back().elem;
+            std::size_t name_pos   = 0;     // [pos, pos+len) into `names` = this tag's name
+            std::size_t name_len   = 0;
+            bool        is_array   = false; // children are <item> vs named members
+            bool        start_open = true;  // '<name' written, '>' not yet (attrs ok)
+            bool        has_child  = false; // emitted >= 1 child element
+        };
+
+        std::string        out;
+        std::vector<Frame> stack;
+        std::string        names;           // stack arena of open tags' names: append on
+                                            // open, pop (resize) on close — reused, so the
+                                            // writer allocates only as `out`/`names` grow.
+        std::string        root_name;
+        bool               pretty = true;
+
+        std::string pending_key;    bool has_pending_key  = false;  // named child awaiting content
+        std::string pending_attr;   bool has_pending_attr = false;  // attribute name awaiting value
+
+        void indent(std::size_t depth)
+        {
+            if (!pretty) return;
+            out.push_back('\n');
+            out.append(depth * 2, ' ');
         }
 
-        // The element the next value/object/array should be written into.
-        XMLElement* acquire()
+        // Close the top element's start tag so children/text may follow.
+        void close_start_tag()
         {
-            if (stack.empty()) return root;
-            Frame& f = stack.back();
-            if (f.is_array)
+            if (!stack.empty() && stack.back().start_open)
             {
-                XMLElement* item = doc.NewElement("item");
-                f.elem->InsertEndChild(item);
-                return item;
+                out.push_back('>');
+                stack.back().start_open = false;
             }
-            return pending;   // object field element created by key()
+        }
+
+        static void append_escaped(std::string& o, std::string_view s, bool in_attr)
+        {
+            for (char c : s)
+            {
+                switch (c)
+                {
+                    case '&': o += "&amp;"; break;
+                    case '<': o += "&lt;";  break;
+                    case '>': o += "&gt;";  break;
+                    case '"': o += (in_attr ? "&quot;" : "\""); break;
+                    default:  o.push_back(c);
+                }
+            }
+        }
+
+        // Begin a child element <name (start tag left open): close the parent start
+        // tag, mark it as having a child, and indent.
+        void open_tag(std::string_view name)
+        {
+            if (!stack.empty())
+            {
+                close_start_tag();
+                stack.back().has_child = true;
+                indent(stack.size());
+            }
+            out.push_back('<');
+            out.append(name);
+        }
+
+        void write_leaf(std::string_view name, std::string_view raw, bool needs_escape)
+        {
+            open_tag(name);
+            out.push_back('>');
+            if (needs_escape) append_escaped(out, raw, false);
+            else              out.append(raw);
+            out += "</";
+            out.append(name);
+            out.push_back('>');
+        }
+
+        void emit_value(std::string_view raw, bool needs_escape)
+        {
+            if (has_pending_attr)
+            {
+                if (!stack.empty() && stack.back().start_open)
+                {
+                    out.push_back(' ');
+                    out.append(pending_attr);
+                    out += "=\"";
+                    if (needs_escape) append_escaped(out, raw, true);
+                    else              out.append(raw);
+                    out.push_back('"');
+                    has_pending_attr = false;
+                    return;
+                }
+                has_pending_attr = false;                       // start tag already closed:
+                write_leaf(pending_attr, raw, needs_escape);    // degrade to a child element
+                return;
+            }
+            if (has_pending_key)
+            {
+                has_pending_key = false;
+                write_leaf(pending_key, raw, needs_escape);
+                return;
+            }
+            if (!stack.empty() && stack.back().is_array) { write_leaf("item", raw, needs_escape); return; }
+            if (stack.empty()) { write_leaf(root_name, raw, needs_escape); return; }   // scalar root
+            write_leaf("item", raw, needs_escape);
+        }
+
+        void begin_container(bool is_array)
+        {
+            std::string_view name;   // views pending_key / root_name / a literal — never `out`
+            if (has_pending_key)      { name = pending_key; has_pending_key = false; }
+            else if (!stack.empty() && stack.back().is_array) name = "item";
+            else if (stack.empty())   name = root_name;                                 // root
+            else                      name = "item";
+
+            open_tag(name);   // start tag stays open so attributes can follow
+            const std::size_t pos = names.size();
+            names.append(name);                                 // remember for the close tag
+            stack.push_back(Frame{ pos, name.size(), is_array, true, false });
+        }
+
+        void end_container()
+        {
+            const Frame f = stack.back();
+            stack.pop_back();
+            if (!f.start_open)
+            {
+                if (f.has_child) indent(stack.size());          // close tag on its own line
+                out += "</";
+                out.append(names, f.name_pos, f.name_len);      // from arena (!= out): safe
+                out.push_back('>');
+            }
+            else
+            {
+                out += "/>";                                    // no content -> self-close
+            }
+            names.resize(f.name_pos);                           // pop this name off the arena
         }
     };
 
-    XmlOutputArchive::XmlOutputArchive(std::string_view root_name) : p_(std::make_unique<Impl>())
+    XmlOutputArchive::XmlOutputArchive(std::string_view root_name, bool pretty)
+        : p_(std::make_unique<Impl>())
     {
-        p_->root = p_->doc.NewElement(std::string(root_name).c_str());
-        p_->doc.InsertEndChild(p_->root);
+        p_->root_name.assign(root_name);
+        p_->pretty = pretty;
+        p_->out.reserve(256);
+        p_->stack.reserve(16);
+        p_->names.reserve(64);
     }
     XmlOutputArchive::~XmlOutputArchive() = default;
     XmlOutputArchive::XmlOutputArchive(XmlOutputArchive&&) noexcept = default;
     XmlOutputArchive& XmlOutputArchive::operator=(XmlOutputArchive&&) noexcept = default;
 
-    void XmlOutputArchive::begin_object(std::size_t) { p_->stack.push_back(Impl::Frame{ p_->acquire(), false }); }
-    void XmlOutputArchive::end_object()              { p_->stack.pop_back(); }
-    void XmlOutputArchive::begin_array(std::size_t)  { p_->stack.push_back(Impl::Frame{ p_->acquire(), true }); }
-    void XmlOutputArchive::end_array()               { p_->stack.pop_back(); }
+    void XmlOutputArchive::begin_object(std::size_t) { p_->begin_container(false); }
+    void XmlOutputArchive::end_object()              { p_->end_container(); }
+    void XmlOutputArchive::begin_array(std::size_t)  { p_->begin_container(true); }
+    void XmlOutputArchive::end_array()               { p_->end_container(); }
 
     void XmlOutputArchive::key(std::string_view name, bool as_attribute)
     {
-        if (as_attribute)
-        {
-            p_->pending_attr = true;
-            p_->pending_attr_name.assign(name);   // no child element; the value becomes an attribute
-            return;
-        }
-        p_->pending = p_->doc.NewElement(std::string(name).c_str());
-        p_->stack.back().elem->InsertEndChild(p_->pending);
+        if (as_attribute) { p_->pending_attr.assign(name); p_->has_pending_attr = true; }
+        else              { p_->pending_key.assign(name);  p_->has_pending_key  = true; }
     }
 
     void XmlOutputArchive::null_value()
     {
-        if (p_->stack.empty()) return;                 // root null -> empty root
-        Impl::Frame& f = p_->stack.back();
-        if (f.is_array)
+        if (p_->has_pending_attr) { p_->has_pending_attr = false; return; }   // omit attribute
+        if (p_->has_pending_key)  { p_->has_pending_key  = false; return; }   // omit optional field
+        if (!p_->stack.empty() && p_->stack.back().is_array)
         {
-            XMLElement* item = p_->doc.NewElement("item");
-            f.elem->InsertEndChild(item);              // empty <item/>
+            p_->close_start_tag();
+            p_->stack.back().has_child = true;
+            p_->indent(p_->stack.size());
+            p_->out += "<item/>";                                            // null array element
+            return;
         }
-        else if (p_->pending)
+        if (p_->stack.empty())                                               // scalar-root null
         {
-            f.elem->DeleteChild(p_->pending);          // omit disengaged optional field
-            p_->pending = nullptr;
+            p_->out.push_back('<');
+            p_->out.append(p_->root_name);
+            p_->out += "/>";
         }
     }
 
-    void XmlOutputArchive::value(bool b)
-    {
-        std::string n;
-        if (XMLElement* e = p_->attr_target(n)) e->SetAttribute(n.c_str(), b);
-        else p_->acquire()->SetText(b);
-    }
-    void XmlOutputArchive::value(double d)
-    {
-        std::string n;
-        if (XMLElement* e = p_->attr_target(n)) e->SetAttribute(n.c_str(), d);
-        else p_->acquire()->SetText(d);
-    }
+    void XmlOutputArchive::value(bool b) { p_->emit_value(b ? "true" : "false", false); }
     void XmlOutputArchive::value(std::int64_t i)
     {
-        std::string n;
-        if (XMLElement* e = p_->attr_target(n)) e->SetAttribute(n.c_str(), std::to_string(i).c_str());
-        else p_->acquire()->SetText(std::to_string(i).c_str());
+        char buf[32];
+        const auto r = std::to_chars(buf, buf + sizeof(buf), i);
+        p_->emit_value(std::string_view(buf, static_cast<std::size_t>(r.ptr - buf)), false);
     }
     void XmlOutputArchive::value(std::uint64_t u)
     {
-        std::string n;
-        if (XMLElement* e = p_->attr_target(n)) e->SetAttribute(n.c_str(), std::to_string(u).c_str());
-        else p_->acquire()->SetText(std::to_string(u).c_str());
+        char buf[32];
+        const auto r = std::to_chars(buf, buf + sizeof(buf), u);
+        p_->emit_value(std::string_view(buf, static_cast<std::size_t>(r.ptr - buf)), false);
     }
-    void XmlOutputArchive::value(std::string_view s)
+    void XmlOutputArchive::value(double d)
     {
-        std::string n;
-        if (XMLElement* e = p_->attr_target(n)) e->SetAttribute(n.c_str(), std::string(s).c_str());
-        else p_->acquire()->SetText(std::string(s).c_str());
+        char buf[32];
+        const auto r = std::to_chars(buf, buf + sizeof(buf), d);   // shortest round-trippable
+        p_->emit_value(std::string_view(buf, static_cast<std::size_t>(r.ptr - buf)), false);
     }
+    void XmlOutputArchive::value(std::string_view s) { p_->emit_value(s, true); }
 
-    std::string XmlOutputArchive::str(bool pretty) const
-    {
-        XMLPrinter printer(nullptr, !pretty);
-        p_->doc.Print(&printer);
-        return std::string(printer.CStr());
-    }
+    std::string XmlOutputArchive::str() const { return p_->out; }
 
     // ===================== XmlInputArchive ===============================
     bool XmlInputArchive::is_null()   const noexcept { return node_ == nullptr && attr_ == nullptr; }
@@ -164,7 +266,11 @@ namespace lux::cxx::ser
         if (as_attribute)
         {
             const char* v = e->Attribute(std::string(k).c_str());
-            return v ? XmlInputArchive(v, from_attr_t{}) : XmlInputArchive();
+            if (v) return XmlInputArchive(v, from_attr_t{});
+            // Fallback: a streaming writer that couldn't place the attribute in an
+            // already-closed start tag degrades it to a same-named child element.
+            // Reading it back either way keeps attribute round-trips order-independent.
+            return XmlInputArchive(e->FirstChildElement(std::string(k).c_str()));
         }
         return XmlInputArchive(e->FirstChildElement(std::string(k).c_str()));
     }

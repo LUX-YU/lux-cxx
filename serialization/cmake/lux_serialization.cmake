@@ -9,12 +9,14 @@
 # module's meta.cmake. A consumer therefore typically does:
 #
 #     find_package(lux-cxx REQUIRED COMPONENTS reflection_generator serialization)
-#     include_component_cmake_scripts(reflection_generator)   # add_meta / target_add_meta
-#     include_component_cmake_scripts(serialization)          # lux_target_add_serialization
+#     # Pass the NAMESPACED component name — the bare name (e.g. "reflection_generator")
+#     # only exists inside lux-cxx's own build tree, not in a consumer's.
+#     include_component_cmake_scripts(lux::cxx::reflection_generator) # add_meta/target_add_meta
+#     include_component_cmake_scripts(lux::cxx::serialization)        # lux_target_add_serialization
 #
 #     add_executable(app main.cpp)
 #     target_link_libraries(app PRIVATE lux::cxx::serialization)
-#     lux_target_add_serialization(
+#     lux_target_add_serialization(          # no GENERATOR needed — auto-located
 #         TARGET  app
 #         HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/config.hpp
 #     )
@@ -55,7 +57,7 @@ set(LUX_SERIALIZATION_TEMPLATE "${_lux_ser_template}"
 #   NAME     <metaName>            default: <TARGET>_serialization
 #   MARKER   <marker>              default: serializable
 #   META_SUFFIX <suffix>          default: .serialize.hpp
-#   GENERATOR <exe|genexpr>        default: find lux_meta_generator (or pass $<TARGET_FILE:lux_meta_generator>)
+#   GENERATOR <exe|genexpr>        default: lux::cxx::lux_meta_generator (auto-located). Omit it.
 #   OUT_DIR  <dir>                 default: ${CMAKE_BINARY_DIR}/metagen
 #   COMPILE_COMMANDS <json>
 #   SOURCE_FILE <cpp>

@@ -29,7 +29,7 @@ namespace lux::cxx::ser
     class JsonOutputArchive
     {
     public:
-        JsonOutputArchive();
+        explicit JsonOutputArchive(int indent = -1);
         ~JsonOutputArchive();
         JsonOutputArchive(JsonOutputArchive&&) noexcept;
         JsonOutputArchive& operator=(JsonOutputArchive&&) noexcept;
@@ -48,7 +48,7 @@ namespace lux::cxx::ser
         void value(double);
         void value(std::string_view);
 
-        std::string str(int indent = -1) const;
+        std::string str();   // moves out the built buffer
 
     private:
         struct Impl;
@@ -59,10 +59,9 @@ namespace lux::cxx::ser
     class JsonInputArchive
     {
     public:
-        JsonInputArchive() noexcept : node_(nullptr) {}
-        explicit JsonInputArchive(const void* node) noexcept : node_(node) {}
+        JsonInputArchive() noexcept = default;   // invalid cursor
 
-        explicit operator bool() const noexcept { return node_ != nullptr; }
+        explicit operator bool() const noexcept { return valid_; }
 
         bool is_null()   const noexcept;
         bool is_object() const noexcept;
@@ -89,7 +88,12 @@ namespace lux::cxx::ser
         bool read(std::string&)  const;
 
     private:
-        const void* node_;
+        // Holds a simdjson::dom::element by value (the type stays hidden in
+        // json.cpp). dom::element is a tiny trivially-copyable handle into the
+        // document's tape, so copying a cursor is just a byte copy.
+        friend struct JsonCursorAccess;
+        alignas(16) unsigned char storage_[24] {};
+        bool valid_ = false;
     };
 
     // ---- owns a parsed JSON tree; hands out a root cursor --------------------
@@ -111,6 +115,39 @@ namespace lux::cxx::ser
         std::unique_ptr<Impl> p_;
     };
 
+    // ---- reusable parser: amortizes the parse buffers across many documents ---
+    // Keep ONE instance and parse message after message. With the simdjson backend
+    // the tape and scratch buffer grow once and are then reused in place, so a
+    // steady-state loop allocates ~nothing per document — unlike from_json(text),
+    // which spins up a fresh parser (and padded copy) every call. This is the form
+    // for a high-throughput server loop.
+    //
+    // Lifetime: the cursor from parse() — and any string_view it yields — is valid
+    // only until the NEXT parse() on the same JsonParser (buffers are reused in
+    // place). from_json(parser, text) below is the safe path: it loads into a T,
+    // which owns its data, before you can re-parse.
+    //
+    // nlohmann backend: there is no reusable parser state, so each parse() builds a
+    // fresh DOM — identical results, just without the amortization. API is the same.
+    class JsonParser
+    {
+    public:
+        JsonParser();
+        ~JsonParser();
+        JsonParser(JsonParser&&) noexcept;
+        JsonParser& operator=(JsonParser&&) noexcept;
+        JsonParser(const JsonParser&) = delete;
+        JsonParser& operator=(const JsonParser&) = delete;
+
+        // Parse `text`, reusing this parser's buffers. The returned cursor is valid
+        // until the next parse() on this parser. Prefer from_json(parser, text).
+        [[nodiscard]] result<JsonInputArchive> parse(std::string_view text);
+
+    private:
+        struct Impl;
+        std::unique_ptr<Impl> p_;
+    };
+
     static_assert(OutputArchive<JsonOutputArchive>);
     static_assert(InputArchive<JsonInputArchive>);
 
@@ -118,9 +155,9 @@ namespace lux::cxx::ser
     template <class T>
     [[nodiscard]] std::string to_json(const T& v, int indent = -1)
     {
-        JsonOutputArchive ar;
+        JsonOutputArchive ar(indent);
         save(ar, v);
-        return ar.str(indent);
+        return ar.str();
     }
 
     template <class T>
@@ -131,6 +168,25 @@ namespace lux::cxx::ser
         T out{};
         error err;
         if (!load(doc->root(), out, &err))
+        {
+            if (err.code == error_code::ok)
+                err = error{ error_code::load_failed, "JSON deserialization failed", {} };
+            return lux::cxx::unexpected<error>(std::move(err));
+        }
+        return out;
+    }
+
+    // Reuse `parser` across calls to amortize the parse buffers — the hot-loop form
+    // of from_json(text). `out` owns its data, so it stays valid after the next
+    // parse() on `parser`.
+    template <class T>
+    [[nodiscard]] result<T> from_json(JsonParser& parser, std::string_view text)
+    {
+        auto cur = parser.parse(text);
+        if (!cur) return lux::cxx::unexpected<error>(cur.error());
+        T out{};
+        error err;
+        if (!load(cur.value(), out, &err))
         {
             if (err.code == error_code::ok)
                 err = error{ error_code::load_failed, "JSON deserialization failed", {} };

@@ -16,6 +16,8 @@ single generic traversal turns that into any supported format.
 ## At a glance
 
 - **One annotation:** `LUX_META(serializable)` on a struct/class (and on enums).
+- **Or zero annotations:** reflect a third-party type you can't touch with
+  `LUX_REFLECT_EXTERNAL(serializable, ::ext::Type)` written in your own code.
 - **Backends:** JSON · XML · Arguments (CLI). Same data model, pluggable sinks.
 - **Types:** scalars, `bool`, strings, enums (by name), most std containers
   (`vector`/`list`/`deque`/`set`/`map`/`unordered_map`), `pair`/`tuple`/`array`,
@@ -102,6 +104,35 @@ serialized **by name**; unmarked enums fall back to their underlying integer.
 
 ---
 
+## External types (`LUX_REFLECT_EXTERNAL`)
+
+When you cannot put `LUX_META` on a type — a third-party header you do not own —
+register it **non-intrusively from your own code**. The generator follows the
+registration to the real declaration and produces the same `meta_info<T>` /
+`enum_meta<E>` as the intrusive path, so every backend works unchanged.
+
+```cpp
+// foreign.hpp (cannot modify):
+//   namespace ext { struct Color { float r, g, b; };
+//                    enum class Mode { Auto, Manual, Off }; }
+
+// your own header, at global / namespace scope:
+#include <lux/cxx/reflection/runtime/Marker.hpp>
+#include "foreign.hpp"
+
+LUX_REFLECT_EXTERNAL(serializable, ::ext::Color)       // reflect all PUBLIC members
+LUX_REFLECT_EXTERNAL_ENUM(serializable, ::ext::Mode)   // reflect the enumerators
+```
+
+Point `lux_target_add_serialization(HEADERS ...)` at the header holding the
+`LUX_REFLECT_EXTERNAL` lines. Only **public** members are reflected (a member
+pointer to a private member cannot be formed from outside the class). For a type
+with no reflectable members — e.g. `Eigen` / `Sophus`, whose data is private —
+write a hand-written `serializer<T>` (see [below](#custom-types-non-intrusive))
+instead.
+
+---
+
 ## Type support
 
 | Category        | Types                                              | Representation |
@@ -124,9 +155,18 @@ serialized **by name**; unmarked enums fall back to their underlying integer.
 ### JSON — `<lux/cxx/serialization/json.hpp>` (link `lux::cxx::serialization_json`)
 ```cpp
 std::string   to_json(const T&, int indent = -1);
-result<T>     from_json<T>(std::string_view);
+result<T>     from_json<T>(std::string_view);               // one-shot: fresh parser per call
+
+JsonParser    parser;                                       // keep one, parse many documents
+result<T>     from_json<T>(JsonParser&, std::string_view);  // amortizes the parse buffers
 ```
-Backed by a vendored nlohmann_json, fully hidden behind the compiled backend.
+The backend is selected at configure time — `-DLUX_SERIALIZATION_JSON=nlohmann` (default)
+or `=simdjson` — and is fully hidden either way, so this header pulls in no third-party
+type. For a high-throughput loop, hold one `JsonParser` and call `from_json(parser, text)`
+per message: with the simdjson backend its tape and scratch buffer grow once and are then
+reused, removing the per-message parser/padding allocations (a fixed ~constant per call).
+A bare `parser.parse()` returns a cursor valid only until the next `parse()` on it;
+`from_json(parser, text)` is the safe form — it loads into a `T` that owns its data.
 
 ### XML — `<lux/cxx/serialization/xml.hpp>` (link `lux::cxx::serialization_xml`)
 ```cpp
@@ -153,17 +193,35 @@ and `push_back` sequences (`--inputs a b`).
 
 ## CMake integration
 
-```cmake
-find_package(lux-cxx REQUIRED COMPONENTS
-    reflection_generator serialization serialization_json)
+`find_package(lux-cxx)` exposes the backends and the codegen helpers. The vendored
+**tinyxml2 and nlohmann_json are internal** — you never request, link, or even see
+them; they are compiled inside the backends.
 
-include_component_cmake_scripts(reflection_generator)   # add_meta / target_add_meta
-include_component_cmake_scripts(serialization)          # lux_target_add_serialization
+```cmake
+# The codegen helpers (include_component_cmake_scripts / add_meta / ...) are
+# provided by lux-cmake-toolset. A lux-based project usually already finds it; a
+# standalone consumer should add this line:
+find_package(LUX-CMAKE-TOOLSET CONFIG REQUIRED)
+
+find_package(lux-cxx REQUIRED COMPONENTS
+    reflection_generator        # codegen helpers: add_meta / target_add_meta
+    serialization               # core + lux_target_add_serialization
+    serialization_json          # JSON backend  (request only the backends you use)
+    serialization_xml)          # XML backend
+
+# Pass the NAMESPACED component name. The bare name (e.g. "serialization") only
+# exists inside lux-cxx's own build tree, never in a consumer project.
+include_component_cmake_scripts(lux::cxx::reflection_generator)  # add_meta / target_add_meta
+include_component_cmake_scripts(lux::cxx::serialization)         # lux_target_add_serialization
 
 add_executable(app main.cpp)
-target_link_libraries(app PRIVATE lux::cxx::serialization_json)
+target_link_libraries(app PRIVATE
+    lux::cxx::serialization_json
+    lux::cxx::serialization_xml)
 
 # Generate <header-stem>.serialize.hpp from the annotated headers and attach it.
+# No GENERATOR needed — the installed lux_meta_generator is located automatically
+# (it is also exposed as the imported target lux::cxx::lux_meta_generator).
 lux_target_add_serialization(
     TARGET  app
     HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/config.hpp
@@ -172,9 +230,10 @@ lux_target_add_serialization(
 ```
 
 `lux_target_add_serialization(TARGET <t> HEADERS <h...> [NAME ..] [MARKER ..]
-[META_SUFFIX ..] [GENERATOR ..] [OUT_DIR ..] [ECHO] [ALWAYS_REGENERATE])`
-runs `lux_meta_generator` with the bundled `serializable.template.inja` and adds
-the generated headers' directory to the target's include path.
+[META_SUFFIX ..] [GENERATOR ..] [OUT_DIR ..] [ECHO] [ALWAYS_REGENERATE])` runs
+`lux_meta_generator` with the bundled `serializable.template.inja` and adds the
+generated headers' directory to the target's include path. `GENERATOR` is
+optional — omit it and the installed generator is found for you.
 
 ---
 
