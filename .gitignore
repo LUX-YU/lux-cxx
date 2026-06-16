@@ -9,3 +9,4 @@
 /CMakeSettings.json
 /.cache
 *sync-conflict-*
+.claude
