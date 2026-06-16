@@ -15,6 +15,12 @@ generate_visibility_header(
     GENERATE_FILE_PATH  lux/cxx/visibility.h
 )
 
+# When ON, header-only dependencies not found via find_package (inja, and the
+# optional simdjson backend's amalgamation source) are auto-downloaded into the
+# build tree instead of failing. libclang is NOT fetchable — it always needs the
+# system (vcpkg / LLVM install).
+option(LUX_FETCH_DEPS "Auto-download missing header-only deps (inja, simdjson source)" OFF)
+
 add_subdirectory(third_party)
 add_subdirectory(container)
 add_subdirectory(memory)
@@ -26,9 +32,14 @@ add_subdirectory(algorithm)
 add_subdirectory(archtype)
 add_subdirectory(event)
 
+# stacktrace: std::stacktrace on C++23, a cpptrace-backed shim otherwise. Opt-in
+# because the backport needs cpptrace (system or fetched via LUX_FETCH_DEPS).
+option(ENABLE_STACKTRACE "Build the lux::cxx::stacktrace module" OFF)
+if(ENABLE_STACKTRACE)
+    add_subdirectory(stacktrace)
+endif()
+
 set(ENABLE_COMPONENTS 
-    nlohmann_json
-    tinyxml2
     container
     memory
     concurrent
@@ -43,6 +54,12 @@ set(ENABLE_COMPONENTS
     serialization_xml
     serialization_arguments
 )
+
+# stacktrace hides cpptrace inside its DLL (PRIVATE dep on a SHARED lib), so the
+# export carries no third-party reference — safe to ship/find_package.
+if(ENABLE_STACKTRACE)
+    list(APPEND ENABLE_COMPONENTS stacktrace)
+endif()
 
 set(ENABLE_REFLECTION OFF CACHE BOOL "ENABLE REFLECTION SUPPORT")
 if(ENABLE_REFLECTION)

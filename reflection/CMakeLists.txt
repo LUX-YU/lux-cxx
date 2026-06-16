@@ -3,7 +3,50 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # Find required packages
 find_package(LibClang REQUIRED)
-find_package(inja          CONFIG REQUIRED)
+
+# inja drives the generator's templating (header-only; needs nlohmann/json.hpp,
+# which lux::cxx::nlohmann_json provides). Prefer a system/vcpkg package; with
+# -DLUX_FETCH_DEPS=ON, fetch its single header when absent. (libclang above is NOT
+# fetchable — it always needs the system.)
+find_package(inja CONFIG QUIET)
+if(NOT TARGET pantor::inja)
+    if(LUX_FETCH_DEPS)
+        set(LUX_INJA_VERSION "3.4.0" CACHE STRING "inja single-header version to fetch")
+        set(LUX_INJA_SHA256  "8022ce5a782e911598accc42311ac44a0b9ccd9ad5995f439c828fb534974543"
+            CACHE STRING "SHA-256 of the fetched inja.hpp (empty to skip verification)")
+        set(_inja_inc "${CMAKE_BINARY_DIR}/_deps/inja-${LUX_INJA_VERSION}/include")
+        if(NOT EXISTS "${_inja_inc}/inja/inja.hpp")
+            set(_inja_hash "")
+            if(LUX_INJA_SHA256)
+                set(_inja_hash EXPECTED_HASH "SHA256=${LUX_INJA_SHA256}")
+            endif()
+            message(STATUS "[reflection] fetching inja ${LUX_INJA_VERSION} (single header)")
+            file(DOWNLOAD
+                "https://raw.githubusercontent.com/pantor/inja/v${LUX_INJA_VERSION}/single_include/inja/inja.hpp"
+                "${_inja_inc}/inja/inja.hpp"
+                ${_inja_hash}
+                TLS_VERIFY ON
+                STATUS _inja_dl)
+            list(GET _inja_dl 0 _inja_code)
+            if(NOT _inja_code EQUAL 0)
+                list(GET _inja_dl 1 _inja_msg)
+                file(REMOVE "${_inja_inc}/inja/inja.hpp")
+                message(FATAL_ERROR "[reflection] failed to fetch inja: ${_inja_msg}")
+            endif()
+        endif()
+        add_library(lux_inja_fetched INTERFACE)
+        target_include_directories(lux_inja_fetched INTERFACE "${_inja_inc}")
+        target_link_libraries(lux_inja_fetched INTERFACE lux::cxx::nlohmann_json)
+        add_library(pantor::inja ALIAS lux_inja_fetched)
+        message(STATUS "[reflection] inja: fetched single header ${LUX_INJA_VERSION}")
+    else()
+        message(FATAL_ERROR
+            "[reflection] 'inja' not found. Install it (e.g. vcpkg) or configure with "
+            "-DLUX_FETCH_DEPS=ON to download its single header automatically.")
+    endif()
+else()
+    message(STATUS "[reflection] inja: found system package")
+endif()
 
 #[[==========================
     Reflection Runtime
@@ -42,8 +85,9 @@ component_add_internal_dependencies(
         lux::cxx::compile_time
 )
 
-# nlohmann_json is an implementation detail (MetaUnitSerializer.cpp) — PRIVATE, never exported.
-target_link_libraries(reflection_runtime PRIVATE lux::cxx::nlohmann_json)
+# nlohmann_json is header-only and used only in MetaUnitSerializer.cpp, so it is
+# fully compiled in. $<BUILD_INTERFACE:> keeps it out of the installed export.
+target_link_libraries(reflection_runtime PRIVATE $<BUILD_INTERFACE:lux::cxx::nlohmann_json>)
 
 #[[==========================
     Reflection Parser
@@ -133,7 +177,7 @@ component_add_internal_dependencies(
         lux::cxx::reflection_runtime
 )
 
-target_link_libraries(reflection_generator PRIVATE lux::cxx::nlohmann_json)
+target_link_libraries(reflection_generator PRIVATE $<BUILD_INTERFACE:lux::cxx::nlohmann_json>)
 
 component_add_cmake_scripts(
 	reflection_generator
@@ -174,6 +218,12 @@ install(
 	TARGETS lux_meta_generator
     RUNTIME DESTINATION bin
 )
+
+# In-tree alias so this build can use the same namespaced name consumers get.
+# Downstream, meta.cmake synthesises an IMPORTED lux::cxx::lux_meta_generator that
+# points at the installed bin/ executable, so $<TARGET_FILE:lux::cxx::lux_meta_generator>
+# works identically in-tree and after find_package().
+add_executable(lux::cxx::lux_meta_generator ALIAS lux_meta_generator)
 
 option(ENABLE_REFLECTION_TEST "Enable reflection test" ON)
 if(ENABLE_REFLECTION_TEST)

@@ -6,6 +6,24 @@ if(_COMPONENT_META_TOOLS_INCLUDED_)
 endif()
 set(_COMPONENT_META_TOOLS_INCLUDED_ TRUE)
 
+# ---------------------------------------------------------------------------
+# Expose the generator as the namespaced target lux::cxx::lux_meta_generator,
+# consistent with the lux::cxx::* library targets. In lux-cxx's own build tree an
+# ALIAS already exists; in a consumer's tree we synthesise an IMPORTED executable
+# pointing at the installed bin/lux_meta_generator (located via find_program — the
+# install prefix is already on CMAKE_PREFIX_PATH after find_package(lux-cxx)).
+# Either way, downstream can use $<TARGET_FILE:lux::cxx::lux_meta_generator> or, more
+# simply, just omit GENERATOR from lux_target_add_serialization / add_meta.
+# ---------------------------------------------------------------------------
+if(NOT TARGET lux::cxx::lux_meta_generator)
+    find_program(LUX_META_GENERATOR_EXECUTABLE NAMES lux_meta_generator)
+    if(LUX_META_GENERATOR_EXECUTABLE)
+        add_executable(lux::cxx::lux_meta_generator IMPORTED GLOBAL)
+        set_target_properties(lux::cxx::lux_meta_generator PROPERTIES
+            IMPORTED_LOCATION "${LUX_META_GENERATOR_EXECUTABLE}")
+    endif()
+endif()
+
 # -------------------------------------------------
 # _meta_json_escape(<out_var> <in_string>)
 #   Escape a string so it is safe inside a JSON string literal. The generator's
@@ -108,11 +126,18 @@ function(add_meta)
         set(ARGS_DRY_RUN OFF)
     endif()
 
-    # Locate the generator executable "lux_meta_generator"
+    # Locate the generator. Default: the namespaced target lux::cxx::lux_meta_generator
+    # (the in-tree alias, or the IMPORTED target synthesised at the top of this file
+    # from the installed binary); fall back to a bare find_program. Consumers should
+    # NOT need to pass GENERATOR at all.
     if(NOT ARGS_GENERATOR)
-        find_program(LUX_META_GENERATOR lux_meta_generator REQUIRED)
-        if(NOT LUX_META_GENERATOR)
-            message(FATAL_ERROR "[target_add_meta] Could not find the lux_meta_generator executable")
+        if(TARGET lux::cxx::lux_meta_generator)
+            set(LUX_META_GENERATOR "$<TARGET_FILE:lux::cxx::lux_meta_generator>")
+        else()
+            find_program(LUX_META_GENERATOR lux_meta_generator REQUIRED)
+            if(NOT LUX_META_GENERATOR)
+                message(FATAL_ERROR "[add_meta] Could not find the lux_meta_generator executable")
+            endif()
         endif()
     else()
         set(LUX_META_GENERATOR "${ARGS_GENERATOR}")
@@ -247,6 +272,20 @@ function(target_add_meta)
                     break()
                 endif()
             endforeach()
+        endif()
+    endif()
+
+    # Normalise to an absolute path. The generator matches source_file against
+    # compile_commands.json (whose keys are absolute) and against the filesystem,
+    # so a relative entry like "main.cpp" — which is exactly what a natural
+    # add_executable(app main.cpp) stores in SOURCES — would not be found.
+    # Resolve it against the directory in which the target was defined.
+    if(_main_src AND NOT IS_ABSOLUTE "${_main_src}")
+        get_target_property(_tgt_src_dir "${_target_name}" SOURCE_DIR)
+        if(_tgt_src_dir AND NOT _tgt_src_dir STREQUAL "NOTFOUND")
+            get_filename_component(_main_src "${_main_src}" ABSOLUTE BASE_DIR "${_tgt_src_dir}")
+        else()
+            get_filename_component(_main_src "${_main_src}" ABSOLUTE)
         endif()
     endif()
 
