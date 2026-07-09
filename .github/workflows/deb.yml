@@ -1,0 +1,72 @@
+name: deb
+
+# Builds the lux-cxx .deb natively for amd64 and arm64 (arm64 target = NVIDIA
+# Jetson / JetPack 6 = Ubuntu 22.04). Native runners mean no cross-compilation
+# and no QEMU. Reflection is ON: it needs system libclang (libclang-dev) and inja
+# (a single header, fetched via LUX_FETCH_DEPS since CI has network). This ships
+# lux_meta_generator + the reflection libs that lux-engine will depend on. The
+# resulting .deb Depends on libclang at runtime (SHLIBDEPS derives it automatically).
+# Serialization is always built; only its test suite is switched off below.
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04,     arch: amd64 }
+          - { runner: ubuntu-22.04-arm, arch: arm64 }   # public repos: free; private: paid/larger runner
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: lux-cxx
+
+      - name: Install tooling
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          cmake ninja-build g++ dpkg-dev git pkg-config libclang-dev
+
+      # lux-cmake-toolset is a build-time dependency (CMake macros only). Until it
+      # is published to the apt repo, install it straight from source. Once the
+      # repo is live this step becomes: apt-get install -y lux-cmake-toolset
+      - name: Install lux-cmake-toolset (build dep)
+        run: |
+          git clone --depth 1 https://github.com/LUX-YU/lux-cmake-toolset.git
+          cmake -S lux-cmake-toolset -B ts-build -DCMAKE_INSTALL_PREFIX=/usr
+          sudo cmake --install ts-build
+
+      - name: Derive version from tag
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "extra=-DCPACK_PACKAGE_VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure
+        run: >
+          cmake -S lux-cxx -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INSTALL_PREFIX=/usr
+          -DENABLE_REFLECTION=ON
+          -DENABLE_REFLECTION_TEST=OFF
+          -DENABLE_SERIALIZATION_TEST=OFF
+          -DLUX_FETCH_DEPS=ON
+          ${{ steps.ver.outputs.extra }}
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Package
+        run: cd build && cpack -G DEB --verbose
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lux-cxx-deb-${{ matrix.arch }}
+          path: build/*.deb
+          if-no-files-found: error

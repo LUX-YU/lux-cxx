@@ -77,3 +77,24 @@ install_components(
     NAMESPACE       lux::cxx
     COMPONENTS      ${ENABLE_COMPONENTS}
 )
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Packaging (CPack). One lux-cxx package: headers + static libs + CMake config
+# (plus the reflection shared libs and lux_meta_generator when ENABLE_REFLECTION=ON).
+#
+# install_components() uses ABSOLUTE install destinations rooted at
+# CMAKE_INSTALL_PREFIX, so configure with -DCMAKE_INSTALL_PREFIX=/usr, then
+# `cpack -G DEB`. lux_configure_packaging comes from lux-cmake-toolset (found above).
+# The build-time dependency on the toolset's CMake macros can't be inferred from
+# binaries, so it is declared explicitly; SHLIBDEPS covers the rest (e.g. libclang).
+# ──────────────────────────────────────────────────────────────────────────────
+lux_configure_packaging(
+    NAME     lux-cxx
+    VERSION  0.0.2
+    SUMMARY  "LUX core C++20 library (containers, compile-time, serialization, reflection)"
+    VENDOR   "LUX-YU"
+    CONTACT  "LUX-YU <chenhui.lux.yu@outlook.com>"
+    HOMEPAGE "https://github.com/LUX-YU/lux-cxx"
+    DEB_DEPENDS  "lux-cmake-toolset (>= 0.5.0)"
+    RPM_REQUIRES "lux-cmake-toolset >= 0.5.0"
+)
