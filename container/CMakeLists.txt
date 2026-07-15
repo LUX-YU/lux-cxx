@@ -11,7 +11,7 @@ component_include_directories(
         include
 )
 
-set(CONTAINER_TEST true BOOL "Enable container test")
-if(CONTAINER_TEST)
+set(ENABLE_CONTAINER_TEST true CACHE BOOL "Enable container test")
+if(ENABLE_CONTAINER_TEST)
     add_subdirectory(test)    
 endif()

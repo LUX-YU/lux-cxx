@@ -2,7 +2,10 @@
 #include <lux/cxx/serialization/xml.hpp>
 
 #include <charconv>
+#include <cerrno>
+#include <cstdlib>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <tinyxml2.h>
@@ -356,8 +359,23 @@ namespace lux::cxx::ser
             std::string_view sv{ t };
             const auto* first = sv.data();
             const auto* last  = sv.data() + sv.size();
-            const auto res = std::from_chars(first, last, out);
-            return res.ec == std::errc() && res.ptr == last;
+#if !defined(__cpp_lib_to_chars)
+            // libc++ (Android NDK) ships integral from_chars only; the
+            // floating-point overloads are deleted. Fall back to strtod —
+            // safe here because t is NUL-terminated (tinyxml2 C string).
+            if constexpr (std::is_floating_point_v<T>) {
+                char* end = nullptr;
+                errno = 0;
+                const double v = std::strtod(first, &end);
+                if (end != last || errno == ERANGE) return false;
+                out = static_cast<T>(v);
+                return true;
+            } else
+#endif
+            {
+                const auto res = std::from_chars(first, last, out);
+                return res.ec == std::errc() && res.ptr == last;
+            }
         }
     }
 
