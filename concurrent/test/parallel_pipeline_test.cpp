@@ -310,7 +310,7 @@ int main()
         std::cout << "Layer " << I << ":\n";
         tuple_traits::for_each_type<Layer>(
             []<typename Node, size_t J>() {
-            std::cout << "  Node " << J << ": " << typeid(Node).name() << "\n";
+            std::cout << "  Node " << J << ": " << lux::cxx::type_name<Node>() << "\n";
         }
         );
     }

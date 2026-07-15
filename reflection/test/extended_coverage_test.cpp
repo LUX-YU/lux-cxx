@@ -432,7 +432,7 @@ int main(int argc, char* argv[])
                     for (auto fidx : r->field_decls) {
                         auto* f = meta.getDeclAs<FieldDecl>(fidx);
                         if (f && f->spelling == fieldName && f->type) {
-                            return dynamic_cast<const RecordType*>(f->type);
+                            return type_cast<const RecordType>(f->type);
                         }
                     }
                     return nullptr;
@@ -573,7 +573,7 @@ int main(int argc, char* argv[])
                             auto& first_arg = rt->template_arguments[0];
                             check(first_arg.kind == TemplateArgument::Kind::Type,
                                   "matrix first arg is a Type argument");
-                            auto* inner = dynamic_cast<const RecordType*>(first_arg.type);
+                            auto* inner = type_cast<const RecordType>(first_arg.type);
                             if (inner) {
                                 check(inner->isTemplateSpecialization(),
                                       "matrix inner type is also a template specialization");

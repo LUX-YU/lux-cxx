@@ -65,7 +65,7 @@ namespace lux::cxx::reflection
 		// decl.type is normally an EnumType (created via createOrFindType inside
 		// parseNamedDecl). For dependent enums it can be null or a different
 		// kind — guard instead of asserting.
-		if (auto* enum_type = dynamic_cast<EnumType*>(decl.type))
+		if (auto* enum_type = type_cast<EnumType>(decl.type))
 		{
 			enum_type->decl = &decl;
 			enum_type->kind = decl.is_scoped ? ETypeKinds::ScopedEnum : ETypeKinds::UnscopedEnum;

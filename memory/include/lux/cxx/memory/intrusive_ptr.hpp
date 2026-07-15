@@ -135,6 +135,11 @@ namespace lux::cxx {
     void swap(intrusive_ptr<T>& lhs, intrusive_ptr<T>& rhs) noexcept { lhs.swap(rhs); }
 
     // ═════ pointer casts (mirroring <memory>) ═════
+    //
+    // No dynamic_pointer_cast: the project bans RTTI. Downcast with
+    // static_pointer_cast when the concrete type is known from context, or
+    // dispatch on an explicit kind tag (see reflection's decl_cast for the
+    // pattern).
 
     template <class T, class U>
     intrusive_ptr<T> static_pointer_cast(const intrusive_ptr<U>& p) {
@@ -144,15 +149,6 @@ namespace lux::cxx {
     template <class T, class U>
     intrusive_ptr<T> const_pointer_cast(const intrusive_ptr<U>& p) {
         return intrusive_ptr<T>(const_cast<T*>(p.get()));
-    }
-
-    template <class T, class U>
-    intrusive_ptr<T> dynamic_pointer_cast(const intrusive_ptr<U>& p) {
-        auto raw = p.get();
-        if (auto q = dynamic_cast<T*>(raw)) {
-            return intrusive_ptr<T>(q);
-        }
-        return intrusive_ptr<T>();
     }
 
     // ═════ helper mix‑in: intrusive_ref_counter ═════

@@ -4,8 +4,10 @@
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
+#include <string_view>
 #include <type_traits>
-#include <typeinfo>
+
+#include <lux/cxx/compile_time/type_info.hpp>
 
 #include "Common.hpp"
 
@@ -42,7 +44,7 @@ namespace lux::cxx::archtype {
      * @brief Metadata for a single component type. Looked up by ComponentTypeID.
      */
     struct ComponentTypeInfo {
-        const char*       name      = nullptr;
+        std::string_view  name{};   ///< lux::cxx::type_name<T> (RTTI-free, not NUL-terminated)
         std::uint32_t     size      = 0;
         std::uint32_t     alignment = 0;
         std::uint8_t      flags     = 0; ///< bitwise OR of ComponentFlag values
@@ -89,7 +91,7 @@ namespace lux::cxx::archtype {
                 throw std::length_error("TypeRegistry: exceeded kMaxComponents distinct component types");
             auto& info = type_infos_[id];
 
-            info.name      = typeid(T).name();
+            info.name      = type_name<T>();
             // Empty / tag components carry no data: report size=0 so chunk
             // layout reserves zero bytes for them. (sizeof(T) is at least 1 in
             // C++ even for empty classes — that minimum byte is purely a

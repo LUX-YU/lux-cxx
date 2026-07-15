@@ -1098,7 +1098,7 @@ namespace lux::cxx::reflection
 				auto it = declByJsonIndex.find(idx);
 				if (it == declByJsonIndex.end())
 					continue;
-				if (auto* casted = dynamic_cast<T*>(it->second))
+				if (auto* casted = decl_cast<T>(it->second))
 					decls.push_back(casted);
 			}
 		};

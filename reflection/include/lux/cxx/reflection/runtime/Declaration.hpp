@@ -238,6 +238,8 @@ namespace lux::cxx::reflection {
     class EnumDecl final : public TagDecl
     {
     public:
+        static constexpr bool classof(EDeclKind k) noexcept { return k == EDeclKind::ENUM_DECL; }
+
         bool is_scoped = false;            ///< True if this enum is declared as 'enum class'.
         BuiltinType* underlying_type = nullptr; ///< The underlying integer type of the enum.
         std::vector<Enumerator> enumerators;    ///< The list of enumerators in this enum.
@@ -258,6 +260,11 @@ namespace lux::cxx::reflection {
     class RecordDecl : public TagDecl
     {
     public:
+        static constexpr bool classof(EDeclKind k) noexcept
+        {
+            return k == EDeclKind::RECORD_DECL || k == EDeclKind::CXX_RECORD_DECL;
+        }
+
         // Basic fields or methods can be stored here.
         // For plain C structs or unions, you might not have C++-specific info.
 
@@ -278,6 +285,8 @@ namespace lux::cxx::reflection {
     class CXXRecordDecl final : public RecordDecl
     {
     public:
+        static constexpr bool classof(EDeclKind k) noexcept { return k == EDeclKind::CXX_RECORD_DECL; }
+
         /// Indices of direct base class CXXRecordDecl entries.
         std::vector<size_t> bases;
 
@@ -327,6 +336,8 @@ namespace lux::cxx::reflection {
     class FieldDecl final : public DeclaratorDecl
     {
     public:
+        static constexpr bool classof(EDeclKind k) noexcept { return k == EDeclKind::FIELD_DECL; }
+
         EVisibility visibility = EVisibility::INVALID; ///< e.g., public, protected, private (if relevant).
         std::size_t offset {}; ///< The field offset in bytes (or bits, depending on usage).
 
@@ -346,6 +357,15 @@ namespace lux::cxx::reflection {
     class FunctionDecl : public DeclaratorDecl
     {
     public:
+        static constexpr bool classof(EDeclKind k) noexcept
+        {
+            return k == EDeclKind::FUNCTION_DECL
+                || k == EDeclKind::CXX_METHOD_DECL
+                || k == EDeclKind::CXX_CONSTRUCTOR_DECL
+                || k == EDeclKind::CXX_CONVERSION_DECL
+                || k == EDeclKind::CXX_DESTRUCTOR_DECL;
+        }
+
         ///< The return type of the function.
         Type* result_type = nullptr;  
         /// Indices of ParmVarDecl entries in MetaUnitData::declarations.
@@ -375,6 +395,14 @@ namespace lux::cxx::reflection {
     class CXXMethodDecl : public FunctionDecl
     {
     public:
+        static constexpr bool classof(EDeclKind k) noexcept
+        {
+            return k == EDeclKind::CXX_METHOD_DECL
+                || k == EDeclKind::CXX_CONSTRUCTOR_DECL
+                || k == EDeclKind::CXX_CONVERSION_DECL
+                || k == EDeclKind::CXX_DESTRUCTOR_DECL;
+        }
+
         EVisibility visibility = EVisibility::INVALID; ///< Visibility (public, protected, private).
 
         bool is_static = false; ///< True if this is a static method.
@@ -398,6 +426,8 @@ namespace lux::cxx::reflection {
     class CXXConstructorDecl final : public CXXMethodDecl
     {
     public:
+        static constexpr bool classof(EDeclKind k) noexcept { return k == EDeclKind::CXX_CONSTRUCTOR_DECL; }
+
         void accept(DeclVisitor* visitor) override
         {
             visitor->visit(this);
@@ -410,6 +440,8 @@ namespace lux::cxx::reflection {
     class CXXConversionDecl final : public CXXMethodDecl
     {
     public:
+        static constexpr bool classof(EDeclKind k) noexcept { return k == EDeclKind::CXX_CONVERSION_DECL; }
+
         void accept(DeclVisitor* visitor) override
         {
             visitor->visit(this);
@@ -422,6 +454,8 @@ namespace lux::cxx::reflection {
     class CXXDestructorDecl final : public CXXMethodDecl
     {
     public:
+        static constexpr bool classof(EDeclKind k) noexcept { return k == EDeclKind::CXX_DESTRUCTOR_DECL; }
+
         void accept(DeclVisitor* visitor) override
         {
             visitor->visit(this);
@@ -432,7 +466,14 @@ namespace lux::cxx::reflection {
      * VarDecl: Represents a variable declaration (non-parameter) in C/C++,
      * such as global/local variables.
      */
-    class VarDecl : public DeclaratorDecl {};
+    class VarDecl : public DeclaratorDecl
+    {
+    public:
+        static constexpr bool classof(EDeclKind k) noexcept
+        {
+            return k == EDeclKind::VAR_DECL || k == EDeclKind::PARAM_VAR_DECL;
+        }
+    };
 
     /**
      * ParmVarDecl: Represents a parameter variable declaration in a function parameter list.
@@ -440,6 +481,8 @@ namespace lux::cxx::reflection {
     class ParmVarDecl final : public VarDecl
     {
     public:
+        static constexpr bool classof(EDeclKind k) noexcept { return k == EDeclKind::PARAM_VAR_DECL; }
+
         std::size_t arg_index {};  ///< The index of this parameter in the function parameter list.
 
         void accept(DeclVisitor* visitor) override
@@ -447,4 +490,23 @@ namespace lux::cxx::reflection {
             visitor->visit(this);
         }
     };
+
+    /**
+     * RTTI-free replacement for dynamic_cast within the Decl hierarchy
+     * (the project bans RTTI): dispatches on @ref Decl::kind via
+     * T::classof, mirroring LLVM's isa/dyn_cast idiom.
+     *
+     * Returns nullptr when @p d is null or is not a T.
+     */
+    template<typename T>
+    [[nodiscard]] T* decl_cast(Decl* d) noexcept
+    {
+        return (d && T::classof(d->kind)) ? static_cast<T*>(d) : nullptr;
+    }
+
+    template<typename T>
+    [[nodiscard]] const T* decl_cast(const Decl* d) noexcept
+    {
+        return (d && T::classof(d->kind)) ? static_cast<const T*>(d) : nullptr;
+    }
 } // namespace lux::cxx::reflection

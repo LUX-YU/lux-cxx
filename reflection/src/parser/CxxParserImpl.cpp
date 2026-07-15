@@ -106,9 +106,9 @@ namespace lux::cxx::reflection
 			auto back_patch = [&](size_t child_idx)
 			{
 				auto* child = _meta_unit_data->declarations[child_idx].get();
-				if (auto* f = dynamic_cast<FieldDecl*>(child))
+				if (auto* f = decl_cast<FieldDecl>(child))
 					f->parent_class = own_index;
-				else if (auto* m = dynamic_cast<CXXMethodDecl*>(child))
+				else if (auto* m = decl_cast<CXXMethodDecl>(child))
 					m->parent_class = own_index;
 			};
 			for (auto idx : cxxr->field_decls)        back_patch(idx);

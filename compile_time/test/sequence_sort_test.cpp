@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
     using seq_type    = typename TestStruct<const Position&, const Velocity&, const Health&>::seq_type;
     using sorted_type = typename lux::cxx::quick_sort_sequence<seq_type>::type;
 
-    std::cout << "sorted_type:" << typeid(sorted_type).name() << std::endl;
+    std::cout << "sorted_type:" << lux::cxx::type_name<sorted_type>() << std::endl;
 
     return 0;
 }

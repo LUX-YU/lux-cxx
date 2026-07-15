@@ -585,7 +585,7 @@ namespace lux::cxx::archtype {
         //
         // Per-registry singleton storage for things that aren't entity
         // components (time, input, asset manager, RNG, ...). Indexed by
-        // std::type_index, so independent from the kMaxComponents=64 limit.
+        // lux::cxx::type_hash, so independent from the kMaxComponents=64 limit.
         ContextStorage&       ctx()       noexcept { return ctx_; }
         const ContextStorage& ctx() const noexcept { return ctx_; }
 

@@ -180,6 +180,7 @@ namespace lux::cxx::reflection {
     {
     public:
         static constexpr auto static_kind = ETypeKinds::Builtin;
+        static constexpr bool classof(ETypeKinds k) noexcept { return k == ETypeKinds::Builtin; }
 
         /**
          * EBuiltinKind enumerates a variety of built-in types recognized by Clang.
@@ -334,6 +335,15 @@ namespace lux::cxx::reflection {
     {
     public:
         static constexpr auto static_kind = ETypeKinds::Pointer;
+        static constexpr bool classof(ETypeKinds k) noexcept
+        {
+            // The parser refines Pointer into the four fine-grained values.
+            return k == ETypeKinds::Pointer
+                || k == ETypeKinds::PointerToObject
+                || k == ETypeKinds::PointerToFunction
+                || k == ETypeKinds::PointerToDataMember
+                || k == ETypeKinds::PointerToMemberFunction;
+        }
 
         Type* pointee = nullptr;   ///< The type being pointed to.
         bool  is_pointer_to_member{ false }; ///< True if it's a pointer-to-member type (C++ feature).
@@ -364,6 +374,7 @@ namespace lux::cxx::reflection {
     {
     public:
         static constexpr auto static_kind = ETypeKinds::LvalueReference;
+        static constexpr bool classof(ETypeKinds k) noexcept { return k == ETypeKinds::LvalueReference; }
 
         void accept(TypeVisitor* visitor) override {
             visitor->visit(this);
@@ -377,6 +388,7 @@ namespace lux::cxx::reflection {
     {
     public:
         static constexpr auto static_kind = ETypeKinds::RvalueReference;
+        static constexpr bool classof(ETypeKinds k) noexcept { return k == ETypeKinds::RvalueReference; }
 
         void accept(TypeVisitor* visitor) override {
             visitor->visit(this);
@@ -416,6 +428,13 @@ namespace lux::cxx::reflection {
     {
     public:
         static constexpr auto static_kind = ETypeKinds::Record;
+        static constexpr bool classof(ETypeKinds k) noexcept
+        {
+            // Class/Union are reserved labels whose class identity is RecordType.
+            return k == ETypeKinds::Record
+                || k == ETypeKinds::Class
+                || k == ETypeKinds::Union;
+        }
 
         /// The template name without arguments (e.g., "std::vector").
         /// Empty if this is not a template specialization.
@@ -443,6 +462,13 @@ namespace lux::cxx::reflection {
     {
     public:
         static constexpr auto static_kind = ETypeKinds::Enum;
+        static constexpr bool classof(ETypeKinds k) noexcept
+        {
+            // The parser refines Enum into ScopedEnum / UnscopedEnum.
+            return k == ETypeKinds::Enum
+                || k == ETypeKinds::ScopedEnum
+                || k == ETypeKinds::UnscopedEnum;
+        }
 
         void accept(TypeVisitor* visitor) override {
             visitor->visit(this);
@@ -461,6 +487,7 @@ namespace lux::cxx::reflection {
     {
     public:
         static constexpr auto static_kind = ETypeKinds::Function;
+        static constexpr bool classof(ETypeKinds k) noexcept { return k == ETypeKinds::Function; }
 
         Type* result_type = nullptr;         ///< The function's return type.
         std::vector<Type*> param_types;      ///< The list of parameter types.
@@ -470,4 +497,23 @@ namespace lux::cxx::reflection {
 			visitor->visit(this);
 		}
     };
+
+    /**
+     * RTTI-free replacement for dynamic_cast within the Type hierarchy
+     * (the project bans RTTI): dispatches on @ref Type::kind via
+     * T::classof, mirroring LLVM's isa/dyn_cast idiom.
+     *
+     * Returns nullptr when @p t is null or is not a T.
+     */
+    template<typename T>
+    [[nodiscard]] T* type_cast(Type* t) noexcept
+    {
+        return (t && T::classof(t->kind)) ? static_cast<T*>(t) : nullptr;
+    }
+
+    template<typename T>
+    [[nodiscard]] const T* type_cast(const Type* t) noexcept
+    {
+        return (t && T::classof(t->kind)) ? static_cast<const T*>(t) : nullptr;
+    }
 } // namespace lux::cxx::reflection

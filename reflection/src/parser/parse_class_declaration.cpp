@@ -270,7 +270,7 @@ namespace lux::cxx::reflection
         // Link the associated RecordType back to this declaration.
         // Template declarations may not have an instantiated record type yet,
         // so guard with a null check instead of assert.
-        if (auto* record_type = dynamic_cast<RecordType*>(decl.type))
+        if (auto* record_type = type_cast<RecordType>(decl.type))
             record_type->decl = &decl;
     }
 }

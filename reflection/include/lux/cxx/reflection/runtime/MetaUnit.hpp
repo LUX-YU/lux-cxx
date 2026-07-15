@@ -61,7 +61,7 @@ namespace lux::cxx::reflection
 		template<typename T>
 		[[nodiscard]] T* getDeclAs(size_t idx) const
 		{
-			return dynamic_cast<T*>(getDeclAt(idx));
+			return decl_cast<T>(getDeclAt(idx));
 		}
 
 		std::string toJson(int indent = -1) const;

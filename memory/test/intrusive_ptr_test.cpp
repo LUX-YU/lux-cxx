@@ -73,10 +73,13 @@ int main() {
     for (auto& t : threads) t.join();           // all copies --ref at join
 
 
+    // ---------------------------------------------------------------------
+    // 4. Polymorphic ownership through a base-class view (ADL hook dispatch)
+    // ---------------------------------------------------------------------
     intrusive_ptr<Base> base(new Derived);      // ref = 1 (Base view)
-    auto derived = lux::cxx::dynamic_pointer_cast<Derived>(base);
+    auto derived = lux::cxx::static_pointer_cast<Derived>(base);   // concrete type known here
     if (derived) {
-        std::cout << "dynamic_pointer_cast succeeded, extra=" << derived->extra << "\n";
+        std::cout << "static_pointer_cast succeeded, extra=" << derived->extra << "\n";
     }
 
     // ---------------------------------------------------------------------
