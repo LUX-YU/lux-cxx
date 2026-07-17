@@ -390,6 +390,12 @@ namespace lux::cxx
          * (BlockingQueue::pop returns false only then). For an immediate teardown
          * that abandons still-queued tasks, use shutdown_now().
          */
+        /// Number of worker threads owned by this pool.
+        [[nodiscard]] std::size_t worker_count() const noexcept
+        {
+            return _workers.size();
+        }
+
         void close()
         {
             _tasks.close();   // refuse new pushes; pop() drains the rest, then returns false
