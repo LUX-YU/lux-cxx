@@ -1,8 +1,15 @@
 # Add cmake module path for custom Find modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-# Find required packages
-find_package(LibClang REQUIRED)
+# Find required packages.
+# LibClang is HOST-ONLY tooling: it feeds the parser and the meta-generator
+# executable. Cross builds (e.g. arm64-android) ship only reflection_runtime +
+# reflection_generator (neither links libclang) and consume the generator EXE
+# from a host install via meta.cmake's find_program path — so the parser, the
+# executable and this find are all gated off when cross-compiling (2026-07-20).
+if(NOT CMAKE_CROSSCOMPILING)
+    find_package(LibClang REQUIRED)
+endif()
 
 # inja drives the generator's templating (header-only; needs nlohmann/json.hpp,
 # which lux::cxx::nlohmann_json provides). Prefer a system/vcpkg package; with
@@ -90,8 +97,9 @@ component_add_internal_dependencies(
 target_link_libraries(reflection_runtime PRIVATE $<BUILD_INTERFACE:lux::cxx::nlohmann_json>)
 
 #[[==========================
-    Reflection Parser
+    Reflection Parser (host-only: hard libclang dependency — see gate above)
 =============================]]
+if(NOT CMAKE_CROSSCOMPILING)
 set(REFLECTION_PARSER_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/CxxParserImpl.cpp
@@ -144,6 +152,7 @@ component_add_transitive_commands(
     "list(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}/cmake_scripts\")"
     "find_package(LibClang REQUIRED)"
 )
+endif() # NOT CMAKE_CROSSCOMPILING — reflection_parser
 
 #[[==========================
     Reflection Generator
@@ -192,8 +201,9 @@ target_compile_definitions(
 )
 
 #[[==========================
-    Executable: lux_meta_generator
+    Executable: lux_meta_generator (host-only: links the parser → libclang)
 =============================]]
+if(NOT CMAKE_CROSSCOMPILING)
 add_executable(
 	lux_meta_generator
     ${CMAKE_CURRENT_SOURCE_DIR}/src/generator/MetaGenerator.cpp
@@ -224,9 +234,10 @@ install(
 # points at the installed bin/ executable, so $<TARGET_FILE:lux::cxx::lux_meta_generator>
 # works identically in-tree and after find_package().
 add_executable(lux::cxx::lux_meta_generator ALIAS lux_meta_generator)
+endif() # NOT CMAKE_CROSSCOMPILING — lux_meta_generator
 
 option(ENABLE_REFLECTION_TEST "Enable reflection test" ON)
-if(ENABLE_REFLECTION_TEST)
+if(ENABLE_REFLECTION_TEST AND NOT CMAKE_CROSSCOMPILING)
     set(TEST_TEMPLATE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/templates)
     add_subdirectory(test)    
 endif()

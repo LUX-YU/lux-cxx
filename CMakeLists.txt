@@ -64,7 +64,11 @@ endif()
 set(ENABLE_REFLECTION OFF CACHE BOOL "ENABLE REFLECTION SUPPORT")
 if(ENABLE_REFLECTION)
     add_subdirectory(reflection)
-    list(APPEND ENABLE_COMPONENTS reflection_parser)
+    # Parser is host-only (libclang); cross builds ship runtime + generator
+    # libs only — see reflection/CMakeLists.txt gate (2026-07-20).
+    if(NOT CMAKE_CROSSCOMPILING)
+        list(APPEND ENABLE_COMPONENTS reflection_parser)
+    endif()
     list(APPEND ENABLE_COMPONENTS reflection_runtime)
     list(APPEND ENABLE_COMPONENTS reflection_generator)
 endif()
