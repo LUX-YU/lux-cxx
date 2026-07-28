@@ -642,15 +642,22 @@ namespace lux::cxx::reflection
 
 	void CxxParserImpl::parsePointerType(const ClangType& clang_type, PointerType& type)
 	{
-		type.pointee = createOrFindType(clang_type.pointeeType());
+		// createOrFindType dispatches on the CANONICAL kind but hands over the
+		// SUGARED type — for a typedef-of-pointer (e.g. `typedef struct T* H;`)
+		// clang_getPointeeType on the sugar yields CXType_Invalid, which
+		// createOrFindType maps to nullptr. Take the pointee from the canonical
+		// type, and never dereference a pointee that still failed to resolve.
+		type.pointee = createOrFindType(clang_type.canonicalType().pointeeType());
+		const bool pointee_is_function =
+			type.pointee != nullptr && type.pointee->kind == ETypeKinds::Function;
 		if (type.is_pointer_to_member)
 		{
-			type.kind = type.pointee->kind == ETypeKinds::Function
+			type.kind = pointee_is_function
 				? ETypeKinds::PointerToMemberFunction : ETypeKinds::PointerToDataMember;
 		}
 		else
 		{
-			type.kind = type.pointee->kind == ETypeKinds::Function
+			type.kind = pointee_is_function
 				? ETypeKinds::PointerToFunction : ETypeKinds::PointerToObject;
 		}
 		parseBasicType(clang_type, type);
@@ -658,7 +665,8 @@ namespace lux::cxx::reflection
 
 	void CxxParserImpl::parseReferenceType(const ClangType& clang_type, ReferenceType& type)
 	{
-		type.referred_type = createOrFindType(clang_type.pointeeType());
+		// Same sugar hazard as parsePointerType above.
+		type.referred_type = createOrFindType(clang_type.canonicalType().pointeeType());
 		parseBasicType(clang_type, type);
 	}
 
