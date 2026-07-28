@@ -137,6 +137,7 @@ static bool processTargetFile(const std::filesystem::path& file,
     ParseOptions parse_options;
     parse_options.commands = options;                  // Command-line compile options.
     parse_options.marker_symbol = generator_config.marker;  // Marker used in the source to denote declarations.
+    parse_options.parse_included_marked = generator_config.parse_included_marked;
     parse_options.name = file_path;                // The name of the file to parse.
     parse_options.pch_file = "";                       // Placeholder: PCH support to be added later.
     parse_options.version = "1.0.0";                  // Placeholder: version support to be added later.

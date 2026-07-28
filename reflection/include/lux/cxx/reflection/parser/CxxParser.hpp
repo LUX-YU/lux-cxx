@@ -56,6 +56,14 @@ namespace lux::cxx::reflection
 		// Symbol used to exclude individual members from reflection.
 		// Members annotated with LUX_META(<exclude_symbol>) will be skipped.
 		std::string              exclude_symbol = "no_reflect";
+		// Opt-in: also parse marked declarations that live in headers INCLUDED
+		// by the target file (default keeps the main-file-only guard). Lets a
+		// generator pull in a struct defined next to its own consumers (e.g. a
+		// pass-params scalars struct shared with the editor header) without
+		// forcing both into one file. Leave false for registration-style
+		// templates — they would otherwise re-register every marked type the
+		// TU can see, once per including TU.
+		bool                     parse_included_marked = false;
         // commands The commands to pass to the parser
 		std::vector<std::string> commands;
 		std::string              pch_file;

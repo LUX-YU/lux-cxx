@@ -80,6 +80,7 @@ function(add_meta)
         SOURCE_FILE
         SERIAL_META
         DRY_RUN
+        PARSE_INCLUDED_MARKED
     )
     set(multi_value_args
         TARGET_FILES
@@ -125,6 +126,11 @@ function(add_meta)
     if(NOT ARGS_DRY_RUN)
         set(ARGS_DRY_RUN OFF)
     endif()
+    if(NOT ARGS_PARSE_INCLUDED_MARKED)
+        # OFF keeps the main-file-only guard; ON also parses marked declarations
+        # from headers the target file includes (see ParseOptions in CxxParser.hpp).
+        set(ARGS_PARSE_INCLUDED_MARKED OFF)
+    endif()
 
     # Locate the generator. Default: the namespaced target lux::cxx::lux_meta_generator
     # (the in-tree alias, or the IMPORTED target synthesised at the top of this file
@@ -159,6 +165,7 @@ function(add_meta)
         META_EXTRA_COMPILE_OPTIONS  "${ARGS_EXTRA_COMPILE_OPTIONS}"
         META_SERIAL_META            "${ARGS_SERIAL_META}"
         META_DRY_RUN                "${ARGS_DRY_RUN}"
+        META_PARSE_INCLUDED_MARKED  "${ARGS_PARSE_INCLUDED_MARKED}"
         META_ECHO                   "${ARGS_ECHO}"
         META_JSON_FIELD             "${ARGS_JSON_FIELD}"
     )
@@ -231,6 +238,7 @@ function(target_add_meta)
     get_target_property(_meta_extra_compile_options ${_meta_name} META_EXTRA_COMPILE_OPTIONS)
     get_target_property(_meta_serial_meta ${_meta_name} META_SERIAL_META)
     get_target_property(_meta_dry_run ${_meta_name} META_DRY_RUN)
+    get_target_property(_meta_parse_included ${_meta_name} META_PARSE_INCLUDED_MARKED)
     get_target_property(_meta_echo   ${_meta_name} META_ECHO)
     get_target_property(_meta_gen_exe ${_meta_name} META_GENERATOR)
     get_target_property(_meta_json_fields ${_meta_name} META_JSON_FIELD)
@@ -368,8 +376,14 @@ function(target_add_meta)
     else()
       set(dry_run_value false)
     endif()
+    if("${_meta_parse_included}" STREQUAL "ON")
+      set(parse_included_value true)
+    else()
+      set(parse_included_value false)
+    endif()
 
     file(APPEND "${_config_file}" "  \"serial_meta\": ${serial_meta_value},\n")
+    file(APPEND "${_config_file}" "  \"parse_included_marked\": ${parse_included_value},\n")
     file(APPEND "${_config_file}" "  \"dry_run\": ${dry_run_value}\n")
 
     if(_meta_json_fields)

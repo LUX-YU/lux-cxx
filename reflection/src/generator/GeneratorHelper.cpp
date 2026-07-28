@@ -361,6 +361,7 @@ namespace lux::cxx::reflection
         }
 		config.serial_meta              = j.value("serial_meta", true);
 		config.dry_run                  = j.value("dry_run", false);
+		config.parse_included_marked    = j.value("parse_included_marked", false);
 		config.cxx_standard             = j.value("cxx_standard", std::string("c++20"));
 		if (j.contains("preprocessor_defines") && j["preprocessor_defines"].is_array()) {
 			config.preprocessor_defines = j["preprocessor_defines"].get<std::vector<std::string>>();

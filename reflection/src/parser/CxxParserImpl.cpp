@@ -415,7 +415,7 @@ namespace lux::cxx::reflection
 			return parseExternalProxy(cursor);
 		}
 
-		if (!cursor.isFromMainFile()) {
+		if (!cursor.isFromMainFile() && !_options.parse_included_marked) {
 			auto cursor_spell = cursor.cursorSpelling().to_std();
 			if (_callback) {
 				_callback("Cursor is not from main file: " + cursor_spell);
@@ -539,12 +539,13 @@ namespace lux::cxx::reflection
 		root_cursor.visitChildren(
 			[this, &cursor_list](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
 			{
-				if (!cursor.isFromMainFile())
+				if (!cursor.isFromMainFile() && !_options.parse_included_marked)
 				{
 					// A LUX_REFLECT_EXTERNAL proxy is fully macro-generated, so
 					// libclang reports it as outside the main file. Recognise it by
 					// the lux_external sentinel and let it through; otherwise skip
-					// everything genuinely outside the main file.
+					// everything genuinely outside the main file. ParseOptions::
+					// parse_included_marked lifts this guard wholesale (opt-in).
 					if (!cursor.hasAttrs() || !isExternalProxy(cursor))
 						return CXChildVisit_Continue;
 				}

@@ -31,6 +31,9 @@ namespace lux::cxx::reflection
 		bool					 serial_meta;
 		// 是否不生成任何文件
 		bool                     dry_run;
+		// 是否放行「被 include 的头中的标记声明」(ParseOptions::parse_included_marked)。
+		// 默认 false 保持仅主文件;注册型模板勿开(会按 TU 重复注册可见类型)。
+		bool                     parse_included_marked = false;
 		// C++ 标准版本，默认 c++20
 		std::string              cxx_standard = "c++20";
 		// 预处理宏定义，默认 __LUX_PARSE_TIME__=1
