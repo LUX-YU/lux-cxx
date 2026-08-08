@@ -1,4 +1,5 @@
 #include <lux/cxx/concurrent/ThreadPool.hpp>
+#include <lux/cxx/compile_time/inplace_move_only_function.hpp>
 
 #include <atomic>
 #include <cassert>
@@ -11,6 +12,8 @@ int main()
 {
     using namespace lux::cxx;
     using namespace std::chrono_literals;
+
+    static_assert(sizeof(inplace_move_only_function<void(), 32>) >= 32);
 
     std::cout << "hardware_concurrency = "
         << std::jthread::hardware_concurrency() << '\n';
@@ -87,6 +90,45 @@ int main()
             assert(futs[i].get() == i);     // every future fulfilled, no broken_promise
         assert(done.load() == 200);
         std::cout << "close() drained all queued tasks OK\n";
+    }
+
+    /*------------------------------------------------------------
+     * 1d. Non-blocking, future-free detached submission.
+     *-----------------------------------------------------------*/
+    {
+        ThreadPool detached_pool(1, 1);
+        std::atomic<bool> started{false};
+        std::atomic<bool> release{false};
+        std::atomic<int> completed{0};
+
+        auto first = detached_pool.trySubmitDetached(
+            [&started, &release, &completed]() noexcept
+            {
+                started.store(true, std::memory_order_release);
+                while (!release.load(std::memory_order_acquire))
+                    std::this_thread::yield();
+                completed.fetch_add(1, std::memory_order_relaxed);
+            }
+        );
+        assert(first == EQueuePushResult::ACCEPTED);
+        while (!started.load(std::memory_order_acquire))
+            std::this_thread::yield();
+
+        assert(detached_pool.trySubmitDetached([&completed]() noexcept
+        {
+            completed.fetch_add(1, std::memory_order_relaxed);
+        }) == EQueuePushResult::ACCEPTED);
+        assert(detached_pool.trySubmitDetached([&completed]() noexcept
+        {
+            completed.fetch_add(1, std::memory_order_relaxed);
+        }) == EQueuePushResult::FULL);
+
+        release.store(true, std::memory_order_release);
+        detached_pool.drain();
+        assert(completed.load(std::memory_order_relaxed) == 2);
+        detached_pool.close();
+        assert(detached_pool.trySubmitDetached([]() noexcept {}) ==
+               EQueuePushResult::CLOSED);
     }
 
     /*------------------------------------------------------------

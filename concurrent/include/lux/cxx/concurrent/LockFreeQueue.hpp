@@ -12,8 +12,10 @@
 #include <type_traits>
 #include <utility>
 #include <new>
+#include <optional>
 #include <thread>
 #include <algorithm>
+#include <lux/cxx/concurrent/QueueStatus.hpp>
 
 namespace lux::cxx
 {
@@ -107,6 +109,30 @@ namespace lux::cxx
             return emplace(std::forward<U>(value));
         }
 
+        template <class... Args>
+        [[nodiscard]] EQueuePushResult tryEmplace(Args&&... args)
+            noexcept(std::is_nothrow_constructible_v<T, Args...>)
+        {
+            if (closed_.load(std::memory_order_acquire))
+                return EQueuePushResult::CLOSED;
+
+            const auto tail = tail_.load(std::memory_order_relaxed);
+            const auto next = (tail + 1) & mask_;
+            if (next == head_.load(std::memory_order_acquire))
+                return EQueuePushResult::FULL;
+
+            new (&buffer_[tail]) T(std::forward<Args>(args)...);
+            tail_.store(next, std::memory_order_release);
+            return EQueuePushResult::ACCEPTED;
+        }
+
+        template <class U>
+        [[nodiscard]] EQueuePushResult tryPush(U&& value)
+            noexcept(std::is_nothrow_constructible_v<T, U&&>)
+        {
+            return tryEmplace(std::forward<U>(value));
+        }
+
         /**
          * @brief  Pop the front element into @p out.
          * @param  out   Reference receiving the element.
@@ -126,6 +152,24 @@ namespace lux::cxx
 
             head_.store((head + 1) & mask_, std::memory_order_release);
             return true;
+        }
+
+        /// Pop by move construction. This overload supports move-only payloads
+        /// that are neither default constructible nor move assignable while
+        /// retaining the queue's allocation-free steady-state behavior.
+        [[nodiscard]] std::optional<T> pop() noexcept(
+            std::is_nothrow_move_constructible_v<T> &&
+            std::is_nothrow_destructible_v<T>)
+        {
+            const auto head = head_.load(std::memory_order_relaxed);
+            if (head == tail_.load(std::memory_order_acquire))
+                return std::nullopt;
+
+            T* ptr = std::launder(reinterpret_cast<T*>(&buffer_[head]));
+            std::optional<T> value{std::in_place, std::move(*ptr)};
+            ptr->~T();
+            head_.store((head + 1) & mask_, std::memory_order_release);
+            return value;
         }
 
         // ------------------------------------------------------------------
@@ -200,6 +244,12 @@ namespace lux::cxx
 
         /** @return Maximum number of elements the queue can hold. */
         [[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
+
+        /// The ring reserves one slot to distinguish full from empty.
+        [[nodiscard]] std::size_t usableCapacity() const noexcept
+        {
+            return capacity_ - 1;
+        }
 
     private:
         /**

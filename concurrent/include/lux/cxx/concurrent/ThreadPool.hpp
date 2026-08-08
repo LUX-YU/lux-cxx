@@ -22,6 +22,8 @@
  */
 
 #include <concepts>
+#include <atomic>
+#include <condition_variable>
 #include <exception>
 #include <functional>
 #include <future>
@@ -43,6 +45,12 @@
 
 namespace lux::cxx
 {
+    enum class EThreadPoolDrainMode : std::uint8_t
+    {
+        DRAIN,
+        ABORT,
+    };
+
     /**
      * @brief A handle for a submitted task that allows tracking and control
      * 
@@ -216,7 +224,7 @@ namespace lux::cxx
 #endif
                 };
 
-            if (!_tasks.push(std::move(wrapped)))
+            if (!enqueue(std::move(wrapped)))
                 throw std::runtime_error("ThreadPool queue closed");
 
             return task_handle<Ret>{ std::move(fut), std::move(src) };
@@ -275,7 +283,7 @@ namespace lux::cxx
 #endif
                 };
 
-            if (!_tasks.push(std::move(wrapped)))
+            if (!enqueue(std::move(wrapped)))
                 throw std::runtime_error("ThreadPool queue closed");
 
             return fut;
@@ -330,7 +338,7 @@ namespace lux::cxx
 #endif
                 };
 
-            if (!_tasks.push(std::move(wrapped)))
+            if (!enqueue(std::move(wrapped)))
                 throw std::runtime_error("ThreadPool queue closed");
 
             return task_handle<Ret>{ std::move(fut), std::move(src) };
@@ -374,7 +382,7 @@ namespace lux::cxx
 #endif
                 };
 
-            if (!_tasks.push(std::move(wrapped)))
+            if (!enqueue(std::move(wrapped)))
                 throw std::runtime_error("ThreadPool queue closed");
 
             return fut;
@@ -394,6 +402,43 @@ namespace lux::cxx
         [[nodiscard]] std::size_t worker_count() const noexcept
         {
             return _workers.size();
+        }
+
+        /// Submit a fire-and-forget task without blocking or allocating a
+        /// promise/future. Callables that do not fit RawTask's inline storage
+        /// are rejected at compile time so successful submission is heap-free.
+        template <class F>
+        requires (
+            std::is_nothrow_invocable_r_v<void, std::decay_t<F>&> &&
+            std::is_nothrow_constructible_v<std::decay_t<F>, F&&> &&
+            RawTask::template stores_inplace<std::decay_t<F>>)
+        [[nodiscard]] EQueuePushResult trySubmitDetached(F&& function) noexcept
+        {
+            RawTask task{std::forward<F>(function)};
+            pending_tasks_.fetch_add(1, std::memory_order_acq_rel);
+            const EQueuePushResult result = _tasks.tryPush(std::move(task));
+            if (result != EQueuePushResult::ACCEPTED)
+                completeTask();
+            return result;
+        }
+
+        /// Wait until all accepted tasks have completed. Callers must prevent
+        /// concurrent producers if they require a stable shutdown boundary.
+        void drain() noexcept
+        {
+            std::unique_lock lock{idle_mutex_};
+            idle_changed_.wait(lock, [this]
+            {
+                return pending_tasks_.load(std::memory_order_acquire) == 0;
+            });
+        }
+
+        void close(EThreadPoolDrainMode mode) noexcept
+        {
+            if (mode == EThreadPoolDrainMode::DRAIN)
+                close();
+            else
+                shutdown_now();
         }
 
         void close()
@@ -416,6 +461,12 @@ namespace lux::cxx
             for (auto& w : _workers)
                 w.request_stop();
             join();
+            RawTask abandoned;
+            while (_tasks.try_pop(abandoned))
+            {
+                abandoned.reset();
+                completeTask();
+            }
         }
 
         /**
@@ -445,7 +496,25 @@ namespace lux::cxx
             while (!st.stop_requested() && _tasks.pop(task))
             {
                 task();
+                task.reset();
+                completeTask();
             }
+        }
+
+        [[nodiscard]] bool enqueue(RawTask task)
+        {
+            pending_tasks_.fetch_add(1, std::memory_order_acq_rel);
+            if (_tasks.push(std::move(task))) return true;
+            completeTask();
+            return false;
+        }
+
+        void completeTask() noexcept
+        {
+            if (pending_tasks_.fetch_sub(1, std::memory_order_acq_rel) != 1)
+                return;
+            std::lock_guard lock{idle_mutex_};
+            idle_changed_.notify_all();
         }
 
         // Declaration order matters: _tasks must outlive _workers so that workers
@@ -454,5 +523,8 @@ namespace lux::cxx
         // finished by the time these are torn down.
         BlockingQueue<RawTask>    _tasks;    ///< Thread-safe queue of pending tasks
         std::vector<std::jthread> _workers;  ///< Collection of worker threads
+        std::atomic<std::size_t>  pending_tasks_{0};
+        std::mutex                idle_mutex_;
+        std::condition_variable   idle_changed_;
     };
 }

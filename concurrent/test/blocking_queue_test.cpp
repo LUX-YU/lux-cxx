@@ -7,6 +7,7 @@
 
 using lux::cxx::BlockingQueue;
 using lux::cxx::BlockingRingQueue;
+using lux::cxx::EQueuePushResult;
 
 using queue_t = BlockingQueue<int>;
 
@@ -289,6 +290,35 @@ void testCloseBehavior()
     std::cout << "Close behavior test passed." << std::endl;
 }
 
+void testDetailedTryPushStatus()
+{
+    BlockingRingQueue<int> ring(1);
+    assert(ring.tryPush(1) == EQueuePushResult::ACCEPTED);
+    assert(ring.tryPush(2) == EQueuePushResult::FULL);
+    ring.close();
+    assert(ring.tryPush(3) == EQueuePushResult::CLOSED);
+
+    BlockingQueue<int> queue(1);
+    assert(queue.tryPush(1) == EQueuePushResult::ACCEPTED);
+    assert(queue.tryPush(2) == EQueuePushResult::FULL);
+    queue.close();
+    assert(queue.tryPush(3) == EQueuePushResult::CLOSED);
+}
+
+void testRingTryPop()
+{
+    BlockingRingQueue<int> queue(2);
+    int value = -1;
+    assert(!queue.tryPop(value));
+    assert(queue.tryPush(7) == EQueuePushResult::ACCEPTED);
+    assert(queue.tryPush(9) == EQueuePushResult::ACCEPTED);
+    assert(queue.tryPop(value) && value == 7);
+    assert(queue.tryPop(value) && value == 9);
+    assert(!queue.tryPop(value));
+    queue.close();
+    assert(!queue.tryPop(value));
+}
+
 /**
  * @brief Main function to run all tests.
  */
@@ -300,6 +330,8 @@ int main()
     testTryPushPop();
     testBulkOperations();
     testCloseBehavior();
+    testDetailedTryPushStatus();
+    testRingTryPop();
 
     std::cout << "All tests passed successfully." << std::endl;
     return 0;

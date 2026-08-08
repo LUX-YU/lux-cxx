@@ -33,6 +33,7 @@
 #include <new>
 #include <type_traits>
 #include <cstring>
+#include <lux/cxx/concurrent/QueueStatus.hpp>
 
 namespace lux::cxx
 {
@@ -144,6 +145,29 @@ namespace lux::cxx
             return true;
         }
 
+        template <class... Args>
+        [[nodiscard]] EQueuePushResult tryEmplace(Args&&... args)
+            noexcept(std::is_nothrow_constructible_v<T, Args&&...>)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            if (_exit) return EQueuePushResult::CLOSED;
+            if (_size == _capacity) return EQueuePushResult::FULL;
+
+            std::construct_at(ptr_at(_tail), std::forward<Args>(args)...);
+            _tail = (_tail + 1) % _capacity;
+            ++_size;
+            lock.unlock();
+            _not_empty.notify_one();
+            return EQueuePushResult::ACCEPTED;
+        }
+
+        template <class U>
+        [[nodiscard]] EQueuePushResult tryPush(U&& value)
+            noexcept(std::is_nothrow_constructible_v<T, U&&>)
+        {
+            return tryEmplace(std::forward<U>(value));
+        }
+
         /**
          * @desc Pushes a new element into the queue with a timeout.
          * @tparam U Type of the element to be pushed.
@@ -248,6 +272,24 @@ namespace lux::cxx
             T* elemPtr = ptr_at(_head);
             out = std::move(*elemPtr);
             std::destroy_at(elemPtr);
+            _head = (_head + 1) % _capacity;
+            --_size;
+
+            lock.unlock();
+            _not_full.notify_one();
+            return true;
+        }
+
+        /** Attempts to pop one element without waiting. */
+        [[nodiscard]] bool tryPop(T& out)
+            noexcept(std::is_nothrow_move_assignable_v<T>)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            if (_size == 0) return false;
+
+            T* element = ptr_at(_head);
+            out = std::move(*element);
+            std::destroy_at(element);
             _head = (_head + 1) % _capacity;
             --_size;
 
@@ -672,6 +714,27 @@ namespace lux::cxx
             // Notify one thread that might be waiting to pop
             _not_empty.notify_one();
             return true;
+        }
+
+        template <class... Args>
+        [[nodiscard]] EQueuePushResult tryEmplace(Args&&... args)
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            if (_exit) return EQueuePushResult::CLOSED;
+            if (_capacity != 0 && _size == _capacity)
+                return EQueuePushResult::FULL;
+
+            _queue.emplace(std::forward<Args>(args)...);
+            ++_size;
+            lock.unlock();
+            _not_empty.notify_one();
+            return EQueuePushResult::ACCEPTED;
+        }
+
+        template <class U>
+        [[nodiscard]] EQueuePushResult tryPush(U&& value)
+        {
+            return tryEmplace(std::forward<U>(value));
         }
 
         /**

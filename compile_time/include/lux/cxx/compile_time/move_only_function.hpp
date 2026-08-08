@@ -47,6 +47,12 @@ namespace lux::cxx
     class move_only_function<R(Args...)>
     {
     public:
+        template <class F>
+        static constexpr bool stores_inplace =
+            sizeof(std::decay_t<F>) <= 24 &&
+            alignof(std::decay_t<F>) <= 8 &&
+            std::is_nothrow_move_constructible_v<std::decay_t<F>>;
+
         /**
          * @brief Default constructor: Creates an empty move_only_function
          */
@@ -289,8 +295,7 @@ namespace lux::cxx
         {
             using decayF = std::decay_t<F>;
 
-            constexpr bool nothrow_mv = std::is_nothrow_move_constructible_v<decayF>;
-            constexpr bool fits_sbo = (sizeof(decayF) <= SBO_SIZE) && (alignof(decayF) <= SBO_ALIGN) && nothrow_mv;
+            constexpr bool fits_sbo = stores_inplace<decayF>;
 
             if constexpr(fits_sbo)
             {
