@@ -116,6 +116,72 @@ namespace lux::cxx
     {
         using RawTask = move_only_function<void()>;  ///< Type-erased task function
 
+        /// Selects the preallocated ring for bounded pools and preserves the
+        /// historical deque-backed queue only for explicitly unbounded pools.
+        /// Dispatch is one predictable branch and does not use virtual calls.
+        class TaskQueue final
+        {
+        public:
+            explicit TaskQueue(std::size_t capacity)
+            {
+                if (capacity == 0)
+                    unbounded_ = std::make_unique<BlockingQueue<RawTask>>(0);
+                else
+                    bounded_ = std::make_unique<BlockingRingQueue<RawTask>>(
+                        capacity
+                    );
+            }
+
+            [[nodiscard]] bool push(RawTask task)
+            {
+                return bounded_
+                    ? bounded_->push(std::move(task))
+                    : unbounded_->push(std::move(task));
+            }
+
+            [[nodiscard]] EQueuePushResult tryPush(RawTask task) noexcept
+            {
+                if (bounded_) return bounded_->tryPush(std::move(task));
+                try
+                {
+                    return unbounded_->tryPush(std::move(task));
+                }
+                catch (...)
+                {
+                    // The legacy unbounded queue may allocate.  Detached
+                    // submission remains noexcept and reports backpressure if
+                    // that allocation cannot be satisfied.
+                    return EQueuePushResult::FULL;
+                }
+            }
+
+            [[nodiscard]] bool pop(RawTask& task)
+            {
+                return bounded_
+                    ? bounded_->pop(task)
+                    : unbounded_->pop(task);
+            }
+
+            [[nodiscard]] bool try_pop(RawTask& task) noexcept
+            {
+                return bounded_
+                    ? bounded_->try_pop(task)
+                    : unbounded_->try_pop(task);
+            }
+
+            void close() noexcept
+            {
+                if (bounded_)
+                    bounded_->close();
+                else
+                    unbounded_->close();
+            }
+
+        private:
+            std::unique_ptr<BlockingRingQueue<RawTask>> bounded_;
+            std::unique_ptr<BlockingQueue<RawTask>> unbounded_;
+        };
+
     public:
         /**
          * @brief Constructs a ThreadPool with the specified number of threads
@@ -521,7 +587,7 @@ namespace lux::cxx
         // (which pop from _tasks) are destroyed first. ~ThreadPool also calls
         // close()/join() before any member is destroyed, so workers are already
         // finished by the time these are torn down.
-        BlockingQueue<RawTask>    _tasks;    ///< Thread-safe queue of pending tasks
+        TaskQueue                 _tasks;    ///< Selected bounded/unbounded task queue
         std::vector<std::jthread> _workers;  ///< Collection of worker threads
         std::atomic<std::size_t>  pending_tasks_{0};
         std::mutex                idle_mutex_;

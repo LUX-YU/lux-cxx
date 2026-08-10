@@ -4,9 +4,50 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
+#include <new>
 #include <string>
 #include <vector>
+
+namespace
+{
+    std::atomic<bool> g_track_allocations{false};
+    std::atomic<std::size_t> g_allocation_count{0};
+}
+
+void* operator new(std::size_t size)
+{
+    if (g_track_allocations.load(std::memory_order_relaxed))
+        g_allocation_count.fetch_add(1, std::memory_order_relaxed);
+    if (void* memory = std::malloc(size)) return memory;
+    throw std::bad_alloc{};
+}
+
+void* operator new[](std::size_t size)
+{
+    return ::operator new(size);
+}
+
+void operator delete(void* memory) noexcept
+{
+    std::free(memory);
+}
+
+void operator delete[](void* memory) noexcept
+{
+    std::free(memory);
+}
+
+void operator delete(void* memory, std::size_t) noexcept
+{
+    std::free(memory);
+}
+
+void operator delete[](void* memory, std::size_t) noexcept
+{
+    std::free(memory);
+}
 
 int main()
 {
@@ -129,6 +170,43 @@ int main()
         detached_pool.close();
         assert(detached_pool.trySubmitDetached([]() noexcept {}) ==
                EQueuePushResult::CLOSED);
+    }
+
+    /*------------------------------------------------------------
+     * 1e. Bounded detached steady state owns all queue storage.
+     *-----------------------------------------------------------*/
+    {
+        ThreadPool allocation_pool(2, 32);
+        std::atomic<std::uint64_t> completed{0};
+        assert(allocation_pool.trySubmitDetached([&completed]() noexcept
+        {
+            completed.fetch_add(1, std::memory_order_relaxed);
+        }) == EQueuePushResult::ACCEPTED);
+        allocation_pool.drain();
+
+        const std::size_t before = g_allocation_count.load(
+            std::memory_order_relaxed
+        );
+        g_track_allocations.store(true, std::memory_order_release);
+        for (std::size_t task = 0; task < 2'000; ++task)
+        {
+            while (allocation_pool.trySubmitDetached(
+                [&completed]() noexcept
+                {
+                    completed.fetch_add(1, std::memory_order_relaxed);
+                }) == EQueuePushResult::FULL)
+            {
+                std::this_thread::yield();
+            }
+        }
+        allocation_pool.drain();
+        g_track_allocations.store(false, std::memory_order_release);
+        const std::size_t after = g_allocation_count.load(
+            std::memory_order_relaxed
+        );
+        assert(after == before);
+        assert(completed.load(std::memory_order_relaxed) == 2'001);
+        allocation_pool.close();
     }
 
     /*------------------------------------------------------------
