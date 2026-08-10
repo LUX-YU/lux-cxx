@@ -10,3 +10,8 @@ component_include_directories(
     INSTALL_TIME
         include
 )
+
+set(ENABLE_ALGORITHM_TEST true CACHE BOOL "Enable algorithm tests")
+if(ENABLE_ALGORITHM_TEST AND NOT CMAKE_CROSSCOMPILING)
+    add_subdirectory(test)
+endif()

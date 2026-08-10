@@ -108,6 +108,10 @@ namespace lux::cxx::ser
         JsonDocument& operator=(const JsonDocument&) = delete;
 
         static result<JsonDocument> parse(std::string_view text);
+        /// Parse JSON and reject duplicate object member names at every depth.
+        /// The ordinary parse() API intentionally keeps its historical backend
+        /// behavior; strict product/configuration boundaries should use this.
+        static result<JsonDocument> parseStrict(std::string_view text);
         JsonInputArchive root() const;
 
     private:
@@ -142,6 +146,9 @@ namespace lux::cxx::ser
         // Parse `text`, reusing this parser's buffers. The returned cursor is valid
         // until the next parse() on this parser. Prefer from_json(parser, text).
         [[nodiscard]] result<JsonInputArchive> parse(std::string_view text);
+        [[nodiscard]] result<JsonInputArchive> parseStrict(
+            std::string_view text
+        );
 
     private:
         struct Impl;

@@ -84,6 +84,54 @@ int main()
     const auto r4 = from_json<Profile>("not json");
     check(!r4.has_value() && r4.error().code == error_code::parse_error, "malformed JSON -> parse_error");
 
+    // Product/config boundaries must not inherit a DOM backend's duplicate-key
+    // overwrite behavior.
+    const auto strict_duplicate = JsonDocument::parseStrict(
+        R"({"name":"first","name":"second"})"
+    );
+    check(
+        !strict_duplicate &&
+            strict_duplicate.error().code == error_code::duplicate_member,
+        "strict JSON rejects duplicate object members"
+    );
+    const auto strict_nested_duplicate = JsonDocument::parseStrict(
+        R"({"outer":{"value":1,"value":2}})"
+    );
+    check(
+        !strict_nested_duplicate &&
+            strict_nested_duplicate.error().code == error_code::duplicate_member,
+        "strict JSON rejects nested duplicate object members"
+    );
+    check(
+        JsonDocument::parseStrict(R"({"left":1,"right":2})").has_value(),
+        "strict JSON accepts unique object members"
+    );
+    const auto strict_empty_duplicate = JsonDocument::parseStrict(
+        R"({"":1,"":2})"
+    );
+    check(
+        !strict_empty_duplicate &&
+            strict_empty_duplicate.error().code == error_code::duplicate_member,
+        "strict JSON rejects duplicate empty member names"
+    );
+    const auto strict_array_duplicate = JsonDocument::parseStrict(
+        R"([{"value":1,"value":2}])"
+    );
+    check(
+        !strict_array_duplicate &&
+            strict_array_duplicate.error().code == error_code::duplicate_member,
+        "strict JSON rejects duplicates nested in arrays"
+    );
+    JsonParser strict_parser;
+    check(
+        !strict_parser.parseStrict(R"({"value":1,"value":2})"),
+        "reusable strict parser rejects duplicates"
+    );
+    check(
+        strict_parser.parseStrict(R"({"value":1})").has_value(),
+        "reusable strict parser remains usable after an error"
+    );
+
     // ---- structured load errors: code + dotted field path ----
     const auto e_top = from_json<Profile>("123");
     check(!e_top.has_value() && e_top.error().code == error_code::type_mismatch,

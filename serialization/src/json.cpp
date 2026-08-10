@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <type_traits>
+#include <unordered_set>
 #include <vector>
 
 #if defined(LUX_SER_JSON_SIMDJSON)
@@ -313,6 +314,59 @@ namespace lux::cxx::ser
         return doc;
     }
 
+    namespace
+    {
+        bool hasDuplicateMembers(
+            const dom::element element,
+            std::string& duplicate,
+            const std::size_t depth = 0
+        )
+        {
+            if (depth > 256)
+            {
+                duplicate = "JSON nesting exceeds the strict parser limit";
+                return true;
+            }
+            if (element.type() == dom::element_type::OBJECT)
+            {
+                std::unordered_set<std::string_view> members;
+                for (const dom::key_value_pair member : dom::object(element))
+                {
+                    if (!members.emplace(member.key).second)
+                    {
+                        duplicate.assign(member.key);
+                        return true;
+                    }
+                    if (hasDuplicateMembers(member.value, duplicate, depth + 1))
+                        return true;
+                }
+            }
+            else if (element.type() == dom::element_type::ARRAY)
+            {
+                for (const dom::element child : dom::array(element))
+                    if (hasDuplicateMembers(child, duplicate, depth + 1))
+                        return true;
+            }
+            return false;
+        }
+    } // namespace
+
+    result<JsonDocument> JsonDocument::parseStrict(std::string_view text)
+    {
+        auto document = parse(text);
+        if (!document) return document;
+        std::string duplicate;
+        if (hasDuplicateMembers(document->p_->root, duplicate))
+        {
+            return make_error(
+                error_code::duplicate_member,
+                "duplicate JSON object member: " + duplicate,
+                duplicate
+            );
+        }
+        return document;
+    }
+
     JsonInputArchive JsonDocument::root() const { return JsonCursorAccess::make(p_->root); }
 
     // ===================== JsonParser (reusable) ==========================
@@ -335,6 +389,22 @@ namespace lux::cxx::ser
         if (const auto err = p_->parser.parse(text.data(), text.size()).get(p_->root); err != SUCCESS)
             return make_error(error_code::parse_error, error_message(err));
         return JsonCursorAccess::make(p_->root);
+    }
+
+    result<JsonInputArchive> JsonParser::parseStrict(std::string_view text)
+    {
+        auto parsed = parse(text);
+        if (!parsed) return parsed;
+        std::string duplicate;
+        if (hasDuplicateMembers(p_->root, duplicate))
+        {
+            return make_error(
+                error_code::duplicate_member,
+                "duplicate JSON object member: " + duplicate,
+                duplicate
+            );
+        }
+        return parsed;
     }
 
 #else // ===================== nlohmann_json backend ======================
@@ -471,6 +541,72 @@ namespace lux::cxx::ser
         return doc;
     }
 
+    namespace
+    {
+        template <class Parse>
+        auto parseStrictNlohmann(Parse&& parse) -> result<json>
+        {
+            std::vector<std::unordered_set<std::string>> object_members;
+            std::string duplicate;
+            bool has_duplicate = false;
+            const json::parser_callback_t callback =
+                [&](const int, const json::parse_event_t event, json& value)
+                {
+                    if (event == json::parse_event_t::object_start)
+                    {
+                        object_members.emplace_back();
+                    }
+                    else if (event == json::parse_event_t::object_end)
+                    {
+                        if (!object_members.empty()) object_members.pop_back();
+                    }
+                    else if (event == json::parse_event_t::key &&
+                             !object_members.empty())
+                    {
+                        const std::string key = value.get<std::string>();
+                        if (!object_members.back().emplace(key).second &&
+                            !has_duplicate)
+                        {
+                            duplicate = key;
+                            has_duplicate = true;
+                        }
+                    }
+                    return true;
+                };
+            try
+            {
+                json root = parse(callback);
+                if (has_duplicate)
+                {
+                    return make_error(
+                        error_code::duplicate_member,
+                        "duplicate JSON object member: " + duplicate,
+                        duplicate
+                    );
+                }
+                return root;
+            }
+            catch (const std::exception& exception)
+            {
+                return make_error(error_code::parse_error, exception.what());
+            }
+        }
+    } // namespace
+
+    result<JsonDocument> JsonDocument::parseStrict(std::string_view text)
+    {
+        auto root = parseStrictNlohmann(
+            [&](const json::parser_callback_t& callback)
+            {
+                return json::parse(text, callback);
+            }
+        );
+        if (!root) return lux::cxx::unexpected<error>{root.error()};
+        JsonDocument document;
+        document.p_->root = std::move(*root);
+        return document;
+    }
+
     JsonInputArchive JsonDocument::root() const { return JsonCursorAccess::make(&p_->root); }
 
     // ===================== JsonParser (reusable) ==========================
@@ -487,6 +623,19 @@ namespace lux::cxx::ser
     {
         try { p_->root = json::parse(text); }
         catch (const std::exception& e) { return make_error(error_code::parse_error, e.what()); }
+        return JsonCursorAccess::make(&p_->root);
+    }
+
+    result<JsonInputArchive> JsonParser::parseStrict(std::string_view text)
+    {
+        auto root = parseStrictNlohmann(
+            [&](const json::parser_callback_t& callback)
+            {
+                return json::parse(text, callback);
+            }
+        );
+        if (!root) return lux::cxx::unexpected<error>{root.error()};
+        p_->root = std::move(*root);
         return JsonCursorAccess::make(&p_->root);
     }
 #endif // LUX_SER_JSON_SIMDJSON

@@ -8,6 +8,7 @@ namespace lux::cxx::ser
     {
         ok = 0,
         parse_error,        ///< backend failed to parse the input text
+        duplicate_member,   ///< an object declared the same member more than once
         type_mismatch,      ///< node kind didn't match the target type
         missing_required,   ///< a field marked `required` was absent
         load_failed,        ///< generic deserialization failure
