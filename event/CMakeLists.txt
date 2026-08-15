@@ -17,7 +17,7 @@ component_add_internal_dependencies(
         lux::cxx::container
 )
 
-set(ENABLE_EVENT_TEST OFF CACHE BOOL "Enable event test")
-if(ENABLE_EVENT_TEST)
+set(ENABLE_EVENT_TEST ${LUX_CXX_BUILD_TESTS} CACHE BOOL "Enable event test")
+if(ENABLE_EVENT_TEST AND BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     add_subdirectory(test)
 endif()

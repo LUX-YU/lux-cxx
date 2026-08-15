@@ -11,6 +11,7 @@ static const int TEST_CAPACITY = 8;
 
 using lux::cxx::SpscLockFreeRingQueue;
 using lux::cxx::EQueuePushResult;
+using lux::cxx::EQueuePopResult;
 
 // ── conditional-noexcept contract (compile-time) ─────────────────────────────
 // emplace/push/pop must be noexcept for nothrow element types, and must NOT be
@@ -41,20 +42,20 @@ namespace
         int value = 0;
     };
 
-    static_assert(noexcept(std::declval<SpscLockFreeRingQueue<NothrowElem>&>().emplace()),
-                  "emplace must be noexcept for nothrow-constructible T");
-    static_assert(noexcept(std::declval<SpscLockFreeRingQueue<NothrowElem>&>().pop(
+    static_assert(noexcept(std::declval<SpscLockFreeRingQueue<NothrowElem>&>().tryEmplace()),
+                  "tryEmplace must be noexcept for nothrow-constructible T");
+    static_assert(noexcept(std::declval<SpscLockFreeRingQueue<NothrowElem>&>().tryPop(
                       std::declval<NothrowElem&>())),
-                  "pop must be noexcept for nothrow move/destroy T");
-    static_assert(!noexcept(std::declval<SpscLockFreeRingQueue<ThrowingElem>&>().emplace(
+                  "tryPop must be noexcept for nothrow move/destroy T");
+    static_assert(!noexcept(std::declval<SpscLockFreeRingQueue<ThrowingElem>&>().tryEmplace(
                       std::declval<ThrowingElem>())),
-                  "emplace must NOT be noexcept for throwing-constructible T");
-    static_assert(!noexcept(std::declval<SpscLockFreeRingQueue<ThrowingElem>&>().pop(
+                  "tryEmplace must NOT be noexcept for throwing-constructible T");
+    static_assert(!noexcept(std::declval<SpscLockFreeRingQueue<ThrowingElem>&>().tryPop(
                       std::declval<ThrowingElem&>())),
-                  "pop must NOT be noexcept for throwing move T");
+                  "tryPop must NOT be noexcept for throwing move T");
     static_assert(noexcept(
-        std::declval<SpscLockFreeRingQueue<MoveConstructOnly>&>().pop()),
-        "value pop must be noexcept for nothrow move construction");
+        std::declval<SpscLockFreeRingQueue<MoveConstructOnly>&>().tryPopValue()),
+        "value tryPop must be noexcept for nothrow move construction");
 }
 
 /**
@@ -65,10 +66,10 @@ void testSingleThread()
     std::cout << "[testSingleThread] Start\n";
 
     SpscLockFreeRingQueue<int> queue(TEST_CAPACITY);
-    assert(queue.usableCapacity() == TEST_CAPACITY - 1);
+    assert(queue.capacity() == TEST_CAPACITY);
 
     // Push until full
-    for (int i = 0; i < TEST_CAPACITY - 1; ++i)  // capacity-1 is the max usable in ring
+    for (int i = 0; i < TEST_CAPACITY; ++i)
     {
         assert(queue.tryPush(i) == EQueuePushResult::ACCEPTED);
     }
@@ -76,17 +77,17 @@ void testSingleThread()
     assert(queue.tryPush(999) == EQueuePushResult::FULL);
 
     // Pop and check
-    for (int i = 0; i < TEST_CAPACITY - 1; ++i)
+    for (int i = 0; i < TEST_CAPACITY; ++i)
     {
         int val = -1;
-        bool success = queue.pop(val);
-        assert(success);
+        const auto result = queue.tryPop(val);
+        assert(result == EQueuePopResult::VALUE);
         assert(val == i);
     }
     // Now it should be empty
     int dummy = 0;
-    bool popFail = queue.pop(dummy);
-    assert(!popFail && "Queue should be empty now.");
+    const auto popFail = queue.tryPop(dummy);
+    assert(popFail == EQueuePopResult::EMPTY && "Queue should be empty now.");
 
     // Test close
     queue.close();
@@ -100,10 +101,21 @@ void testMoveConstructOnlyPop()
 {
     SpscLockFreeRingQueue<MoveConstructOnly> queue(4);
     assert(queue.tryEmplace(42) == EQueuePushResult::ACCEPTED);
-    auto value = queue.pop();
-    assert(value.has_value());
-    assert(value->value == 42);
-    assert(!queue.pop().has_value());
+    auto value = queue.tryPopValue();
+    assert(value.result == EQueuePopResult::VALUE);
+    assert(value.value->value == 42);
+    assert(queue.tryPopValue().result == EQueuePopResult::EMPTY);
+}
+
+void testMinimumCapacity()
+{
+    SpscLockFreeRingQueue<int> queue(1);
+    assert(queue.capacity() == 1);
+    assert(queue.tryPush(7) == EQueuePushResult::ACCEPTED);
+    assert(queue.tryPush(8) == EQueuePushResult::FULL);
+    int value = 0;
+    assert(queue.tryPop(value) == EQueuePopResult::VALUE);
+    assert(value == 7);
 }
 
 /**
@@ -121,7 +133,7 @@ void testMultiThread()
         for (int i = 0; i < TOTAL_ITEMS; ++i)
         {
             // Spin until push succeeds
-            while (!queue.push(i))
+            while (queue.tryPush(i) != EQueuePushResult::ACCEPTED)
             {
                 // The queue might be full, wait briefly
                 std::this_thread::yield();
@@ -140,13 +152,14 @@ void testMultiThread()
         while (true)
         {
             int val = -1;
-            if (queue.pop(val))
+            const auto result = queue.tryPop(val);
+            if (result == EQueuePopResult::VALUE)
             {
                 results.push_back(val);
             }
             else
             {
-                if (queue.closed())
+                if (result == EQueuePopResult::CLOSED_AND_DRAINED)
                 {
                     // Once closed and no item popped, we end
                     break;
@@ -178,6 +191,7 @@ int main()
 {
     testSingleThread();
     testMoveConstructOnlyPop();
+    testMinimumCapacity();
     testMultiThread();
 
     std::cout << "All SPSC tests passed successfully!\n";

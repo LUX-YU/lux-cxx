@@ -136,7 +136,7 @@ namespace lux::cxx
 
         static constexpr bool is_addressable(key_type k) noexcept
         {
-            return !k.is_null();
+            return !k.isNull();
         }
 
         static constexpr std::size_t sparse_index(key_type k) noexcept
@@ -261,7 +261,7 @@ namespace lux::cxx
 
         static constexpr bool is_null(key_type k) noexcept
         {
-            return k.is_null();
+            return k.isNull();
         }
     };
 

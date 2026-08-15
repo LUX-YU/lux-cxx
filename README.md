@@ -14,10 +14,31 @@ LUX-CXX is the core C++ library of the LUX Project, designed for applications re
 
 Each module is designed independently and includes comprehensive documentation. Click on the module links for detailed information.
 
+### Core
+Header-only language-level facilities: SBO `move_only_function`, borrowed
+`function_ref`, `Delegate`, `scope_exit`, `FixedText`, `EnumFlags`, strong and
+stable identifiers, schema identifiers, and checked constexpr arithmetic.
+The existing lowercase `expected` API remains in `compile_time`: C++23 uses
+`std::expected`, while C++20 uses the bundled external `tl::expected`.
+
 ### 🧮 [Algorithm](algorithm/README.md)
 High-performance algorithm implementations including hash functions, topological sorting, and string operations.
 
-**Key Features**: FNV-1a hashing (runtime & compile-time), string utilities, dependency resolution
+**Key Features**: SHA-256 with incremental and constexpr paths, content IDs,
+FNV-1a hashing, string utilities, dependency resolution
+
+### Binary
+Allocation-free span reader/writer and an explicit owning vector writer with
+endianness policies, canonical varints and booleans, zigzag integers, bounded
+strings/bytes, deterministic floating-point encoding, and frozen scalar schema IDs.
+
+### Time and Units
+Domain-typed timestamps, checked clock mappings, deterministic manual clocks,
+and constexpr quantities for byte counts, frequency, and angles.
+
+### Diagnostic and ABI
+Fixed-capacity allocation-free diagnostic records plus canonical build metadata,
+semantic versions, C-boundary views, and SHA-256 ABI fingerprints.
 
 ### 🏗️ [Archtype](archtype/README.md)
 High-performance Entity Component System (ECS) with archetype-based storage for optimal cache locality.
@@ -27,7 +48,8 @@ High-performance Entity Component System (ECS) with archetype-based storage for 
 ### 📦 [Container](container/README.md)
 Specialized container data structures optimized for specific use cases.
 
-**Key Features**: SparseSet with O(1) operations, SmallVector with stack optimization, performance benchmarks
+**Key Features**: SparseSet with O(1) operations, allocator-aware SlotMap and
+SmallVector, block-allocated StableSlotMap, performance benchmarks
 
 ### ⚡ [Compile Time](compile_time/README.md)
 Compile-time computation and metaprogramming tools for advanced template programming.
@@ -42,7 +64,9 @@ Modern command-line argument parsing library with type safety and automatic help
 ### 🔧 [Reflection](reflection/README.md)
 Reflection system based on Clang LibTooling for code analysis and metadata generation.
 
-**Key Features**: Clang-based analysis, JSON metadata export, runtime type queries
+**Key Features**: Clang-based analysis, JSON metadata export, runtime type
+queries, and an experimental flat/indexed `reflection::ir::MetaUnit` with a
+bounded deterministic binary format
 
 ### 🚀 [Subprogram](subprogram/README.md)
 Subprogram registration and management system for building modular applications.
@@ -50,10 +74,12 @@ Subprogram registration and management system for building modular applications.
 **Key Features**: Dynamic registration, runtime invocation, program discovery, plugin architecture support
 
 ### 🔄 [Concurrent](concurrent/README.md)
-Concurrent programming infrastructure (under development).
+Concrete blocking and SPSC queues with explicit result/state enums, close/drain,
+timeout and stop-token support, plus allocation-free admission and budget tickets.
 
 ### 🧠 [Memory](memory/README.md)
-Memory management tools and optimizations (under development).
+Intrusive ownership and object pools, explicit `SharedBytes`, and PMR decorators
+for allocation counting, byte budgets, and deterministic allocation failure.
 
 
 ## Build Requirements
@@ -74,6 +100,18 @@ mkdir build
 cd build
 cmake ..
 cmake --build .
+ctest --output-on-failure
+```
+
+Installed consumers select only the components they need:
+
+```cmake
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS core binary memory)
+target_link_libraries(my_target PRIVATE lux::cxx::binary lux::cxx::memory)
+```
+
+The detailed API and downstream transition notes are in
+[`doc/lux-cxx-improvement-migration.zh-CN.md`](doc/lux-cxx-improvement-migration.zh-CN.md).
 
 
 ## Performance Features

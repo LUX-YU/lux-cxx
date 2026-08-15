@@ -1,0 +1,45 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
+
+#include <lux/cxx/abi/Abi.hpp>
+
+namespace lux::cxx
+{
+    struct AbiBuildInfo final
+    {
+        static constexpr std::string_view compiler_id = "@CMAKE_CXX_COMPILER_ID@";
+        static constexpr std::string_view compiler_version = "@CMAKE_CXX_COMPILER_VERSION@";
+        static constexpr std::string_view target = "@LUX_CXX_ABI_TARGET@";
+        static constexpr std::uint16_t pointer_bits = @LUX_CXX_ABI_POINTER_BITS@;
+        static constexpr std::string_view endian = "@LUX_CXX_ABI_ENDIAN@";
+        static constexpr std::string_view standard_library = "@LUX_CXX_ABI_STANDARD_LIBRARY@";
+        static constexpr std::string_view crt = "@LUX_CXX_ABI_CRT@";
+        static constexpr bool exceptions = @LUX_CXX_ABI_EXCEPTIONS@ != 0;
+        static constexpr bool rtti = @LUX_CXX_ABI_RTTI@ != 0;
+        static constexpr std::string_view sanitizers = "@LUX_CXX_ABI_SANITIZERS@";
+        static constexpr bool debug_abi = @LUX_CXX_ABI_DEBUG@ != 0;
+        static constexpr std::uint16_t api_major = @LUX_CXX_ABI_API_MAJOR@;
+
+        static constexpr std::string_view canonical =
+            "compiler=@CMAKE_CXX_COMPILER_ID@;"
+            "compiler_version=@CMAKE_CXX_COMPILER_VERSION@;"
+            "target=@LUX_CXX_ABI_TARGET@;"
+            "pointer_bits=@LUX_CXX_ABI_POINTER_BITS@;"
+            "endian=@LUX_CXX_ABI_ENDIAN@;"
+            "stdlib=@LUX_CXX_ABI_STANDARD_LIBRARY@;"
+            "crt=@LUX_CXX_ABI_CRT@;"
+            "exceptions=@LUX_CXX_ABI_EXCEPTIONS@;"
+            "rtti=@LUX_CXX_ABI_RTTI@;"
+            "sanitizers=@LUX_CXX_ABI_SANITIZERS@;"
+            "debug_abi=@LUX_CXX_ABI_DEBUG@;"
+            "api_major=@LUX_CXX_ABI_API_MAJOR@";
+
+        [[nodiscard]] static constexpr AbiFingerprint fingerprint() noexcept
+        {
+            return AbiFingerprint::fromCanonical(canonical);
+        }
+    };
+} // namespace lux::cxx

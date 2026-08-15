@@ -220,7 +220,14 @@ namespace lux::cxx::reflection
                 + compile_command_path.string());
         }
 
-        std::set<fs::path> includes;
+        // Include search order is semantic: clang probes -I directories in the
+        // order given, and MSVC searches /external:I directories only AFTER all
+        // regular -I paths. Regular -I paths must keep their command-line order
+        // and precede -isystem/-external:I paths, otherwise stale install-tree
+        // headers can shadow the source tree during parsing.
+        std::vector<fs::path> regular_includes;
+        std::vector<fs::path> system_includes;
+        std::set<fs::path>    seen_includes;
         const std::string source_file_key = normalizedPathKey(source_file_path);
         for (const auto& entry : j)
         {
@@ -255,6 +262,7 @@ namespace lux::cxx::reflection
             {
                 std::string argStr = args[i];
                 std::string pathStr;
+                bool is_system_include = false;
 
                 if (argStr.rfind("-I", 0) == 0)
                 {
@@ -269,6 +277,7 @@ namespace lux::cxx::reflection
                 }
                 else if (argStr.rfind("-isystem", 0) == 0)
                 {
+                    is_system_include = true;
                     if (argStr == "-isystem") {
                         if (i + 1 < args.size()) {
                             pathStr = args[++i];
@@ -280,6 +289,7 @@ namespace lux::cxx::reflection
                 }
                 else if (argStr.rfind("-external:I", 0) == 0)
                 {
+                    is_system_include = true;
                     if (argStr == "-external:I") {
                         if (i + 1 < args.size()) {
                             pathStr = args[++i];
@@ -299,11 +309,15 @@ namespace lux::cxx::reflection
                     else {
                         incP = makeAbsolute(baseDir, pathStr);
                     }
-                    includes.insert(incP);
+                    if (seen_includes.insert(incP).second) {
+                        (is_system_include ? system_includes : regular_includes).push_back(incP);
+                    }
                 }
             }
         }
-        return std::vector<fs::path>(includes.begin(), includes.end());
+        std::vector<fs::path> includes = std::move(regular_includes);
+        includes.insert(includes.end(), system_includes.begin(), system_includes.end());
+        return includes;
     }
 
     std::vector<std::string> GeneratorHelper::convertToDashI(const std::vector<std::filesystem::path>& paths)

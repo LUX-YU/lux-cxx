@@ -36,7 +36,7 @@
 #include <vector>
 
 #include "BlockingQueue.hpp"
-#include <lux/cxx/compile_time/move_only_function.hpp>
+#include <lux/cxx/core/move_only_function.hpp>
 
 #ifndef ENABLE_EXCEPTIONS
 #   define ENABLE_EXCEPTIONS 1
@@ -132,13 +132,6 @@ namespace lux::cxx
                     );
             }
 
-            [[nodiscard]] bool push(RawTask task)
-            {
-                return bounded_
-                    ? bounded_->push(std::move(task))
-                    : unbounded_->push(std::move(task));
-            }
-
             [[nodiscard]] EQueuePushResult tryPush(RawTask task) noexcept
             {
                 if (bounded_) return bounded_->tryPush(std::move(task));
@@ -155,18 +148,27 @@ namespace lux::cxx
                 }
             }
 
-            [[nodiscard]] bool pop(RawTask& task)
+            [[nodiscard]] EQueuePushResult waitPush(RawTask task)
             {
                 return bounded_
-                    ? bounded_->pop(task)
-                    : unbounded_->pop(task);
+                    ? bounded_->waitPush(std::move(task))
+                    : unbounded_->waitPush(std::move(task));
             }
 
-            [[nodiscard]] bool try_pop(RawTask& task) noexcept
+            [[nodiscard]] EQueuePopResult tryPop(RawTask& task) noexcept
             {
                 return bounded_
-                    ? bounded_->try_pop(task)
-                    : unbounded_->try_pop(task);
+                    ? bounded_->tryPop(task)
+                    : unbounded_->tryPop(task);
+            }
+
+            [[nodiscard]] EQueuePopResult waitPop(
+                RawTask& task,
+                std::stop_token stop_token)
+            {
+                return bounded_
+                    ? bounded_->waitPop(task, stop_token)
+                    : unbounded_->waitPop(task, stop_token);
             }
 
             void close() noexcept
@@ -528,7 +530,7 @@ namespace lux::cxx
                 w.request_stop();
             join();
             RawTask abandoned;
-            while (_tasks.try_pop(abandoned))
+            while (_tasks.tryPop(abandoned) == EQueuePopResult::VALUE)
             {
                 abandoned.reset();
                 completeTask();
@@ -559,8 +561,10 @@ namespace lux::cxx
         void worker_loop(std::stop_token st)
         {
             RawTask task;
-            while (!st.stop_requested() && _tasks.pop(task))
+            while (!st.stop_requested())
             {
+                const auto result = _tasks.waitPop(task, st);
+                if (result != EQueuePopResult::VALUE) break;
                 task();
                 task.reset();
                 completeTask();
@@ -570,7 +574,10 @@ namespace lux::cxx
         [[nodiscard]] bool enqueue(RawTask task)
         {
             pending_tasks_.fetch_add(1, std::memory_order_acq_rel);
-            if (_tasks.push(std::move(task))) return true;
+            if (_tasks.waitPush(std::move(task)) == EQueuePushResult::ACCEPTED)
+            {
+                return true;
+            }
             completeTask();
             return false;
         }

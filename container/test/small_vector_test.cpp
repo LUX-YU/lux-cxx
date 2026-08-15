@@ -14,7 +14,9 @@
 #include <lux/cxx/container/SmallVector.hpp>
 
 #include <cassert>
+#include <cstdint>
 #include <iostream>
+#include <memory>
 
 namespace
 {
@@ -29,6 +31,41 @@ namespace
         Tracked& operator=(const Tracked& o) { v = o.v; return *this; }
         Tracked& operator=(Tracked&& o) noexcept { v = o.v; o.v = -1; return *this; }
         ~Tracked() { --live; }
+    };
+
+    struct alignas(64) OverAligned final
+    {
+        int value = 0;
+    };
+
+    struct CopyFailure final
+    {
+    };
+
+    struct ThrowingCopy final
+    {
+        static inline int copies_before_throw = -1;
+        int value = 0;
+
+        explicit ThrowingCopy(int input = 0) noexcept
+            : value(input)
+        {
+        }
+
+        ThrowingCopy(const ThrowingCopy& other)
+            : value(other.value)
+        {
+            if (copies_before_throw == 0) throw CopyFailure{};
+            if (copies_before_throw > 0) --copies_before_throw;
+        }
+
+        ThrowingCopy(ThrowingCopy&& other) noexcept(false)
+            : value(other.value)
+        {
+        }
+
+        ThrowingCopy& operator=(const ThrowingCopy&) = default;
+        ThrowingCopy& operator=(ThrowingCopy&&) = default;
     };
 }
 
@@ -80,6 +117,46 @@ int main()
         const int expect[] = { 1, 99, 2, 3 };
         assert(iv.size() == 4);
         for (std::size_t i = 0; i < iv.size(); ++i) assert(iv[i] == expect[i]);
+    }
+
+    // 4. Inline storage honors over-alignment.
+    {
+        SmallVector<OverAligned, 2> aligned;
+        aligned.emplace_back(OverAligned{42});
+        assert(reinterpret_cast<std::uintptr_t>(aligned.data()) % 64 == 0);
+        aligned.emplace_back(OverAligned{43});
+        aligned.emplace_back(OverAligned{44});
+        assert(reinterpret_cast<std::uintptr_t>(aligned.data()) % 64 == 0);
+    }
+
+    // 5. Move-only values work on inline and heap paths.
+    {
+        SmallVector<std::unique_ptr<int>, 2> values;
+        values.push_back(std::make_unique<int>(1));
+        values.push_back(std::make_unique<int>(2));
+        values.push_back(std::make_unique<int>(3));
+        assert(*values[0] == 1 && *values[1] == 2 && *values[2] == 3);
+    }
+
+    // 6. A failed copy during growth leaves the original inline values intact.
+    {
+        SmallVector<ThrowingCopy, 2> values;
+        values.emplace_back(1);
+        values.emplace_back(2);
+        ThrowingCopy::copies_before_throw = 0;
+        bool threw = false;
+        try
+        {
+            values.emplace_back(3);
+        }
+        catch (const CopyFailure&)
+        {
+            threw = true;
+        }
+        ThrowingCopy::copies_before_throw = -1;
+        assert(threw);
+        assert(values.size() == 2);
+        assert(values[0].value == 1 && values[1].value == 2);
     }
 
     std::cout << "SmallVector tests passed\n";

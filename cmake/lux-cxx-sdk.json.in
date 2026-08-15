@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "revision": "@LUX_CXX_SDK_REVISION@",
+  "dirty": @LUX_CXX_SDK_DIRTY@,
+  "target_triple": "@LUX_CXX_SDK_TARGET_TRIPLE@",
+  "compiler": "@CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@",
+  "pointer_bits": @LUX_CXX_SDK_POINTER_BITS@,
+  "endianness": "@LUX_CXX_SDK_ENDIAN@",
+  "cxx_standard": @CMAKE_CXX_STANDARD@,
+  "api_major": @PROJECT_VERSION_MAJOR@
+}

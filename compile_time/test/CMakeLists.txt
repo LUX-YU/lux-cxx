@@ -9,6 +9,10 @@ target_link_libraries(
     compile_time
 )
 
+add_executable(type_token_test type_token_test.cpp)
+target_link_libraries(type_token_test PRIVATE lux::cxx::compile_time)
+add_test(NAME type_token_test COMMAND type_token_test)
+
 add_executable(
     function_traits_test
     function_traits_test.cpp

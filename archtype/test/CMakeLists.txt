@@ -20,6 +20,9 @@ target_link_libraries(
 	lux::cxx::archtype
 )
 
+add_test(NAME archtype_test COMMAND archtype_test)
+add_test(NAME ecs_fixes_test COMMAND ecs_fixes_test)
+
 # The fair benchmark compares against EnTT, so it is only built when the
 # comparison is enabled. All performance measurement lives here now.
 set(ENABLE_COMPARE_WITH_ENTT false CACHE BOOL "Enable compare archtype with entt")

@@ -1,0 +1,116 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, compiler: gcc,   cxx: g++,     cc: gcc,   standard: 20, config: Debug}
+          - {os: ubuntu-24.04, compiler: gcc,   cxx: g++,     cc: gcc,   standard: 20, config: RelWithDebInfo}
+          - {os: ubuntu-24.04, compiler: gcc,   cxx: g++,     cc: gcc,   standard: 23, config: Debug}
+          - {os: ubuntu-24.04, compiler: gcc,   cxx: g++,     cc: gcc,   standard: 23, config: RelWithDebInfo}
+          - {os: ubuntu-24.04, compiler: clang, cxx: clang++, cc: clang, standard: 20, config: Debug}
+          - {os: ubuntu-24.04, compiler: clang, cxx: clang++, cc: clang, standard: 20, config: RelWithDebInfo}
+          - {os: ubuntu-24.04, compiler: clang, cxx: clang++, cc: clang, standard: 23, config: Debug}
+          - {os: ubuntu-24.04, compiler: clang, cxx: clang++, cc: clang, standard: 23, config: RelWithDebInfo}
+          - {os: windows-2022, compiler: msvc,  cxx: cl,      cc: cl,    standard: 20, config: Debug}
+          - {os: windows-2022, compiler: msvc,  cxx: cl,      cc: cl,    standard: 20, config: RelWithDebInfo}
+          - {os: windows-2022, compiler: msvc,  cxx: cl,      cc: cl,    standard: 23, config: Debug}
+          - {os: windows-2022, compiler: msvc,  cxx: cl,      cc: cl,    standard: 23, config: RelWithDebInfo}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+
+      - name: Install Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install lux-cmake-toolset
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/LUX-YU/lux-cmake-toolset.git "$RUNNER_TEMP/lux-cmake-toolset"
+          cmake -S "$RUNNER_TEMP/lux-cmake-toolset" -B "$RUNNER_TEMP/toolset-build" \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/lux-prefix"
+          cmake --build "$RUNNER_TEMP/toolset-build" --config Release
+          cmake --install "$RUNNER_TEMP/toolset-build" --config Release
+
+      - name: Configure
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.config }} \
+            -DCMAKE_CXX_STANDARD=${{ matrix.standard }} \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/lux-install" \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/lux-prefix" \
+            -DLUX_CXX_BUILD_TESTS=ON \
+            -DENABLE_REFLECTION=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C ${{ matrix.config }} --output-on-failure
+
+  sanitizers:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: asan-ubsan, flags: '-fsanitize=address,undefined -fno-omit-frame-pointer'}
+          - {name: tsan, flags: '-fsanitize=thread -fno-omit-frame-pointer'}
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+
+      - name: Install lux-cmake-toolset
+        run: |
+          git clone --depth 1 https://github.com/LUX-YU/lux-cmake-toolset.git "$RUNNER_TEMP/lux-cmake-toolset"
+          cmake -S "$RUNNER_TEMP/lux-cmake-toolset" -B "$RUNNER_TEMP/toolset-build" \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/lux-prefix"
+          cmake --build "$RUNNER_TEMP/toolset-build"
+          cmake --install "$RUNNER_TEMP/toolset-build"
+
+      - name: Configure
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_STANDARD=20 \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/lux-prefix" \
+            -DCMAKE_CXX_FLAGS="${{ matrix.flags }}" \
+            -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.flags }}" \
+            -DLUX_CXX_BUILD_TESTS=ON \
+            -DLUX_CXX_BUILD_INSTALL_CONSUMER_TEST=OFF \
+            -DENABLE_REFLECTION=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_init_order=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          TSAN_OPTIONS: halt_on_error=1
+        run: ctest --test-dir build --output-on-failure

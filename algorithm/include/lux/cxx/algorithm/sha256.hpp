@@ -1,7 +1,10 @@
 #pragma once
 
+#include <lux/cxx/compile_time/expected.hpp>
+
 #include <array>
 #include <bit>
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -10,7 +13,133 @@
 
 namespace lux::cxx::algorithm
 {
-    using Sha256Digest = std::array<std::byte, 32>;
+    enum class EDigestParseError : std::uint8_t
+    {
+        INVALID_SIZE,
+        INVALID_CHARACTER,
+    };
+
+    class Sha256Digest final
+    {
+      public:
+        static constexpr std::size_t byte_size = 32;
+        static constexpr std::size_t hex_size = byte_size * 2;
+
+        constexpr Sha256Digest() noexcept = default;
+
+        constexpr explicit Sha256Digest(
+            std::array<std::byte, byte_size> bytes
+        ) noexcept
+            : bytes_(bytes)
+        {
+        }
+
+        [[nodiscard]] static constexpr expected<
+            Sha256Digest,
+            EDigestParseError
+        > fromHex(std::string_view text) noexcept
+        {
+            if (text.size() != hex_size)
+            {
+                return unexpected(EDigestParseError::INVALID_SIZE);
+            }
+
+            Sha256Digest digest;
+            for (std::size_t index = 0; index < byte_size; ++index)
+            {
+                const auto high = hexValue(text[index * 2]);
+                const auto low = hexValue(text[index * 2 + 1]);
+                if (high < 0 || low < 0)
+                {
+                    return unexpected(EDigestParseError::INVALID_CHARACTER);
+                }
+                digest.bytes_[index] = std::byte(
+                    static_cast<unsigned char>((high << 4) | low)
+                );
+            }
+            return digest;
+        }
+
+        constexpr void formatHex(std::span<char, hex_size> output) const noexcept
+        {
+            constexpr std::string_view kDigits = "0123456789abcdef";
+            for (std::size_t index = 0; index < byte_size; ++index)
+            {
+                const auto value = std::to_integer<unsigned char>(bytes_[index]);
+                output[index * 2] = kDigits[value >> 4U];
+                output[index * 2 + 1] = kDigits[value & 0x0fU];
+            }
+        }
+
+        [[nodiscard]] constexpr std::span<const std::byte, byte_size> bytes() const noexcept
+        {
+            return bytes_;
+        }
+
+        [[nodiscard]] constexpr std::byte* data() noexcept
+        {
+            return bytes_.data();
+        }
+
+        [[nodiscard]] constexpr const std::byte* data() const noexcept
+        {
+            return bytes_.data();
+        }
+
+        [[nodiscard]] static constexpr std::size_t size() noexcept
+        {
+            return byte_size;
+        }
+
+        [[nodiscard]] constexpr std::byte& operator[](
+            std::size_t index
+        ) noexcept
+        {
+            return bytes_[index];
+        }
+
+        [[nodiscard]] constexpr std::byte operator[](
+            std::size_t index
+        ) const noexcept
+        {
+            return bytes_[index];
+        }
+
+        [[nodiscard]] constexpr auto begin() noexcept
+        {
+            return bytes_.begin();
+        }
+
+        [[nodiscard]] constexpr auto end() noexcept
+        {
+            return bytes_.end();
+        }
+
+        [[nodiscard]] constexpr auto begin() const noexcept
+        {
+            return bytes_.begin();
+        }
+
+        [[nodiscard]] constexpr auto end() const noexcept
+        {
+            return bytes_.end();
+        }
+
+        [[nodiscard]] constexpr auto operator<=>(
+            const Sha256Digest&
+        ) const noexcept = default;
+
+      private:
+        [[nodiscard]] static constexpr int hexValue(char character) noexcept
+        {
+            if (character >= '0' && character <= '9') return character - '0';
+            if (character >= 'a' && character <= 'f') return character - 'a' + 10;
+            if (character >= 'A' && character <= 'F') return character - 'A' + 10;
+            return -1;
+        }
+
+        std::array<std::byte, byte_size> bytes_{};
+    };
 
     class Sha256 final
     {
@@ -265,15 +394,11 @@ namespace lux::cxx::algorithm
         const Sha256Digest& digest
     )
     {
-        constexpr std::string_view kDigits = "0123456789abcdef";
-        std::string output;
-        output.resize(digest.size() * 2);
-        for (std::size_t index = 0; index < digest.size(); ++index)
-        {
-            const auto value = std::to_integer<unsigned char>(digest[index]);
-            output[index * 2] = kDigits[value >> 4U];
-            output[index * 2 + 1] = kDigits[value & 0x0fU];
-        }
+        std::string output(Sha256Digest::hex_size, '\0');
+        digest.formatHex(std::span<char, Sha256Digest::hex_size>(
+            output.data(),
+            output.size()
+        ));
         return output;
     }
 } // namespace lux::cxx::algorithm

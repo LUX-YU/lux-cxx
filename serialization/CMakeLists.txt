@@ -34,6 +34,7 @@ component_include_directories(
 component_add_internal_dependencies(
     serialization
         lux::cxx::compile_time
+        lux::cxx::core
 )
 
 # Ship the codegen template + the turn-key CMake helpers so that consumers get
@@ -175,7 +176,7 @@ component_add_internal_dependencies(
         lux::cxx::arguments
 )
 
-set(ENABLE_SERIALIZATION_TEST true CACHE BOOL "Enable serialization tests")
-if(ENABLE_SERIALIZATION_TEST)
+set(ENABLE_SERIALIZATION_TEST ${LUX_CXX_BUILD_TESTS} CACHE BOOL "Enable serialization tests")
+if(ENABLE_SERIALIZATION_TEST AND BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     add_subdirectory(test)
 endif()

@@ -8,3 +8,5 @@ target_link_libraries(
     PRIVATE
     event
 )
+
+add_test(NAME signal_test COMMAND signal_test)

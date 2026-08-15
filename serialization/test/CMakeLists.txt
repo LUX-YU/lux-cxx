@@ -121,6 +121,21 @@ lux_target_add_serialization(
     ALWAYS_REGENERATE
 )
 
+foreach(_serialization_test
+    serialization_test
+    json_test
+    xml_test
+    external_json_test
+    external_xml_test
+    serialization_arguments_test
+)
+    add_test(NAME ${_serialization_test} COMMAND ${_serialization_test})
+    set_tests_properties(
+        ${_serialization_test}
+        PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/reflection
+    )
+endforeach()
+
 #[[====================  Serialization throughput benchmark (opt-in)  ============]]
 option(ENABLE_SERIALIZATION_BENCH "Build the serialization throughput benchmark" OFF)
 if(ENABLE_SERIALIZATION_BENCH)

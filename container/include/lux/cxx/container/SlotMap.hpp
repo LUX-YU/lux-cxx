@@ -30,6 +30,8 @@
 #include <cstdint>
 #include <cstddef>
 #include <limits>
+#include <memory>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -54,20 +56,20 @@ namespace lux::cxx
         static_assert(std::is_unsigned_v<GenerationType>, "SlotKey: GenerationType must be unsigned");
 
         using tag_t        = Tag;
-        using index_t      = IndexType;
-        using generation_t = GenerationType;
+        using index_type      = IndexType;
+        using generation_type = GenerationType;
 
-        index_t      index = (std::numeric_limits<index_t>::max)();
-        generation_t gen   = 0;
+        index_type      index = (std::numeric_limits<index_type>::max)();
+        generation_type gen   = 0;
 
         /** @brief Returns true if this key has never been assigned. */
-        [[nodiscard]] constexpr bool is_null() const noexcept
+        [[nodiscard]] constexpr bool isNull() const noexcept
         {
-            return index == (std::numeric_limits<index_t>::max)();
+            return index == (std::numeric_limits<index_type>::max)();
         }
 
         /** @brief Returns true if this key refers to a potentially valid slot. */
-        [[nodiscard]] constexpr bool valid() const noexcept { return !is_null(); }
+        [[nodiscard]] constexpr bool isValid() const noexcept { return !isNull(); }
 
         /** @brief Returns an explicitly invalid (null) key. */
         [[nodiscard]] static constexpr SlotKey invalid() noexcept { return SlotKey{}; }
@@ -109,38 +111,74 @@ namespace lux::cxx
      * @tparam IndexType      Unsigned integer for slot/dense indices.
      * @tparam GenerationType Unsigned integer for generation counters.
      */
-    template <typename Value, typename Tag = void, typename IndexType = std::uint32_t, typename GenerationType = std::uint32_t>
+    template <
+        typename Value,
+        typename Tag = void,
+        typename IndexType = std::uint32_t,
+        typename GenerationType = std::uint32_t,
+        typename Allocator = std::allocator<Value>
+    >
     class SlotMap
     {
         static_assert(std::is_unsigned_v<IndexType>, "SlotMap: IndexType must be unsigned");
         static_assert(std::is_unsigned_v<GenerationType>, "SlotMap: GenerationType must be unsigned");
 
-    public:
-        using key_t        = SlotKey<Tag, IndexType, GenerationType>;
-        using value_t      = Value;
-        using size_t       = std::size_t;
-        using index_t      = IndexType;
-        using generation_t = GenerationType;
+      private:
+        struct Slot;
+        using slot_allocator = typename std::allocator_traits<
+            Allocator
+        >::template rebind_alloc<Slot>;
+        using index_allocator = typename std::allocator_traits<
+            Allocator
+        >::template rebind_alloc<IndexType>;
 
-        static constexpr index_t INVALID_INDEX =
-            (std::numeric_limits<index_t>::max)();
+      public:
+        using key_type        = SlotKey<Tag, IndexType, GenerationType>;
+        using value_type      = Value;
+        using size_type       = std::size_t;
+        using index_type      = IndexType;
+        using generation_type = GenerationType;
+        using allocator_type = Allocator;
+        using value_container = std::vector<Value, Allocator>;
+
+        static constexpr index_type INVALID_INDEX =
+            (std::numeric_limits<index_type>::max)();
 
         // ---- constructors ---------------------------------------------------
 
-        SlotMap() = default;
+        SlotMap()
+            : SlotMap(Allocator{})
+        {
+        }
 
-        explicit SlotMap(size_t initial_capacity)
+        explicit SlotMap(const Allocator& allocator)
+            : slots_(slot_allocator(allocator)),
+              dense_(allocator),
+              dense_to_slot_(index_allocator(allocator))
+        {
+        }
+
+        explicit SlotMap(
+            size_type initial_capacity,
+            const Allocator& allocator = Allocator{}
+        )
+            : SlotMap(allocator)
         {
             reserve(initial_capacity);
         }
 
+        [[nodiscard]] allocator_type get_allocator() const noexcept
+        {
+            return dense_.get_allocator();
+        }
+
         // ---- capacity -------------------------------------------------------
 
-        [[nodiscard]] size_t size()     const noexcept { return dense_.size(); }
+        [[nodiscard]] size_type size()     const noexcept { return dense_.size(); }
         [[nodiscard]] bool   empty()    const noexcept { return dense_.empty(); }
-        [[nodiscard]] size_t capacity() const noexcept { return slots_.capacity(); }
+        [[nodiscard]] size_type capacity() const noexcept { return slots_.capacity(); }
 
-        void reserve(size_t n)
+        void reserve(size_type n)
         {
             slots_.reserve(n);
             dense_.reserve(n);
@@ -156,10 +194,25 @@ namespace lux::cxx
 
         void clear()
         {
-            slots_.clear();
             dense_.clear();
             dense_to_slot_.clear();
             free_head_ = INVALID_INDEX;
+            for (std::size_t index = slots_.size(); index > 0; --index)
+            {
+                auto& slot = slots_[index - 1];
+                if (slot.generation == (std::numeric_limits<generation_type>::max)())
+                {
+                    slot.dense_index = INVALID_INDEX;
+                    continue;
+                }
+                ++slot.generation;
+                slot.dense_index = INVALID_INDEX;
+                if (slot.generation != (std::numeric_limits<generation_type>::max)())
+                {
+                    slot.dense_index = free_head_;
+                    free_head_ = static_cast<index_type>(index - 1);
+                }
+            }
         }
 
         // ---- insert ---------------------------------------------------------
@@ -167,7 +220,7 @@ namespace lux::cxx
         /**
          * @brief Inserts a value by copy. Returns the handle.
          */
-        key_t insert(const Value& value)
+        key_type insert(const Value& value)
         {
             return emplace_impl(value);
         }
@@ -175,7 +228,7 @@ namespace lux::cxx
         /**
          * @brief Inserts a value by move. Returns the handle.
          */
-        key_t insert(Value&& value)
+        key_type insert(Value&& value)
         {
             return emplace_impl(std::move(value));
         }
@@ -184,9 +237,22 @@ namespace lux::cxx
          * @brief Constructs a value in-place. Returns the handle.
          */
         template <typename... Args>
-        key_t emplace(Args&&... args)
+        key_type emplace(Args&&... args)
         {
             return emplace_impl(std::forward<Args>(args)...);
+        }
+
+        template <typename... Args>
+        [[nodiscard]] std::optional<key_type> tryEmplace(Args&&... args)
+        {
+            try
+            {
+                return emplace_impl(std::forward<Args>(args)...);
+            }
+            catch (const std::bad_alloc&)
+            {
+                return std::nullopt;
+            }
         }
 
         // ---- erase ----------------------------------------------------------
@@ -196,14 +262,14 @@ namespace lux::cxx
          * @param key The handle previously returned by insert/emplace.
          * @return True if the element was erased, false if the key was stale or invalid.
          */
-        bool erase(key_t key)
+        bool erase(key_type key)
         {
-            if (!is_valid(key))
+            if (!isValid(key))
                 return false;
 
             auto& slot = slots_[key.index];
-            index_t dense_idx = slot.dense_index;
-            index_t last_dense = static_cast<index_t>(dense_.size() - 1);
+            index_type dense_idx = slot.dense_index;
+            index_type last_dense = static_cast<index_type>(dense_.size() - 1);
 
             // Swap-and-pop in the dense array.
             if (dense_idx != last_dense)
@@ -224,10 +290,14 @@ namespace lux::cxx
             // (ABA). The cost is one leaked slot per 2^bits reuses of that slot —
             // negligible for the default uint32 generation. A wider GenerationType
             // pushes this even further out.
-            if (slot.generation != std::numeric_limits<generation_t>::max())
+            if (slot.generation != std::numeric_limits<generation_type>::max())
             {
                 slot.dense_index = free_head_;
                 free_head_ = key.index;
+            }
+            else
+            {
+                slot.dense_index = INVALID_INDEX;
             }
 
             return true;
@@ -238,28 +308,30 @@ namespace lux::cxx
         /**
          * @brief Checks whether a key is currently valid.
          */
-        [[nodiscard]] bool is_valid(key_t key) const noexcept
+        [[nodiscard]] bool isValid(key_type key) const noexcept
         {
-            if (key.is_null())
+            if (key.isNull())
                 return false;
             if (key.index >= slots_.size())
                 return false;
-            return slots_[key.index].generation == key.gen;
+            const auto& slot = slots_[key.index];
+            return slot.generation == key.gen &&
+                   slot.dense_index < dense_.size();
         }
 
         /**
          * @brief Returns a pointer to the value, or nullptr if the key is stale.
          */
-        [[nodiscard]] Value* find(key_t key) noexcept
+        [[nodiscard]] Value* find(key_type key) noexcept
         {
-            if (!is_valid(key))
+            if (!isValid(key))
                 return nullptr;
             return &dense_[slots_[key.index].dense_index];
         }
 
-        [[nodiscard]] const Value* find(key_t key) const noexcept
+        [[nodiscard]] const Value* find(key_type key) const noexcept
         {
-            if (!is_valid(key))
+            if (!isValid(key))
                 return nullptr;
             return &dense_[slots_[key.index].dense_index];
         }
@@ -267,16 +339,16 @@ namespace lux::cxx
         /**
          * @brief Returns a reference to the value. Throws if the key is invalid.
          */
-        [[nodiscard]] Value& at(key_t key)
+        [[nodiscard]] Value& at(key_type key)
         {
-            if (!is_valid(key))
+            if (!isValid(key))
                 throw std::out_of_range("SlotMap::at: invalid or stale key");
             return dense_[slots_[key.index].dense_index];
         }
 
-        [[nodiscard]] const Value& at(key_t key) const
+        [[nodiscard]] const Value& at(key_type key) const
         {
-            if (!is_valid(key))
+            if (!isValid(key))
                 throw std::out_of_range("SlotMap::at: invalid or stale key");
             return dense_[slots_[key.index].dense_index];
         }
@@ -284,15 +356,15 @@ namespace lux::cxx
         /**
          * @brief Returns a reference to the value. Undefined behaviour if the key is invalid.
          */
-        [[nodiscard]] Value& operator[](key_t key) noexcept
+        [[nodiscard]] Value& operator[](key_type key) noexcept
         {
-            assert(is_valid(key) && "SlotMap::operator[] called with an invalid/stale key");
+            assert(isValid(key) && "SlotMap::operator[] called with an invalid/stale key");
             return dense_[slots_[key.index].dense_index];
         }
 
-        [[nodiscard]] const Value& operator[](key_t key) const noexcept
+        [[nodiscard]] const Value& operator[](key_type key) const noexcept
         {
-            assert(is_valid(key) && "SlotMap::operator[] called with an invalid/stale key");
+            assert(isValid(key) && "SlotMap::operator[] called with an invalid/stale key");
             return dense_[slots_[key.index].dense_index];
         }
 
@@ -304,15 +376,15 @@ namespace lux::cxx
          * The order is unspecified but the array is contiguous — ideal for
          * cache-friendly iteration in ECS-style loops.
          */
-        [[nodiscard]] const std::vector<Value>& values() const noexcept { return dense_; }
-        [[nodiscard]]       std::vector<Value>& values()       noexcept { return dense_; }
+        [[nodiscard]] const value_container& values() const noexcept { return dense_; }
+        [[nodiscard]] value_container& values() noexcept { return dense_; }
 
-        [[nodiscard]] typename std::vector<Value>::iterator       begin()        noexcept { return dense_.begin(); }
-        [[nodiscard]] typename std::vector<Value>::iterator       end()          noexcept { return dense_.end(); }
-        [[nodiscard]] typename std::vector<Value>::const_iterator begin()  const noexcept { return dense_.begin(); }
-        [[nodiscard]] typename std::vector<Value>::const_iterator end()    const noexcept { return dense_.end(); }
-        [[nodiscard]] typename std::vector<Value>::const_iterator cbegin() const noexcept { return dense_.cbegin(); }
-        [[nodiscard]] typename std::vector<Value>::const_iterator cend()   const noexcept { return dense_.cend(); }
+        [[nodiscard]] auto begin() noexcept { return dense_.begin(); }
+        [[nodiscard]] auto end() noexcept { return dense_.end(); }
+        [[nodiscard]] auto begin() const noexcept { return dense_.begin(); }
+        [[nodiscard]] auto end() const noexcept { return dense_.end(); }
+        [[nodiscard]] auto cbegin() const noexcept { return dense_.cbegin(); }
+        [[nodiscard]] auto cend() const noexcept { return dense_.cend(); }
 
     private:
         /**
@@ -324,45 +396,60 @@ namespace lux::cxx
          */
         struct Slot
         {
-            index_t      dense_index = INVALID_INDEX;
-            generation_t generation  = 1;
+            index_type      dense_index = INVALID_INDEX;
+            generation_type generation  = 1;
         };
 
-        std::vector<Slot>       slots_;           ///< Indirect slot array.
-        std::vector<Value>      dense_;            ///< Dense value storage.
-        std::vector<index_t> dense_to_slot_;    ///< Reverse map: dense index → slot index.
-        index_t              free_head_ = INVALID_INDEX; ///< Head of the free list.
+        std::vector<Slot, slot_allocator> slots_; ///< Indirect slot array.
+        value_container dense_;                  ///< Dense value storage.
+        std::vector<index_type, index_allocator> dense_to_slot_; ///< Reverse map.
+        index_type              free_head_ = INVALID_INDEX; ///< Head of the free list.
 
         /**
          * @brief Allocates a slot (from the free list or by growing) and
          *        emplaces a value into the dense array.
          */
         template <typename... Args>
-        key_t emplace_impl(Args&&... args)
+        key_type emplace_impl(Args&&... args)
         {
-            index_t slot_idx;
-            if (free_head_ != INVALID_INDEX)
+            const bool reused = free_head_ != INVALID_INDEX;
+            index_type slot_idx = free_head_;
+            if (!reused)
             {
-                // Reuse a recycled slot.
-                slot_idx = free_head_;
-                free_head_ = slots_[slot_idx].dense_index;
-            }
-            else
-            {
-                // Grow the slot array.
-                slot_idx = static_cast<index_t>(slots_.size());
+                if (slots_.size() >= static_cast<std::size_t>(INVALID_INDEX))
+                {
+                    throw std::length_error("SlotMap index space exhausted");
+                }
+                slot_idx = static_cast<index_type>(slots_.size());
                 slots_.push_back(Slot{});
             }
 
-            index_t dense_idx = static_cast<index_t>(dense_.size());
-            dense_.emplace_back(std::forward<Args>(args)...);
-            dense_to_slot_.push_back(slot_idx);
+            try
+            {
+                dense_.emplace_back(std::forward<Args>(args)...);
+            }
+            catch (...)
+            {
+                if (!reused) slots_.pop_back();
+                throw;
+            }
+
+            try
+            {
+                dense_to_slot_.push_back(slot_idx);
+            }
+            catch (...)
+            {
+                dense_.pop_back();
+                if (!reused) slots_.pop_back();
+                throw;
+            }
 
             auto& slot = slots_[slot_idx];
-            slot.dense_index = dense_idx;
-            // generation was already incremented on erase (or is 0 for new slots).
+            if (reused) free_head_ = slot.dense_index;
+            slot.dense_index = static_cast<index_type>(dense_.size() - 1);
 
-            return key_t{ slot_idx, slot.generation };
+            return key_type{ slot_idx, slot.generation };
         }
     };
 

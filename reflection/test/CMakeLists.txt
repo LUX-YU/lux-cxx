@@ -52,13 +52,54 @@ add_executable(
 	${CMAKE_CURRENT_SOURCE_DIR}/meta_roundtrip_test.cpp
 )
 
+add_executable(
+	meta_ir_test
+	${CMAKE_CURRENT_SOURCE_DIR}/meta_ir_test.cpp
+)
+
+add_executable(
+	meta_ir_fuzz_test
+	${CMAKE_CURRENT_SOURCE_DIR}/meta_ir_fuzz_test.cpp
+)
+
+target_link_libraries(
+	meta_ir_fuzz_test
+	PRIVATE
+		lux::cxx::reflection_runtime
+)
+
+target_link_libraries(
+	meta_ir_test
+	PRIVATE
+		lux::cxx::reflection_runtime
+)
+
+get_filename_component(REFLECTION_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/.. ABSOLUTE)
+
+foreach(_reflection_test
+	meta_parse_test
+	external_reflect_test
+	meta_deserializer_test
+	extended_coverage_test
+	meta_roundtrip_test
+	meta_ir_test
+	meta_ir_fuzz_test
+)
+	add_test(NAME ${_reflection_test} COMMAND ${_reflection_test})
+	# Parser/runtime DLLs and their copied vcpkg dependencies are emitted in the
+	# reflection binary directory, not the per-test executable directory.
+	set_tests_properties(
+		${_reflection_test}
+		PROPERTIES WORKING_DIRECTORY ${REFLECTION_BINARY_DIR}
+	)
+endforeach()
+
 target_link_libraries(
 	meta_roundtrip_test
 	PRIVATE
 		lux::cxx::reflection_parser
 )
 
-get_filename_component(REFLECTION_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/.. ABSOLUTE)
 message(STATUS "REFLECTION_BINARY_DIR: ${REFLECTION_BINARY_DIR}")
 find_program(
 	LUX_GENERATOR
@@ -80,6 +121,11 @@ if(LUX_GENERATOR)
 		generator_test
 		PRIVATE
 			lux::cxx::reflection_runtime
+	)
+	add_test(NAME generator_test COMMAND generator_test)
+	set_tests_properties(
+		generator_test
+		PROPERTIES WORKING_DIRECTORY ${REFLECTION_BINARY_DIR}
 	)
 
 	add_meta(

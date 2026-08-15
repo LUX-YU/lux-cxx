@@ -13,9 +13,8 @@
  * Key properties:
  *  - **Small‑buffer optimisation** – the first `N` elements reside in an
  *    internal `std::byte` array; `N` defaults to 8.
- *  - **No allocator parameter** – memory is obtained via the global new/delete
- *    operators. This simplifies the implementation and matches the common use
- *    case where custom allocators are unnecessary.
+ *  - **Allocator aware** – heap fallback uses the supplied allocator while the
+ *    first N elements remain inline and require no allocation.
  *  - **Iterator invalidation** – any operation which modifies the container’s
  *    size or capacity invalidates all iterators and references, matching the
  *    behaviour of libc++ / MSVC `std::vector`.
@@ -62,9 +61,7 @@ namespace lux::cxx
      *           Must be greater than zero. Choosing a power of two can give
      *           better padding / alignment but is not required.
      *
-     * @note The container deliberately omits an allocator parameter. If you
-     *       need a custom allocator you should embed one in @p T or use
-     *       `std::vector` directly.
+     * @tparam Allocator Allocator used only after the inline capacity is exceeded.
      *
      * @par Iterator invalidation
      * Any mutating operation (insert, erase, push_back, reserve, etc.) makes
@@ -73,7 +70,11 @@ namespace lux::cxx
      * as libc++ where even `push_back` without reallocation invalidates
      * iterators.
      */
-    template <class T, std::size_t N = 8>
+    template <
+        class T,
+        std::size_t N = 8,
+        class Allocator = std::allocator<T>
+    >
     class SmallVector
     {
         static_assert(N > 0, "SmallVector<N>: N must be greater than zero");
@@ -92,6 +93,8 @@ namespace lux::cxx
         using const_iterator = const value_type*; //!< Const iterator.
         using reverse_iterator = std::reverse_iterator<iterator>; //!< Reverse iterator.
         using const_reverse_iterator = std::reverse_iterator<const_iterator>; //!< Const reverse.
+        using allocator_type = Allocator;
+        using allocator_traits = std::allocator_traits<allocator_type>;
 
     private:                              // data & helpers
         /// @brief Number of elements that the internal buffer can store.
@@ -121,6 +124,7 @@ namespace lux::cxx
         pointer   _data = stack_ptr(_stack); //!< Points to first element storage.
         size_type _size = 0;                 //!< Number of constructed elements.
         size_type _cap = kStackCapacity;    //!< Total capacity of @_data.
+        [[no_unique_address]] allocator_type allocator_{};
 
         /// @brief Returns @c true if currently using the internal buffer.
         [[nodiscard]] bool on_stack() const noexcept { return _data == stack_ptr(_stack); }
@@ -134,20 +138,17 @@ namespace lux::cxx
          * @return Pointer to raw storage (may be @c nullptr if @p n == 0).
          * @throw std::bad_alloc If allocation fails.
          */
-        [[nodiscard]] static pointer allocate(size_type n)
+        [[nodiscard]] pointer allocate(size_type n)
         {
-            return n ? static_cast<pointer>(
-                ::operator new[](n * sizeof(value_type),
-                    std::align_val_t{ alignof(value_type) }))
-                : nullptr;
+            return n ? allocator_traits::allocate(allocator_, n) : nullptr;
         }
         /**
          * @brief Deallocate storage previously obtained via allocate().
          * @param p Pointer returned by allocate(); may be @c nullptr.
          */
-        static void deallocate(pointer p) noexcept
+        void deallocate(pointer p, size_type count) noexcept
         {
-            ::operator delete[](p, std::align_val_t{ alignof(value_type) });
+            if (p != nullptr) allocator_traits::deallocate(allocator_, p, count);
         }
 
         // ------------------------------------------------------------------
@@ -203,13 +204,13 @@ namespace lux::cxx
                 catch (...)
                 {
                     destroy_range(new_data, new_data + constructed);
-                    deallocate(new_data);
+                    deallocate(new_data, new_cap);
                     throw;
                 }
             }
 
             destroy_range(_data, _data + _size);
-            if (!on_stack()) deallocate(_data);
+            if (!on_stack()) deallocate(_data, _cap);
 
             _data = new_data;
             _cap = new_cap;
@@ -319,7 +320,12 @@ namespace lux::cxx
          /**
           * @brief Default‑constructs an empty vector with capacity @c N.
           */
-        SmallVector() noexcept = default;
+        SmallVector() noexcept(std::is_nothrow_default_constructible_v<Allocator>) = default;
+
+        explicit SmallVector(const Allocator& allocator) noexcept
+            : allocator_(allocator)
+        {
+        }
 
         /**
          * @brief Constructs the vector with @p count copies of @p value.
@@ -329,6 +335,18 @@ namespace lux::cxx
          * @throws std::bad_alloc On allocation failure.
          */
         explicit SmallVector(size_type count, const_reference value = value_type{})
+        {
+            if (count > _cap) grow(count);
+            std::uninitialized_fill_n(_data, count, value);
+            _size = count;
+        }
+
+        SmallVector(
+            size_type count,
+            const_reference value,
+            const Allocator& allocator
+        )
+            : SmallVector(allocator)
         {
             if (count > _cap) grow(count);
             std::uninitialized_fill_n(_data, count, value);
@@ -350,6 +368,14 @@ namespace lux::cxx
             class = std::enable_if_t<!std::is_integral_v<InputIt>>>
         SmallVector(InputIt first, InputIt last) { assign(first, last); }
 
+        template <class InputIt,
+            class = std::enable_if_t<!std::is_integral_v<InputIt>>>
+        SmallVector(InputIt first, InputIt last, const Allocator& allocator)
+            : SmallVector(allocator)
+        {
+            assign(first, last);
+        }
+
         /**
          * @brief Initialiser‑list constructor.
          * @param il List of elements.
@@ -358,11 +384,30 @@ namespace lux::cxx
             : SmallVector(il.begin(), il.end()) {
         }
 
+        SmallVector(
+            std::initializer_list<value_type> il,
+            const Allocator& allocator
+        )
+            : SmallVector(il.begin(), il.end(), allocator)
+        {
+        }
+
         /**
          * @brief Copy constructor – performs deep copy.
          */
         SmallVector(const SmallVector& other)
-            : SmallVector(other.begin(), other.end()) {
+            : SmallVector(
+                other.begin(),
+                other.end(),
+                allocator_traits::select_on_container_copy_construction(
+                    other.allocator_
+                )
+            ) {
+        }
+
+        SmallVector(const SmallVector& other, const Allocator& allocator)
+            : SmallVector(other.begin(), other.end(), allocator)
+        {
         }
 
         /**
@@ -372,7 +417,11 @@ namespace lux::cxx
          * back to element‑wise move so that both objects can safely share the
          * stack buffer.
          */
-        SmallVector(SmallVector&& other) noexcept(std::is_nothrow_move_constructible_v<T>)
+        SmallVector(SmallVector&& other) noexcept(
+            std::is_nothrow_move_constructible_v<T> &&
+            std::is_nothrow_move_constructible_v<Allocator>
+        )
+            : allocator_(std::move(other.allocator_))
         {
             if (other.on_stack())
             {
@@ -393,11 +442,32 @@ namespace lux::cxx
             }
         }
 
+        SmallVector(SmallVector&& other, const Allocator& allocator)
+            : SmallVector(allocator)
+        {
+            if (allocator_ == other.allocator_ && !other.on_stack())
+            {
+                _data = other._data;
+                _size = other._size;
+                _cap = other._cap;
+                other._data = stack_ptr(other._stack);
+                other._size = 0;
+                other._cap = kStackCapacity;
+            }
+            else
+            {
+                reserve(other._size);
+                std::uninitialized_move(other.begin(), other.end(), _data);
+                _size = other._size;
+                other.clear();
+            }
+        }
+
         /** Destructor – destroys all elements and frees heap memory. */
         ~SmallVector() noexcept
         {
             clear();
-            if (!on_stack()) deallocate(_data);
+            if (!on_stack()) deallocate(_data, _cap);
         }
         ///@}
 
@@ -410,24 +480,52 @@ namespace lux::cxx
          */
         SmallVector& operator=(const SmallVector& rhs)
         {
-            if (this != &rhs) assign(rhs.begin(), rhs.end());
+            if (this == &rhs) return *this;
+            if constexpr (allocator_traits::propagate_on_container_copy_assignment::value)
+            {
+                if (allocator_ != rhs.allocator_)
+                {
+                    clear();
+                    if (!on_stack()) deallocate(_data, _cap);
+                    _data = stack_ptr(_stack);
+                    _cap = kStackCapacity;
+                }
+                allocator_ = rhs.allocator_;
+            }
+            assign(rhs.begin(), rhs.end());
             return *this;
         }
         /**
          * @brief Move‑assigns from @p rhs providing strong exception safety.
          * @return *this.
          */
-        SmallVector& operator=(SmallVector&& rhs) noexcept(std::is_nothrow_move_assignable_v<T>)
+        SmallVector& operator=(SmallVector&& rhs) noexcept(
+            std::is_nothrow_move_constructible_v<T> &&
+            (
+                allocator_traits::is_always_equal::value ||
+                (
+                    allocator_traits::propagate_on_container_move_assignment::value &&
+                    std::is_nothrow_move_assignable_v<Allocator>
+                )
+            )
+        )
         {
             if (this == &rhs) return *this;
 
             clear();
-            if (!on_stack()) deallocate(_data);
+            if (!on_stack()) deallocate(_data, _cap);
+            _data = stack_ptr(_stack);
+            _cap = kStackCapacity;
 
-            if (rhs.on_stack())
+            constexpr bool kPropagate =
+                allocator_traits::propagate_on_container_move_assignment::value;
+            if constexpr (kPropagate)
             {
-                _data = stack_ptr(_stack);
-                _cap = kStackCapacity;
+                allocator_ = std::move(rhs.allocator_);
+            }
+
+            if (rhs.on_stack() || (!kPropagate && allocator_ != rhs.allocator_))
+            {
                 reserve(rhs._size);
                 std::uninitialized_move(rhs.begin(), rhs.end(), _data);
                 _size = rhs._size;
@@ -544,7 +642,12 @@ namespace lux::cxx
         [[nodiscard]] size_type capacity() const noexcept { return _cap; }
         [[nodiscard]] size_type max_size() const noexcept
         {
-            return static_cast<size_type>(-1) / sizeof(value_type);
+            return allocator_traits::max_size(allocator_);
+        }
+
+        [[nodiscard]] allocator_type get_allocator() const noexcept
+        {
+            return allocator_;
         }
 
         /**
@@ -725,7 +828,7 @@ namespace lux::cxx
                 // element throws). Drain the input into a temporary first — built
                 // fully before *this is touched — then splice it in with a single
                 // make_gap, restoring O(n+m).
-                SmallVector<value_type, N> tmp;
+                SmallVector<value_type, N, Allocator> tmp(allocator_);
                 for (; first != last; ++first) tmp.emplace_back(*first);
                 if (tmp.empty()) return;
                 pointer p = make_gap(idx, tmp.size());
@@ -771,8 +874,6 @@ namespace lux::cxx
          * element‑wise exchange is not possible.
          */
         void swap(SmallVector& other)
-            noexcept(std::is_nothrow_move_constructible_v<T>&&
-                std::is_nothrow_swappable_v<T>)
         {
             if (this == &other) return;
 
@@ -781,6 +882,21 @@ namespace lux::cxx
 
             if (self_heap && other_heap)            // Fast path – just pointers.
             {
+                if constexpr (!allocator_traits::propagate_on_container_swap::value)
+                {
+                    if (allocator_ != other.allocator_)
+                    {
+                        SmallVector tmp(std::move(*this), other.allocator_);
+                        *this = SmallVector(std::move(other), allocator_);
+                        other = std::move(tmp);
+                        return;
+                    }
+                }
+                else
+                {
+                    using std::swap;
+                    swap(allocator_, other.allocator_);
+                }
                 using std::swap;
                 swap(_data, other._data);
                 swap(_size, other._size);

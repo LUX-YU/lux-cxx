@@ -18,7 +18,7 @@ component_add_internal_dependencies(
         lux::cxx::compile_time
 )
 
-set(ENABLE_ARCHTYPE_TEST true CACHE BOOL "Enable archtype test")
-if(ENABLE_ARCHTYPE_TEST)
+set(ENABLE_ARCHTYPE_TEST ${LUX_CXX_BUILD_TESTS} CACHE BOOL "Enable archtype test")
+if(ENABLE_ARCHTYPE_TEST AND BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     add_subdirectory(test)
 endif()

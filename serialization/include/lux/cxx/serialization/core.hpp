@@ -457,7 +457,7 @@ namespace lux::cxx::ser
             bool ok = true;
             // Single O(n) pass over members (the indexed member_value/member_key form
             // is O(n^2) on ordered-map JSON objects and XML child lists).
-            cur.for_each_member([&](std::string_view k, const Cur& v)
+            auto load_member = [&](std::string_view k, const Cur& v)
             {
                 V val{};
                 error e;
@@ -469,7 +469,8 @@ namespace lux::cxx::ser
                         e.message.empty() ? "map value failed" : std::move(e.message),
                         detail::prefix_path(std::string(k), e.path));
                 }
-            });
+            };
+            cur.for_each_member(load_member);
             return ok;
         }
         else if constexpr (Map<U>)
@@ -485,13 +486,14 @@ namespace lux::cxx::ser
             if constexpr (requires { out.reserve(std::size_t{}); })
                 out.reserve(cur.size());   // unordered_map of entries: avoid rehashing
             bool ok = true;
-            cur.for_each_element([&](std::size_t i, const Cur& e)   // single O(n) pass
+            auto load_entry = [&](std::size_t i, const Cur& e)   // single O(n) pass
             {
                 if (e.size() < 2) { ok = false; detail::set_error(err, error_code::type_mismatch, "map entry must be a [key,value] pair", "[" + std::to_string(i) + "]"); return; }
                 K k{}; V val{};
                 if (load(e.element(0), k) && load(e.element(1), val)) out.emplace(std::move(k), std::move(val));
                 else { ok = false; detail::set_error(err, error_code::load_failed, "map entry failed", "[" + std::to_string(i) + "]"); }
-            });
+            };
+            cur.for_each_element(load_entry);
             return ok;
         }
         else if constexpr (Sequence<U>)
@@ -509,7 +511,7 @@ namespace lux::cxx::ser
             if constexpr (requires { out.reserve(std::size_t{}); })
                 out.reserve(cur.size());
             bool ok = true;
-            cur.for_each_element([&](std::size_t i, const Cur& el)   // single O(n) pass
+            auto load_element = [&](std::size_t i, const Cur& el)   // single O(n) pass
             {
                 V e{};
                 error ee;
@@ -521,7 +523,8 @@ namespace lux::cxx::ser
                         ee.message.empty() ? "sequence element failed" : std::move(ee.message),
                         detail::prefix_path("[" + std::to_string(i) + "]", ee.path));
                 }
-            });
+            };
+            cur.for_each_element(load_element);
             return ok;
         }
         else

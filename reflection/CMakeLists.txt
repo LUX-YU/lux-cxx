@@ -89,12 +89,21 @@ target_compile_definitions(
 component_add_internal_dependencies(
     reflection_runtime
         lux::cxx::algorithm
+        lux::cxx::binary
         lux::cxx::compile_time
+        lux::cxx::core
 )
 
 # nlohmann_json is header-only and used only in MetaUnitSerializer.cpp, so it is
 # fully compiled in. $<BUILD_INTERFACE:> keeps it out of the installed export.
 target_link_libraries(reflection_runtime PRIVATE $<BUILD_INTERFACE:lux::cxx::nlohmann_json>)
+
+lux_add_header_self_containment(
+    reflection_ir_header_self_containment
+    lux::cxx::reflection_runtime
+    lux/cxx/reflection/runtime/MetaIr.hpp
+    lux/cxx/reflection/runtime/MetaIrBinary.hpp
+)
 
 #[[==========================
     Reflection Parser (host-only: hard libclang dependency — see gate above)
@@ -236,8 +245,8 @@ install(
 add_executable(lux::cxx::lux_meta_generator ALIAS lux_meta_generator)
 endif() # NOT CMAKE_CROSSCOMPILING — lux_meta_generator
 
-option(ENABLE_REFLECTION_TEST "Enable reflection test" ON)
-if(ENABLE_REFLECTION_TEST AND NOT CMAKE_CROSSCOMPILING)
+set(ENABLE_REFLECTION_TEST ${LUX_CXX_BUILD_TESTS} CACHE BOOL "Enable reflection test")
+if(ENABLE_REFLECTION_TEST AND BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     set(TEST_TEMPLATE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/templates)
     add_subdirectory(test)    
 endif()

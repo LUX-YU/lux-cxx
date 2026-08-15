@@ -8,6 +8,7 @@
 using lux::cxx::BlockingQueue;
 using lux::cxx::BlockingRingQueue;
 using lux::cxx::EQueuePushResult;
+using lux::cxx::EQueuePopResult;
 
 using queue_t = BlockingQueue<int>;
 
@@ -22,8 +23,7 @@ void testSingleThread()
     // Push 5 elements
     for (int i = 1; i <= 5; ++i)
     {
-        bool success = queue.push(i);
-        assert(success);
+        assert(queue.waitPush(i) == EQueuePushResult::ACCEPTED);
     }
     assert(queue.size() == 5);
 
@@ -31,8 +31,7 @@ void testSingleThread()
     for (int i = 1; i <= 5; ++i)
     {
         int val = 0;
-        bool success = queue.pop(val);
-        assert(success);
+        assert(queue.waitPop(val) == EQueuePopResult::VALUE);
         assert(val == i);
     }
     assert(queue.empty());
@@ -64,7 +63,7 @@ void testMultiThreadWithCapacity()
             {
                 // Each producer pushes i + p*1000 for uniqueness
                 int value = i + p * 1000;
-                queue.push(value);
+                assert(queue.waitPush(value) == EQueuePushResult::ACCEPTED);
                 totalProduced++;
             }
         });
@@ -82,7 +81,7 @@ void testMultiThreadWithCapacity()
             int val = 0;
             while (true)
             {
-                if (!queue.pop(val))
+                if (queue.waitPop(val) != EQueuePopResult::VALUE)
                 {
                     // Queue is closed & empty or no data left
                     break;
@@ -130,88 +129,72 @@ void testTimeout()
 {
     std::cout << "=== testTimeout ===" << std::endl;
     queue_t queue(2); // capacity = 2
-    bool success;
-
     // Initially push two items
-    success = queue.push(10);
-    assert(success);
-    success = queue.push(20);
-    assert(success);
+    assert(queue.waitPush(10) == EQueuePushResult::ACCEPTED);
+    assert(queue.waitPush(20) == EQueuePushResult::ACCEPTED);
     assert(queue.size() == 2);
 
     // Try pushing another item with a small timeout 
     // (should fail if we can't push within the given time since capacity=2)
-    success = queue.push(30, std::chrono::milliseconds(50));
-    // This may or may not succeed if we pop concurrently, but in single-thread scenario, it should time out.
-    // We'll assume it times out here, because no pop is happening in the same thread.
-    if (success)
-    {
-        std::cout << "Warning: push succeeded unexpectedly (if no pop occurs). Possibly a scheduling artifact.\n";
-    }
-    else
-    {
-        std::cout << "Push with timeout correctly failed.\n";
-    }
+    assert(
+        queue.waitPush(30, std::chrono::milliseconds(50))
+        == EQueuePushResult::TIMEOUT
+    );
 
     // Pop one item with a small timeout (should succeed immediately)
     int val = 0;
-    success = queue.pop(val, std::chrono::milliseconds(50));
-    assert(success);
+    assert(
+        queue.waitPop(val, std::chrono::milliseconds(50))
+        == EQueuePopResult::VALUE
+    );
     std::cout << "Popped: " << val << std::endl;
 
     // Now we should be able to push again successfully
-    success = queue.push(30, std::chrono::milliseconds(200));
-    assert(success);
+    assert(
+        queue.waitPush(30, std::chrono::milliseconds(200))
+        == EQueuePushResult::ACCEPTED
+    );
 
     std::cout << "Timeout test completed." << std::endl;
 }
 
 /**
- * @brief Test non-blocking try_push and try_pop.
+ * @brief Test non-blocking tryPush and tryPop.
  */
 void testTryPushPop()
 {
     std::cout << "=== testTryPushPop ===" << std::endl;
     queue_t queue(2);
 
-    // Initially empty, try_pop should fail
+    // Initially empty, tryPop reports EMPTY.
     int val = 0;
-    bool success = queue.try_pop(val);
-    assert(!success);
+    assert(queue.tryPop(val) == EQueuePopResult::EMPTY);
 
-    // try_push first item
-    success = queue.try_push(1);
-    assert(success);
+    // tryPush first item
+    assert(queue.tryPush(1) == EQueuePushResult::ACCEPTED);
 
-    // try_push second item
-    success = queue.try_push(2);
-    assert(success);
+    // tryPush second item
+    assert(queue.tryPush(2) == EQueuePushResult::ACCEPTED);
 
-    // Now queue is at capacity (2). Another try_push should fail
-    success = queue.try_push(3);
-    assert(!success);
+    // Now queue is at capacity (2). Another tryPush should fail
+    assert(queue.tryPush(3) == EQueuePushResult::FULL);
 
-    // try_pop one item
-    success = queue.try_pop(val);
-    assert(success);
+    // tryPop one item
+    assert(queue.tryPop(val) == EQueuePopResult::VALUE);
     assert(val == 1);
 
-    // Now we can try_push again
-    success = queue.try_push(3);
-    assert(success);
+    // Now we can tryPush again
+    assert(queue.tryPush(3) == EQueuePushResult::ACCEPTED);
 
     // Pop remaining items
-    success = queue.try_pop(val);
-    assert(success);
+    assert(queue.tryPop(val) == EQueuePopResult::VALUE);
     assert(val == 2);
 
-    success = queue.try_pop(val);
-    assert(success);
+    assert(queue.tryPop(val) == EQueuePopResult::VALUE);
     assert(val == 3);
 
     // Now empty
-    success = queue.try_pop(val);
-    assert(!success);
+    assert(queue.tryPop(val) == EQueuePopResult::EMPTY);
 
     std::cout << "Non-blocking try test passed." << std::endl;
 }
@@ -270,10 +253,10 @@ void testCloseBehavior()
     queue_t queue(2);
 
     // Start a thread that attempts to pop from an empty queue
-    bool popSuccess = true;
-    std::thread t([&queue, &popSuccess]() {
+    EQueuePopResult popResult = EQueuePopResult::VALUE;
+    std::thread t([&queue, &popResult]() {
         int val;
-        popSuccess = queue.pop(val); 
+        popResult = queue.waitPop(val);
         // This will block until either an item arrives or the queue is closed.
     });
 
@@ -285,7 +268,7 @@ void testCloseBehavior()
 
     // The pop should immediately fail (return false) because the queue is empty and closed
     t.join();
-    assert(!popSuccess);
+    assert(popResult == EQueuePopResult::CLOSED_AND_DRAINED);
 
     std::cout << "Close behavior test passed." << std::endl;
 }
@@ -309,14 +292,14 @@ void testRingTryPop()
 {
     BlockingRingQueue<int> queue(2);
     int value = -1;
-    assert(!queue.tryPop(value));
+    assert(queue.tryPop(value) == EQueuePopResult::EMPTY);
     assert(queue.tryPush(7) == EQueuePushResult::ACCEPTED);
     assert(queue.tryPush(9) == EQueuePushResult::ACCEPTED);
-    assert(queue.tryPop(value) && value == 7);
-    assert(queue.tryPop(value) && value == 9);
-    assert(!queue.tryPop(value));
+    assert(queue.tryPop(value) == EQueuePopResult::VALUE && value == 7);
+    assert(queue.tryPop(value) == EQueuePopResult::VALUE && value == 9);
+    assert(queue.tryPop(value) == EQueuePopResult::EMPTY);
     queue.close();
-    assert(!queue.tryPop(value));
+    assert(queue.tryPop(value) == EQueuePopResult::CLOSED_AND_DRAINED);
 }
 
 /**

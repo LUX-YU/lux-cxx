@@ -8,6 +8,7 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::container
 )
+add_test(NAME tree_test COMMAND tree_test)
 
 add_executable(
 	sparse_set_test
@@ -19,6 +20,7 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::container
 )
+add_test(NAME sparse_set_test COMMAND sparse_set_test)
 
 add_executable(
 	orth_tree_test
@@ -30,6 +32,7 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::container
 )
+add_test(NAME orth_tree_test COMMAND orth_tree_test)
 
 add_executable(
 	slot_map_test
@@ -41,6 +44,7 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::container
 )
+add_test(NAME slot_map_test COMMAND slot_map_test)
 
 add_executable(
 	basic_sparse_set_test
@@ -52,6 +56,7 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::container
 )
+add_test(NAME basic_sparse_set_test COMMAND basic_sparse_set_test)
 
 add_executable(
 	small_vector_test
@@ -63,6 +68,15 @@ target_link_libraries(
 	PRIVATE
 	lux::cxx::container
 )
+add_test(NAME small_vector_test COMMAND small_vector_test)
+
+add_executable(small_vector_allocator_test small_vector_allocator_test.cpp)
+target_link_libraries(small_vector_allocator_test PRIVATE lux::cxx::container)
+add_test(NAME small_vector_allocator_test COMMAND small_vector_allocator_test)
+
+add_executable(stable_slot_map_test stable_slot_map_test.cpp)
+target_link_libraries(stable_slot_map_test PRIVATE lux::cxx::container)
+add_test(NAME stable_slot_map_test COMMAND stable_slot_map_test)
 
 # ---- Microbenchmark (opt-in, build Release for meaningful numbers) ----
 # ENABLE_CONTAINER_BENCH builds the std/self comparisons (SmallVector vs

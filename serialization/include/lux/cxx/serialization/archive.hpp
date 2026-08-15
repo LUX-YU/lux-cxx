@@ -20,38 +20,14 @@
 #include <type_traits>
 #include <utility>
 
+#include <lux/cxx/core/function_ref.hpp>
+
 namespace lux::cxx::ser
 {
-    // ---- function_ref: a non-owning, allocation-free view of a callable --------
-    // Used to pass a visitor lambda from the templated traversal (core.hpp) into a
-    // backend's for_each_* method, whose body lives in a .cpp (so it cannot be a
-    // template). Lifetime: the referenced callable must outlive the call — always
-    // true here (the lambda is a local at the call site).
-    template <class Sig> class function_ref;
-
-    template <class R, class... Args>
-    class function_ref<R(Args...)>
-    {
-    public:
-        function_ref() noexcept = default;
-
-        template <class F,
-                  std::enable_if_t<!std::is_same_v<std::remove_cvref_t<F>, function_ref>
-                                   && std::is_invocable_r_v<R, F&, Args...>, int> = 0>
-        function_ref(F&& f) noexcept
-            : obj_(const_cast<void*>(static_cast<const void*>(std::addressof(f)))),
-              call_([](void* o, Args... a) -> R {
-                  return (*static_cast<std::remove_reference_t<F>*>(o))(std::forward<Args>(a)...);
-              })
-        {}
-
-        R operator()(Args... a) const { return call_(obj_, std::forward<Args>(a)...); }
-        explicit operator bool() const noexcept { return call_ != nullptr; }
-
-    private:
-        void* obj_ = nullptr;
-        R (*call_)(void*, Args...) = nullptr;
-    };
+    // Serialization keeps this namespace-level name as a source-compatible alias
+    // while the implementation is shared with the core component.
+    template<class Signature>
+    using function_ref = ::lux::cxx::function_ref<Signature>;
 
     template <class A>
     concept OutputArchive = requires(A a, std::string_view k,
@@ -63,7 +39,13 @@ namespace lux::cxx::ser
     };
 
     template <class C>
-    concept InputArchive = requires(const C c, std::string_view k, std::size_t idx) {
+    concept InputArchive = requires(
+        const C c,
+        std::string_view k,
+        std::size_t idx,
+        function_ref<void(std::string_view, const C&)> member_visitor,
+        function_ref<void(std::size_t, const C&)> element_visitor
+    ) {
         { static_cast<bool>(c) } -> std::same_as<bool>;
         { c.is_null() }   -> std::convertible_to<bool>;
         { c.is_object() } -> std::convertible_to<bool>;
@@ -78,8 +60,8 @@ namespace lux::cxx::ser
         // elements. Prefer these over the indexed accessors above for whole-container
         // load: on backends whose native representation is a forward sequence (XML
         // child list, ordered-map JSON object) the indexed form is O(n^2).
-        c.for_each_member(function_ref<void(std::string_view, const C&)>{});
-        c.for_each_element(function_ref<void(std::size_t, const C&)>{});
+        c.for_each_member(member_visitor);
+        c.for_each_element(element_visitor);
     } && requires(const C c, bool b, std::int64_t i, std::uint64_t u, double d, std::string s) {
         { c.read(b) } -> std::convertible_to<bool>;
         { c.read(i) } -> std::convertible_to<bool>;

@@ -797,6 +797,13 @@ static void test_thread_safe_concurrent_churn()
         while (!stop.load(std::memory_order_relaxed))
             sig.emit({1}); });
 
+    // Do not let a very fast main thread stop the emitter before the scheduler
+    // has run it at least once; that would test scheduling luck, not Signal.
+    while (total.load(std::memory_order_relaxed) == 0)
+    {
+        std::this_thread::yield();
+    }
+
     for (int i = 0; i < 2000; ++i)
     {
         // Heap-allocate the captured state so ASan flags any callback that runs

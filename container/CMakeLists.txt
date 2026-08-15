@@ -11,7 +11,15 @@ component_include_directories(
         include
 )
 
-set(ENABLE_CONTAINER_TEST true CACHE BOOL "Enable container test")
-if(ENABLE_CONTAINER_TEST)
-    add_subdirectory(test)    
+set(ENABLE_CONTAINER_TEST ${LUX_CXX_BUILD_TESTS} CACHE BOOL "Enable container test")
+if(ENABLE_CONTAINER_TEST AND BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+    add_subdirectory(test)
 endif()
+
+lux_add_header_self_containment(
+    container_changed_header_self_containment
+    lux::cxx::container
+    lux/cxx/container/SlotMap.hpp
+    lux/cxx/container/SmallVector.hpp
+    lux/cxx/container/StableSlotMap.hpp
+)

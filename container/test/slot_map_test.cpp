@@ -28,9 +28,9 @@ void test_insert_and_lookup()
 
     TEST_ASSERT(map.size() == 3);
     TEST_ASSERT(!map.empty());
-    TEST_ASSERT(map.is_valid(k1));
-    TEST_ASSERT(map.is_valid(k2));
-    TEST_ASSERT(map.is_valid(k3));
+    TEST_ASSERT(map.isValid(k1));
+    TEST_ASSERT(map.isValid(k2));
+    TEST_ASSERT(map.isValid(k3));
 
     TEST_ASSERT(map.at(k1) == "hello");
     TEST_ASSERT(map.at(k2) == "world");
@@ -52,8 +52,8 @@ void test_find()
     TEST_ASSERT(*ptr == 42);
 
     // Null key
-    SlotMap<int>::key_t null_key;
-    TEST_ASSERT(null_key.is_null());
+    SlotMap<int>::key_type null_key;
+    TEST_ASSERT(null_key.isNull());
     TEST_ASSERT(map.find(null_key) == nullptr);
 
     std::cout << "  find tests passed" << std::endl;
@@ -81,12 +81,12 @@ void test_erase_basic()
     bool erased = map.erase(k2);
     TEST_ASSERT(erased);
     TEST_ASSERT(map.size() == 2);
-    TEST_ASSERT(!map.is_valid(k2));
+    TEST_ASSERT(!map.isValid(k2));
     TEST_ASSERT(map.find(k2) == nullptr);
 
     // k1 and k3 should still be valid
-    TEST_ASSERT(map.is_valid(k1));
-    TEST_ASSERT(map.is_valid(k3));
+    TEST_ASSERT(map.isValid(k1));
+    TEST_ASSERT(map.isValid(k3));
     TEST_ASSERT(map.at(k1) == 10);
     TEST_ASSERT(map.at(k3) == 30);
 
@@ -104,16 +104,16 @@ void test_generation_invalidation()
     map.erase(k1);
 
     // k1 is now stale
-    TEST_ASSERT(!map.is_valid(k1));
+    TEST_ASSERT(!map.isValid(k1));
     TEST_ASSERT(map.find(k1) == nullptr);
 
     // Insert into the recycled slot — generation should differ
     auto k2 = map.insert("second");
-    TEST_ASSERT(map.is_valid(k2));
+    TEST_ASSERT(map.isValid(k2));
     TEST_ASSERT(map.at(k2) == "second");
 
     // k1 still invalid even though slot index might be the same
-    TEST_ASSERT(!map.is_valid(k1));
+    TEST_ASSERT(!map.isValid(k1));
     TEST_ASSERT(k1 != k2);
 
     // Same slot index, different generation
@@ -126,7 +126,7 @@ void test_generation_invalidation()
 void test_erase_all_and_reinsert()
 {
     SlotMap<int> map;
-    std::vector<SlotMap<int>::key_t> keys;
+    std::vector<SlotMap<int>::key_type> keys;
 
     for (int i = 0; i < 100; i++)
         keys.push_back(map.insert(i));
@@ -142,10 +142,10 @@ void test_erase_all_and_reinsert()
 
     // All keys should be invalid
     for (auto& k : keys)
-        TEST_ASSERT(!map.is_valid(k));
+        TEST_ASSERT(!map.isValid(k));
 
     // Reinsert — should reuse slots
-    std::vector<SlotMap<int>::key_t> new_keys;
+    std::vector<SlotMap<int>::key_type> new_keys;
     for (int i = 0; i < 50; i++)
         new_keys.push_back(map.insert(i * 10));
 
@@ -153,12 +153,12 @@ void test_erase_all_and_reinsert()
 
     // Old keys still invalid
     for (auto& k : keys)
-        TEST_ASSERT(!map.is_valid(k));
+        TEST_ASSERT(!map.isValid(k));
 
     // New keys valid
     for (size_t i = 0; i < new_keys.size(); i++)
     {
-        TEST_ASSERT(map.is_valid(new_keys[i]));
+        TEST_ASSERT(map.isValid(new_keys[i]));
         TEST_ASSERT(map.at(new_keys[i]) == static_cast<int>(i * 10));
     }
 
@@ -216,15 +216,29 @@ void test_clear()
     map.clear();
     TEST_ASSERT(map.size() == 0);
     TEST_ASSERT(map.empty());
-    TEST_ASSERT(!map.is_valid(k1));
-    TEST_ASSERT(!map.is_valid(k2));
+    TEST_ASSERT(!map.isValid(k1));
+    TEST_ASSERT(!map.isValid(k2));
 
     // Can still insert after clear
     auto k3 = map.insert(3);
     TEST_ASSERT(map.size() == 1);
     TEST_ASSERT(map.at(k3) == 3);
+    TEST_ASSERT(!map.isValid(k1));
+    TEST_ASSERT(!map.isValid(k2));
 
     std::cout << "  clear tests passed" << std::endl;
+}
+
+void test_allocator_and_try_emplace()
+{
+    SlotMap<int, void, std::uint16_t, std::uint16_t, std::allocator<int>> map;
+    auto key = map.tryEmplace(42);
+    TEST_ASSERT(key.has_value());
+    TEST_ASSERT(map.at(*key) == 42);
+    static_assert(std::is_same_v<
+        decltype(map.get_allocator()),
+        std::allocator<int>
+    >);
 }
 
 void test_reserve()
@@ -275,8 +289,8 @@ void test_interleaved_insert_erase()
     TEST_ASSERT(map.size() == 4);
 
     // All stale handles invalid
-    TEST_ASSERT(!map.is_valid(k1));
-    TEST_ASSERT(!map.is_valid(k2));
+    TEST_ASSERT(!map.isValid(k1));
+    TEST_ASSERT(!map.isValid(k2));
 
     // Valid handles correct
     TEST_ASSERT(map.at(k0) == 0);
@@ -298,17 +312,17 @@ void test_slotkey_valid_and_invalid()
 {
     using Key = SlotKey<>;
     Key null_key;
-    TEST_ASSERT(null_key.is_null());
-    TEST_ASSERT(!null_key.valid());
+    TEST_ASSERT(null_key.isNull());
+    TEST_ASSERT(!null_key.isValid());
 
     Key inv = Key::invalid();
-    TEST_ASSERT(inv.is_null());
-    TEST_ASSERT(!inv.valid());
+    TEST_ASSERT(inv.isNull());
+    TEST_ASSERT(!inv.isValid());
 
     SlotMap<int> map;
     auto k = map.insert(42);
-    TEST_ASSERT(k.valid());
-    TEST_ASSERT(!k.is_null());
+    TEST_ASSERT(k.isValid());
+    TEST_ASSERT(!k.isNull());
 
     std::cout << "  valid()/invalid() tests passed" << std::endl;
 }
@@ -353,9 +367,9 @@ void test_generation_starts_at_one()
     TEST_ASSERT(k.gen == 1);
 
     // Default-constructed key has gen 0 — can never match.
-    SlotMap<int>::key_t null_key;
+    SlotMap<int>::key_type null_key;
     TEST_ASSERT(null_key.gen == 0);
-    TEST_ASSERT(!map.is_valid(null_key));
+    TEST_ASSERT(!map.isValid(null_key));
 
     std::cout << "  generation starts at 1 tests passed" << std::endl;
 }
@@ -390,6 +404,7 @@ int main()
     test_dense_iteration();
     test_at_throws();
     test_clear();
+    test_allocator_and_try_emplace();
     test_reserve();
     test_move_only_values();
     test_interleaved_insert_erase();

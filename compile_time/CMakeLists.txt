@@ -11,7 +11,14 @@ component_include_directories(
         include
 )
 
-set(ENABLE_COMPILE_TIME_TEST OFF CACHE BOOL "Enable compile time test")
-if(ENABLE_COMPILE_TIME_TEST)
+set(ENABLE_COMPILE_TIME_TEST ${LUX_CXX_BUILD_TESTS} CACHE BOOL "Enable compile time test")
+if(ENABLE_COMPILE_TIME_TEST AND BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     add_subdirectory(test)
 endif()
+
+lux_add_header_self_containment(
+    compile_time_new_header_self_containment
+    lux::cxx::compile_time
+    lux/cxx/compile_time/expected.hpp
+    lux/cxx/compile_time/TypeToken.hpp
+)

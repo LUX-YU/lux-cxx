@@ -371,7 +371,7 @@ namespace lux::cxx::event
 
             for (auto key : pending_key_adds_)
             {
-                if (slots_.is_valid(key))
+                if (slots_.isValid(key))
                     sorted_keys_.push_back(key);
             }
             pending_key_adds_.clear();
@@ -386,7 +386,7 @@ namespace lux::cxx::event
                 sorted_keys_,
                 [this](SubscriptionHandle key)
                 {
-                    return !slots_.is_valid(key);
+                    return !slots_.isValid(key);
                 });
 
             std::stable_sort(sorted_keys_.begin(), sorted_keys_.end(),

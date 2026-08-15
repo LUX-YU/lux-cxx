@@ -1,5 +1,4 @@
 #include <lux/cxx/concurrent/ThreadPool.hpp>
-#include <lux/cxx/compile_time/inplace_move_only_function.hpp>
 
 #include <atomic>
 #include <cassert>
@@ -54,7 +53,10 @@ int main()
     using namespace lux::cxx;
     using namespace std::chrono_literals;
 
-    static_assert(sizeof(inplace_move_only_function<void(), 32>) >= 32);
+    const auto sbo_probe = []() noexcept {};
+    static_assert(
+        move_only_function<void()>::stores_inplace<decltype(sbo_probe)>
+    );
 
     std::cout << "hardware_concurrency = "
         << std::jthread::hardware_concurrency() << '\n';

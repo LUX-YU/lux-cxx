@@ -9,4 +9,7 @@
 /CMakeSettings.json
 /.cache
 *sync-conflict-*
+
+# AI Related
 .claude
+AGENTS.md

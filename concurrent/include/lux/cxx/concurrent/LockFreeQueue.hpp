@@ -35,12 +35,15 @@ namespace lux::cxx
         /**
          * @brief  Return the smallest power‑of‑two that is ≥ @p v.
          */
-        static constexpr std::size_t ceil_pow2(std::size_t v) noexcept
+        static constexpr std::size_t ceilPowerOfTwo(std::size_t value) noexcept
         {
-            if (v <= 1) return 1;
-            --v;
-            for (std::size_t i = 1; i < sizeof(std::size_t) * 8; i <<= 1) v |= v >> i;
-            return ++v;
+            if (value <= 1) return 1;
+            --value;
+            for (std::size_t shift = 1; shift < sizeof(std::size_t) * 8; shift <<= 1)
+            {
+                value |= value >> shift;
+            }
+            return ++value;
         }
 
         struct alignas(alignof(T)) Storage { unsigned char data[sizeof(T)]; };
@@ -57,7 +60,7 @@ namespace lux::cxx
          *          construction.
          */
         explicit SpscLockFreeRingQueue(std::size_t capacity = 64)
-            : capacity_(ceil_pow2(capacity)), mask_(capacity_ - 1),
+            : capacity_(ceilPowerOfTwo(capacity)), mask_(capacity_ - 1),
             buffer_(std::make_unique<Storage[]>(capacity_))
         {
             assert(capacity_ && (capacity_ & mask_) == 0 && "capacity must be power‑of‑two");
@@ -66,7 +69,7 @@ namespace lux::cxx
         /**
          * @brief  Destroy the queue and all live objects still inside it.
          */
-        ~SpscLockFreeRingQueue() { drain_destruct(); }
+        ~SpscLockFreeRingQueue() { drainDestruct(); }
 
         SpscLockFreeRingQueue(const SpscLockFreeRingQueue&) = delete;
         SpscLockFreeRingQueue& operator=(const SpscLockFreeRingQueue&) = delete;
@@ -85,31 +88,6 @@ namespace lux::cxx
          * @warning      Must be called only from the *single producer* thread.
          */
         template <class... Args>
-        [[nodiscard]] bool emplace(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args...>)
-        {
-            if (closed_.load(std::memory_order_acquire)) return false;
-
-            const auto tail = tail_.load(std::memory_order_relaxed);
-            const auto next = (tail + 1) & mask_;
-            if (next == head_.load(std::memory_order_acquire)) return false; // full
-
-            new (&buffer_[tail]) T(std::forward<Args>(args)...);
-            tail_.store(next, std::memory_order_release);
-            return true;
-        }
-
-        /**
-         * @brief  Push an element copy / move into the queue.
-         * @param  value  Element to copy / move.
-         * @return Same semantics as #emplace.
-         */
-        template <class U>
-        [[nodiscard]] bool push(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>)
-        {
-            return emplace(std::forward<U>(value));
-        }
-
-        template <class... Args>
         [[nodiscard]] EQueuePushResult tryEmplace(Args&&... args)
             noexcept(std::is_nothrow_constructible_v<T, Args...>)
         {
@@ -117,12 +95,11 @@ namespace lux::cxx
                 return EQueuePushResult::CLOSED;
 
             const auto tail = tail_.load(std::memory_order_relaxed);
-            const auto next = (tail + 1) & mask_;
-            if (next == head_.load(std::memory_order_acquire))
+            if (tail - head_.load(std::memory_order_acquire) >= capacity_)
                 return EQueuePushResult::FULL;
 
-            new (&buffer_[tail]) T(std::forward<Args>(args)...);
-            tail_.store(next, std::memory_order_release);
+            new (&buffer_[tail & mask_]) T(std::forward<Args>(args)...);
+            tail_.store(tail + 1, std::memory_order_release);
             return EQueuePushResult::ACCEPTED;
         }
 
@@ -140,36 +117,48 @@ namespace lux::cxx
          *         false — queue is empty.
          * @warning      Must be called only from the *single consumer* thread.
          */
-        [[nodiscard]] bool pop(T& out) noexcept(std::is_nothrow_move_assignable_v<T> &&
-                                  std::is_nothrow_destructible_v<T>)
+        [[nodiscard]] EQueuePopResult tryPop(T& out)
+        noexcept(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_destructible_v<T>)
         {
             const auto head = head_.load(std::memory_order_relaxed);
-            if (head == tail_.load(std::memory_order_acquire)) return false; // empty
+            if (head == tail_.load(std::memory_order_acquire))
+            {
+                return closed_.load(std::memory_order_acquire)
+                    ? EQueuePopResult::CLOSED_AND_DRAINED
+                    : EQueuePopResult::EMPTY;
+            }
 
-            T* ptr = std::launder(reinterpret_cast<T*>(&buffer_[head]));
+            T* ptr = std::launder(reinterpret_cast<T*>(&buffer_[head & mask_]));
             out = std::move(*ptr);
             ptr->~T(); // explicit destruction
 
-            head_.store((head + 1) & mask_, std::memory_order_release);
-            return true;
+            head_.store(head + 1, std::memory_order_release);
+            return EQueuePopResult::VALUE;
         }
 
         /// Pop by move construction. This overload supports move-only payloads
         /// that are neither default constructible nor move assignable while
         /// retaining the queue's allocation-free steady-state behavior.
-        [[nodiscard]] std::optional<T> pop() noexcept(
+        [[nodiscard]] QueuePopValue<T> tryPopValue() noexcept(
             std::is_nothrow_move_constructible_v<T> &&
             std::is_nothrow_destructible_v<T>)
         {
             const auto head = head_.load(std::memory_order_relaxed);
             if (head == tail_.load(std::memory_order_acquire))
-                return std::nullopt;
+            {
+                return {
+                    closed_.load(std::memory_order_acquire)
+                        ? EQueuePopResult::CLOSED_AND_DRAINED
+                        : EQueuePopResult::EMPTY,
+                    std::nullopt
+                };
+            }
 
-            T* ptr = std::launder(reinterpret_cast<T*>(&buffer_[head]));
+            T* ptr = std::launder(reinterpret_cast<T*>(&buffer_[head & mask_]));
             std::optional<T> value{std::in_place, std::move(*ptr)};
             ptr->~T();
-            head_.store((head + 1) & mask_, std::memory_order_release);
-            return value;
+            head_.store(head + 1, std::memory_order_release);
+            return {EQueuePopResult::VALUE, std::move(value)};
         }
 
         // ------------------------------------------------------------------
@@ -185,7 +174,10 @@ namespace lux::cxx
         std::size_t bulk_push(InputIt first, std::size_t count)
         {
             std::size_t pushed = 0;
-            while (pushed < count && emplace(*first)) {
+            while (
+                pushed < count &&
+                tryEmplace(*first) == EQueuePushResult::ACCEPTED
+            ) {
                 ++pushed;
                 ++first;
             }
@@ -206,10 +198,10 @@ namespace lux::cxx
                 const auto head = head_.load(std::memory_order_relaxed);
                 if (head == tail_.load(std::memory_order_acquire)) break;
 
-                T* ptr = std::launder(reinterpret_cast<T*>(&buffer_[head]));
+                T* ptr = std::launder(reinterpret_cast<T*>(&buffer_[head & mask_]));
                 *dest++ = std::move(*ptr);
                 ptr->~T();
-                head_.store((head + 1) & mask_, std::memory_order_release);
+                head_.store(head + 1, std::memory_order_release);
                 ++popped;
             }
             return popped;
@@ -239,16 +231,17 @@ namespace lux::cxx
         {
             const auto h = head_.load(std::memory_order_acquire);
             const auto t = tail_.load(std::memory_order_acquire);
-            return (t - h) & mask_;
+            const auto difference = t - h;
+            return difference <= capacity_ ? difference : 0;
         }
 
         /** @return Maximum number of elements the queue can hold. */
         [[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
 
-        /// The ring reserves one slot to distinguish full from empty.
-        [[nodiscard]] std::size_t usableCapacity() const noexcept
+        [[nodiscard]] EQueueState state() const noexcept
         {
-            return capacity_ - 1;
+            if (!closed()) return EQueueState::OPEN;
+            return empty() ? EQueueState::DRAINED : EQueueState::CLOSED;
         }
 
     private:
@@ -256,13 +249,13 @@ namespace lux::cxx
          * @brief  Destroy all remaining objects in the buffer (called from dtor).
          *         Should be executed only when producer & consumer have stopped.
          */
-        void drain_destruct() noexcept
+        void drainDestruct() noexcept
         {
             auto h = head_.load(std::memory_order_relaxed);
             auto t = tail_.load(std::memory_order_relaxed);
             while (h != t) {
-                std::launder(reinterpret_cast<T*>(&buffer_[h]))->~T();
-                h = (h + 1) & mask_;
+                std::launder(reinterpret_cast<T*>(&buffer_[h & mask_]))->~T();
+                ++h;
             }
         }
 

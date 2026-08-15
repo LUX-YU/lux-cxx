@@ -18,11 +18,13 @@
 #include <lux/cxx/container/SparseSet.hpp>
 #include <lux/cxx/container/BasicSparseSet.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
+#include <lux/cxx/container/StableSlotMap.hpp>
 
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <random>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -173,6 +175,65 @@ static void bench_associative()
     }
 }
 
+// ---------------------------------------------------------------------------
+// Stable-address storage: block allocation vs one heap allocation per value.
+// Both baselines preserve pointee addresses while their owner grows.
+// ---------------------------------------------------------------------------
+static void bench_stable_storage()
+{
+    std::printf("\n############ StableSlotMap vs per-element heap allocation ############\n");
+    for (int N : {100000, 1000000})
+    {
+        bench::header("INSERT stable-address values", N);
+        report("lux::StableSlotMap", measure_setup_work(
+            [] { return lux::cxx::StableSlotMap<Position>{}; },
+            [&](auto& values)
+            {
+                values.reserve(static_cast<std::size_t>(N));
+                for (int i = 0; i < N; ++i)
+                {
+                    values.emplace(float(i), 0.0F);
+                }
+            }
+        ), N);
+        report("vector<unique_ptr<Position>>", measure_setup_work(
+            [] { return std::vector<std::unique_ptr<Position>>{}; },
+            [&](auto& values)
+            {
+                values.reserve(static_cast<std::size_t>(N));
+                for (int i = 0; i < N; ++i)
+                {
+                    values.push_back(std::make_unique<Position>(float(i), 0.0F));
+                }
+            }
+        ), N);
+
+        lux::cxx::StableSlotMap<Position> stable;
+        stable.reserve(static_cast<std::size_t>(N));
+        std::vector<std::unique_ptr<Position>> individual;
+        individual.reserve(static_cast<std::size_t>(N));
+        for (int i = 0; i < N; ++i)
+        {
+            stable.emplace(float(i), 0.0F);
+            individual.push_back(std::make_unique<Position>(float(i), 0.0F));
+        }
+
+        bench::header("ITERATE stable-address values", N);
+        report("lux::StableSlotMap", measure([&]
+        {
+            double sum = 0;
+            for (const auto& value : stable) sum += value.x;
+            do_not_optimize(sum);
+        }), N);
+        report("vector<unique_ptr<Position>>", measure([&]
+        {
+            double sum = 0;
+            for (const auto& value : individual) sum += value->x;
+            do_not_optimize(sum);
+        }), N);
+    }
+}
+
 #if defined(LUX_BENCH_WITH_ENTT)
 // ---------------------------------------------------------------------------
 // lux::BasicSparseSet<u32,Position> vs entt::storage<Position> (dense keys).
@@ -236,6 +297,7 @@ int main()
 
     bench_small_vector();
     bench_associative();
+    bench_stable_storage();
 #if defined(LUX_BENCH_WITH_ENTT)
     bench_vs_entt();
 #endif
