@@ -2,9 +2,9 @@
 
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <span>
 #include <vector>
 
@@ -12,6 +12,15 @@ namespace ir = lux::cxx::reflection::ir;
 
 namespace
 {
+    template<typename Condition>
+    void require(Condition&& condition)
+    {
+        if (!condition)
+        {
+            std::abort();
+        }
+    }
+
     constexpr std::uint64_t next(std::uint64_t& state) noexcept
     {
         state ^= state << 13U;
@@ -24,17 +33,17 @@ namespace
     {
         ir::MetaUnitBuilder builder;
         const auto root = builder.addNode(ir::EMetaNodeKind::NAMESPACE, "lux");
-        assert(root);
+        require(root);
         const auto record = builder.addNode(
             ir::EMetaNodeKind::RECORD,
             "RobotState",
             *root
         );
-        assert(record);
-        assert(builder.addAttribute(*record, "stable", "true"));
+        require(record);
+        require(builder.addAttribute(*record, "stable", "true"));
         const auto unit = std::move(builder).freeze();
         lux::cxx::BinaryVectorWriter writer;
-        assert(ir::writeMetaUnitBinary(writer, unit));
+        require(ir::writeMetaUnitBinary(writer, unit));
         return std::move(writer).take();
     }
 }
@@ -63,9 +72,9 @@ int main()
         if (result)
         {
             lux::cxx::BinaryVectorWriter writer;
-            assert(ir::writeMetaUnitBinary(writer, *result));
+            require(ir::writeMetaUnitBinary(writer, *result));
             const auto reparsed = ir::readMetaUnitBinary(writer.data(), limits);
-            assert(reparsed);
+            require(reparsed);
         }
     }
 
