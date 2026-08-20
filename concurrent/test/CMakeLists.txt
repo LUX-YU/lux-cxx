@@ -14,3 +14,4 @@ lux_add_concurrent_test(
 )
 lux_add_concurrent_test(parallel_pipeline_test parallel_pipeline_test.cpp)
 lux_add_concurrent_test(concurrent_gate_test concurrent_gate_test.cpp)
+lux_add_concurrent_test(atomic_wait_test atomic_wait_test.cpp)

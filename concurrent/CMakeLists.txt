@@ -26,6 +26,7 @@ lux_add_header_self_containment(
     concurrent_changed_header_self_containment
     lux::cxx::concurrent
     lux/cxx/concurrent/AdmissionGate.hpp
+    lux/cxx/concurrent/AtomicWait.hpp
     lux/cxx/concurrent/BlockingQueue.hpp
     lux/cxx/concurrent/BudgetGate.hpp
     lux/cxx/concurrent/LockFreeQueue.hpp
