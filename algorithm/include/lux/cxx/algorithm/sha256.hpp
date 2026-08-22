@@ -41,7 +41,8 @@ namespace lux::cxx::algorithm
         {
             if (text.size() != hex_size)
             {
-                return unexpected(EDigestParseError::INVALID_SIZE);
+                return unexpected<EDigestParseError>{
+                    EDigestParseError::INVALID_SIZE};
             }
 
             Sha256Digest digest;
@@ -51,7 +52,8 @@ namespace lux::cxx::algorithm
                 const auto low = hexValue(text[index * 2 + 1]);
                 if (high < 0 || low < 0)
                 {
-                    return unexpected(EDigestParseError::INVALID_CHARACTER);
+                    return unexpected<EDigestParseError>{
+                        EDigestParseError::INVALID_CHARACTER};
                 }
                 digest.bytes_[index] = std::byte(
                     static_cast<unsigned char>((high << 4) | low)
