@@ -154,9 +154,29 @@ if(LUX_GENERATOR)
 		ECHO
 	)
 
+	add_meta(
+		NAME            test_template_lineage_meta
+		GENERATOR       ${LUX_GENERATOR}
+		OUT_DIR         ${CMAKE_BINARY_DIR}/metagen
+		META_SUFFIX     "lineage.hpp"
+		MARKER          "marked"
+		META_GENERATOR  ${GENERATOR}
+		TEMPLATE        ${TEST_TEMPLATE_DIR}/template_lineage_test.template.inja
+		TARGET_FILES    ${CMAKE_CURRENT_SOURCE_DIR}/template_layout_consumer.hpp
+		ECHO
+	)
+
 	target_add_meta(
 		TARGET			generator_test
 		NAME			test_meta
+		ALWAYS_REGENERATE
+		DONT_ADD_TO_SOURCE
+		ECHO
+	)
+
+	target_add_meta(
+		TARGET          generator_test
+		NAME            test_template_lineage_meta
 		ALWAYS_REGENERATE
 		DONT_ADD_TO_SOURCE
 		ECHO
@@ -177,6 +197,11 @@ if(LUX_GENERATOR)
 
 	add_dependencies(
 		test_annotation_meta_gen
+		lux_meta_generator
+	)
+
+	add_dependencies(
+		test_template_lineage_meta_gen
 		lux_meta_generator
 	)
 endif()

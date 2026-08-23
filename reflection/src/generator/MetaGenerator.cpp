@@ -715,53 +715,94 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
         }
     );
 
+    inja_env.add_callback(
+        "type_template_name",
+        [&current](const inja::Arguments& args) -> nlohmann::json {
+            if (args.empty())
+                return nullptr;
+            const auto id = args.at(0)->get<std::string>();
+            const auto* type = current.meta_unit->findTypeById(id);
+            const auto* record = dynamic_cast<const RecordType*>(type);
+            if (!record || record->template_name.empty())
+                return nullptr;
+            auto name = trim_copy(record->template_name);
+            if (name.starts_with("::"))
+                name.erase(0, 2);
+            return name;
+        }
+    );
+
     // Compute a stable prefix layout for static members selected by a generic
     // template primary.  The generator is deliberately unaware of the
     // downstream meanings of either template: callers provide both the
     // lineage wrapper and member template names.
-    const auto template_lineage_static_count =
+    const auto lineage_base =
         [&current](const CXXRecordDecl* record,
                    std::string_view wrapper_template,
-                   std::string_view member_template,
-                   const auto& self) -> std::size_t {
+                   std::size_t base_argument_index) -> const CXXRecordDecl* {
         if (!record)
-            return 0;
+            return nullptr;
 
-        const CXXRecordDecl* wrapped_base = nullptr;
+        auto normalized_wrapper = trim_copy(wrapper_template);
+        if (normalized_wrapper.starts_with("::"))
+            normalized_wrapper.erase(0, 2);
+
+        const RecordType* wrapped_base_type = nullptr;
         for (const auto base_index : record->bases)
         {
             const auto* base = current.meta_unit->getDeclAs<CXXRecordDecl>(base_index);
             const auto* base_type = base
                 ? dynamic_cast<const RecordType*>(base->type)
                 : nullptr;
-            if (!base_type || base_type->template_name != wrapper_template)
+            if (!base_type)
                 continue;
-            if (wrapped_base)
+            auto actual_wrapper = trim_copy(base_type->template_name);
+            if (actual_wrapper.starts_with("::"))
+                actual_wrapper.erase(0, 2);
+            if (actual_wrapper != normalized_wrapper)
+                continue;
+            if (wrapped_base_type)
                 throw std::runtime_error(
-                    "template_lineage_static_count: multiple direct lineage wrappers on "
+                    "template lineage: multiple direct lineage wrappers on "
                     + record->full_qualified_name
                 );
-            wrapped_base = base;
+            wrapped_base_type = base_type;
         }
 
+        if (!wrapped_base_type)
+            return nullptr;
+        if (base_argument_index >= wrapped_base_type->template_arguments.size())
+            throw std::runtime_error(
+                "template lineage: base type argument index is out of range on "
+                + record->full_qualified_name
+            );
+        const auto& base_argument =
+            wrapped_base_type->template_arguments[base_argument_index];
+        const auto* actual_base_type = base_argument.type
+            ? dynamic_cast<const RecordType*>(base_argument.type)
+            : nullptr;
+        return actual_base_type
+            ? decl_cast<CXXRecordDecl>(actual_base_type->decl)
+            : nullptr;
+    };
+
+    const auto template_lineage_static_count =
+        [&current, &lineage_base](const CXXRecordDecl* record,
+                   std::string_view wrapper_template,
+                   std::size_t base_argument_index,
+                   std::string_view member_template,
+                   const auto& self) -> std::size_t {
+        if (!record)
+            return 0;
+
         std::size_t inherited_count = 0;
-        if (wrapped_base)
+        if (const auto* actual_base =
+                lineage_base(record, wrapper_template, base_argument_index))
         {
-            const auto* wrapper_type = dynamic_cast<const RecordType*>(wrapped_base->type);
-            if (!wrapper_type || wrapper_type->template_arguments.size() < 2)
-                throw std::runtime_error(
-                    "template_lineage_static_count: lineage wrapper requires a base type argument"
-                );
-            const auto& base_argument = wrapper_type->template_arguments[1];
-            const auto* actual_base_type = base_argument.type
-                ? dynamic_cast<const RecordType*>(base_argument.type)
-                : nullptr;
-            const auto* actual_base = actual_base_type
-                ? decl_cast<CXXRecordDecl>(actual_base_type->decl)
-                : nullptr;
             inherited_count = self(
                 actual_base,
                 wrapper_template,
+                base_argument_index,
                 member_template,
                 self
             );
@@ -783,7 +824,7 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
     inja_env.add_callback(
         "template_lineage_static_count",
         [&current, &template_lineage_static_count](const inja::Arguments& args) -> nlohmann::json {
-            if (args.size() < 3)
+            if (args.size() < 4)
                 return nullptr;
             const auto* decl = current.meta_unit->findDeclById(
                 args.at(0)->get<std::string>()
@@ -796,7 +837,8 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
             return template_lineage_static_count(
                 record,
                 trim_copy(args.at(1)->get<std::string>()),
-                trim_copy(args.at(2)->get<std::string>()),
+                args.at(2)->get<std::size_t>(),
+                trim_copy(args.at(3)->get<std::string>()),
                 template_lineage_static_count
             );
         }
@@ -804,8 +846,8 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
 
     inja_env.add_callback(
         "template_lineage_static_index",
-        [&current, &template_lineage_static_count](const inja::Arguments& args) -> nlohmann::json {
-            if (args.size() < 4)
+        [&current, &lineage_base, &template_lineage_static_count](const inja::Arguments& args) -> nlohmann::json {
+            if (args.size() < 5)
                 return nullptr;
             const auto* decl = current.meta_unit->findDeclById(
                 args.at(0)->get<std::string>()
@@ -817,34 +859,19 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
                 );
 
             const auto wrapper_template = trim_copy(args.at(2)->get<std::string>());
-            const auto member_template = trim_copy(args.at(3)->get<std::string>());
+            const auto base_argument_index = args.at(3)->get<std::size_t>();
+            const auto member_template = trim_copy(args.at(4)->get<std::string>());
             std::size_t inherited_count = 0;
-            for (const auto base_index : record->bases)
+            if (const auto* actual_base =
+                    lineage_base(record, wrapper_template, base_argument_index))
             {
-                const auto* base = current.meta_unit->getDeclAs<CXXRecordDecl>(base_index);
-                const auto* base_type = base
-                    ? dynamic_cast<const RecordType*>(base->type)
-                    : nullptr;
-                if (!base_type || base_type->template_name != wrapper_template)
-                    continue;
-                if (base_type->template_arguments.size() < 2)
-                    throw std::runtime_error(
-                        "template_lineage_static_index: lineage wrapper requires a base type argument"
-                    );
-                const auto& base_argument = base_type->template_arguments[1];
-                const auto* actual_base_type = base_argument.type
-                    ? dynamic_cast<const RecordType*>(base_argument.type)
-                    : nullptr;
-                const auto* actual_base = actual_base_type
-                    ? decl_cast<CXXRecordDecl>(actual_base_type->decl)
-                    : nullptr;
                 inherited_count = template_lineage_static_count(
                     actual_base,
                     wrapper_template,
+                    base_argument_index,
                     member_template,
                     template_lineage_static_count
                 );
-                break;
             }
 
             const auto member_id = args.at(1)->get<std::string>();
@@ -864,6 +891,44 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
             throw std::runtime_error(
                 "template_lineage_static_index: selected member is not a matching static member"
             );
+        }
+    );
+
+    inja_env.add_callback(
+        "template_lineage_record_hashes",
+        [&current, &lineage_base](const inja::Arguments& args) -> nlohmann::json {
+            if (args.size() < 3)
+                return nlohmann::json::array();
+            const auto* decl = current.meta_unit->findDeclById(
+                args.at(0)->get<std::string>()
+            );
+            const auto* record = decl_cast<CXXRecordDecl>(decl);
+            if (!record)
+                throw std::runtime_error(
+                    "template_lineage_record_hashes: record declaration not found"
+                );
+
+            const auto wrapper_template = trim_copy(args.at(1)->get<std::string>());
+            const auto base_argument_index = args.at(2)->get<std::size_t>();
+            nlohmann::json result = nlohmann::json::array();
+            auto* base = lineage_base(
+                record,
+                wrapper_template,
+                base_argument_index
+            );
+            while (base)
+            {
+                result.push_back({
+                    {"id", base->id},
+                    {"hash", std::to_string(base->hash)}
+                });
+                base = lineage_base(
+                    base,
+                    wrapper_template,
+                    base_argument_index
+                );
+            }
+            return result;
         }
     );
 

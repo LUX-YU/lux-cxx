@@ -13,6 +13,6 @@ namespace lux::cxx::reflection::test
         : public Lineage<LayoutConsumer, IncludedLayout>
     {
     public:
-        static int local_value;
+        static Slot<float> local_value;
     };
 }

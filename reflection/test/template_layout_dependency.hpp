@@ -4,9 +4,14 @@
 
 namespace lux::cxx::reflection::test
 {
+    template<class Value>
+    struct Slot
+    {
+    };
+
     class LUX_META(marked) IncludedLayout
     {
     public:
-        static int inherited_value;
+        static Slot<int> inherited_value;
     };
 }
