@@ -226,10 +226,10 @@ static bool processTargetFile(const std::filesystem::path& file,
 }
 
 static bool dfsFindChain(const CXXRecordDecl* current,
-    std::string_view            target_name,
-    std::vector<const CXXRecordDecl*>& path,
+    std::string_view                          target_name,
+    std::vector<const CXXRecordDecl*>&        path,
     std::unordered_set<const CXXRecordDecl*>& visited,
-    const MetaUnit& meta_unit)
+    const MetaUnit&                           meta_unit)
 {
     if (!current || visited.count(current)) return false;
     visited.insert(current);
