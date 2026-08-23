@@ -1,9 +1,10 @@
 # Vendored third-party dependencies.
 #
 # Bundled in-tree so the project carries no external find_package() requirement
-# for these (both licenses permit redistribution):
+# for these (their licenses permit redistribution):
 #   - nlohmann_json  v3.12.0  (MIT)   header-only
 #   - tinyxml2       v11.0.0  (zlib)  one .cpp
+#   - rapidyaml      v0.16.0  (MIT)   official single-header amalgamation
 #
 # Both are INTERNAL implementation details — neither is exported to consumers:
 #   - nlohmann_json: an INTERFACE target, linked into the JSON backend through
@@ -11,6 +12,8 @@
 #     resolve). Defined here only so the build tree can reference its headers.
 #   - tinyxml2: NOT a component at all — its single .cpp is compiled directly into
 #     serialization_xml, so that static archive is self-contained.
+#   - rapidyaml: NOT a component — its implementation macro is enabled in yaml.cpp,
+#     compiling the amalgamation directly into serialization_yaml.
 
 #[[========================  nlohmann_json (header-only)  ========================]]
 # Prefer a system/vcpkg nlohmann_json; otherwise fall back to the vendored copy

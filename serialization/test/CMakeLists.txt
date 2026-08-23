@@ -67,6 +67,24 @@ lux_target_add_serialization(
     ALWAYS_REGENERATE
 )
 
+#[[==========================  YAML backend round-trip  =========================]]
+add_executable(yaml_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/yaml_test.cpp
+)
+
+target_link_libraries(yaml_test
+    PRIVATE
+        lux::cxx::serialization_yaml
+        lux::cxx::reflection_runtime
+)
+
+lux_target_add_serialization(
+    TARGET    yaml_test
+    HEADERS   ${CMAKE_CURRENT_SOURCE_DIR}/yaml_types.hpp
+    GENERATOR $<TARGET_FILE:lux_meta_generator>
+    ALWAYS_REGENERATE
+)
+
 #[[=================  External (non-intrusive) JSON round-trip  ==================]]
 add_executable(external_json_test
     ${CMAKE_CURRENT_SOURCE_DIR}/external_json_test.cpp
@@ -103,6 +121,24 @@ lux_target_add_serialization(
     ALWAYS_REGENERATE
 )
 
+#[[==================  External (non-intrusive) YAML round-trip  =================]]
+add_executable(external_yaml_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/external_yaml_test.cpp
+)
+
+target_link_libraries(external_yaml_test
+    PRIVATE
+        lux::cxx::serialization_yaml
+        lux::cxx::reflection_runtime
+)
+
+lux_target_add_serialization(
+    TARGET    external_yaml_test
+    HEADERS   ${CMAKE_CURRENT_SOURCE_DIR}/ext_yaml_register.hpp
+    GENERATOR $<TARGET_FILE:lux_meta_generator>
+    ALWAYS_REGENERATE
+)
+
 #[[========================  Arguments backend (CLI <-> struct)  ==================]]
 add_executable(serialization_arguments_test
     ${CMAKE_CURRENT_SOURCE_DIR}/arguments_test.cpp
@@ -125,8 +161,10 @@ foreach(_serialization_test
     serialization_test
     json_test
     xml_test
+    yaml_test
     external_json_test
     external_xml_test
+    external_yaml_test
     serialization_arguments_test
 )
     add_test(NAME ${_serialization_test} COMMAND ${_serialization_test})
