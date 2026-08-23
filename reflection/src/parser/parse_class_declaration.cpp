@@ -109,6 +109,13 @@ namespace lux::cxx::reflection
         parseNamedDecl(cursor, decl);
     }
 
+    void CxxParserImpl::parseVarDecl(const Cursor& cursor, VarDecl& decl)
+    {
+        decl.visibility = visibilityFromClangVisibility(cursor.accessSpecifier());
+        decl.is_static_data_member = true;
+        parseNamedDecl(cursor, decl);
+    }
+
     /**
      * @brief Parses a C++ record declaration (class/struct/union).
      *
@@ -152,6 +159,15 @@ namespace lux::cxx::reflection
                     auto* field_raw = registerDeclaration(std::move(field_decl));
                     decl.field_decls.push_back(field_raw->index);
                     // parent_class will be back-patched when the CXXRecordDecl itself is registered
+                }
+                else if (cursor_kind == CXCursor_VarDecl)
+                {
+                    if (shouldExcludeMember(cursor)) return CXChildVisit_Continue;
+                    auto var_decl = std::make_unique<VarDecl>();
+                    var_decl->kind = EDeclKind::VAR_DECL;
+                    parseVarDecl(cursor, *var_decl);
+                    auto* var_raw = registerDeclaration(std::move(var_decl));
+                    decl.static_var_decls.push_back(var_raw->index);
                 }
                 else if (cursor_kind == CXCursor_CXXMethod)
                 {

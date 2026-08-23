@@ -46,7 +46,7 @@ namespace lux::cxx::reflection::ir
         std::byte{static_cast<unsigned char>('M')},
         std::byte{static_cast<unsigned char>('I')}
     };
-    inline constexpr std::uint8_t kMetaIrBinaryVersion = 1;
+    inline constexpr std::uint8_t kMetaIrBinaryVersion = 2;
 
     template<typename Writer, meta_unit_storage Storage>
     [[nodiscard]] bool writeMetaUnitBinary(

@@ -90,7 +90,7 @@ int main(int /*argc*/, char* argv[])
         std::cerr << "[parse] " << m << "\n";
     });
 
-    auto [rst, meta] = parser.parse(target_file.string());
+    auto [rst, meta] = parser.parseLegacy(target_file.string());
     check(rst == EParseResult::SUCCESS, "parse succeeded");
     if (rst != EParseResult::SUCCESS)
         return 1;

@@ -61,6 +61,7 @@ endif()
 set(REFLECTION_RUNTIME_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnit.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaUnitSerializer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/MetaIrJson.cpp
 )
 
 add_component(
@@ -103,6 +104,7 @@ lux_add_header_self_containment(
     lux::cxx::reflection_runtime
     lux/cxx/reflection/runtime/MetaIr.hpp
     lux/cxx/reflection/runtime/MetaIrBinary.hpp
+    lux/cxx/reflection/runtime/MetaIrJson.hpp
 )
 
 #[[==========================

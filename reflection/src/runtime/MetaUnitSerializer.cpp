@@ -218,6 +218,13 @@ namespace lux::cxx::reflection
                     arr.push_back(decl_id_from_idx(idx));
                 j["field_decls"] = arr;
             }
+            // static data members
+            {
+                nlohmann::json arr = nlohmann::json::array();
+                for (auto idx : cxxr->static_var_decls)
+                    arr.push_back(decl_id_from_idx(idx));
+                j["static_var_decls"] = arr;
+            }
             j["is_abstract"] = cxxr->is_abstract;
             // Phase 3: template info
             j["is_template"] = cxxr->is_template;
@@ -292,8 +299,13 @@ namespace lux::cxx::reflection
         break;
 
         case EDeclKind::VAR_DECL:
-            // 无额外字段
-            break;
+        {
+            auto* var = static_cast<const VarDecl*>(d);
+            j["visibility"] = (int)var->visibility;
+            j["parent_class_id"] = decl_id_from_idx(var->parent_class);
+            j["is_static_data_member"] = var->is_static_data_member;
+        }
+        break;
 
         default:
             // do nothing
@@ -423,6 +435,14 @@ namespace lux::cxx::reflection
         }
         break;
 
+        case EDeclKind::VAR_DECL:
+        {
+            auto* var = static_cast<VarDecl*>(raw);
+            var->visibility = (EVisibility)j.value("visibility", (int)EVisibility::INVALID);
+            var->is_static_data_member = j.value("is_static_data_member", false);
+        }
+        break;
+
         default:
             // ...
             break;
@@ -543,6 +563,17 @@ namespace lux::cxx::reflection
                     }
                 }
             }
+            // static_var_decls
+            if (j.contains("static_var_decls") && j["static_var_decls"].is_array()) {
+                for (auto& vid : j["static_var_decls"]) {
+                    auto s = vid.get<std::string>();
+                    if (!s.empty()) {
+                        auto it = declMap.find(s);
+                        if (it != declMap.end() && it->second->kind == EDeclKind::VAR_DECL)
+                            cxxr->static_var_decls.push_back(it->second->index);
+                    }
+                }
+            }
             // Phase 3: template_params
             if (j.contains("template_params") && j["template_params"].is_array()) {
                 for (auto& tpj : j["template_params"]) {
@@ -567,6 +598,20 @@ namespace lux::cxx::reflection
                     auto it = declMap.find(pcid);
                     if (it != declMap.end() && it->second->kind == EDeclKind::CXX_RECORD_DECL)
                         f->parent_class = it->second->index;
+                }
+            }
+        }
+        break;
+
+        case EDeclKind::VAR_DECL:
+        {
+            auto* var = static_cast<VarDecl*>(d);
+            if (j.contains("parent_class_id")) {
+                auto pcid = j["parent_class_id"].get<std::string>();
+                if (!pcid.empty()) {
+                    auto it = declMap.find(pcid);
+                    if (it != declMap.end() && it->second->kind == EDeclKind::CXX_RECORD_DECL)
+                        var->parent_class = it->second->index;
                 }
             }
         }

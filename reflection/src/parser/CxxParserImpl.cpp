@@ -108,10 +108,13 @@ namespace lux::cxx::reflection
 				auto* child = _meta_unit_data->declarations[child_idx].get();
 				if (auto* f = decl_cast<FieldDecl>(child))
 					f->parent_class = own_index;
+				else if (auto* v = decl_cast<VarDecl>(child))
+					v->parent_class = own_index;
 				else if (auto* m = decl_cast<CXXMethodDecl>(child))
 					m->parent_class = own_index;
 			};
 			for (auto idx : cxxr->field_decls)        back_patch(idx);
+			for (auto idx : cxxr->static_var_decls)   back_patch(idx);
 			for (auto idx : cxxr->method_decls)       back_patch(idx);
 			for (auto idx : cxxr->static_method_decls) back_patch(idx);
 			for (auto idx : cxxr->constructor_decls)  back_patch(idx);
@@ -345,7 +348,7 @@ namespace lux::cxx::reflection
 
 	CxxParserImpl::~CxxParserImpl() = default;
 
-	ParseResult CxxParserImpl::parse(std::string_view file)
+	LegacyParseResult CxxParserImpl::parse(std::string_view file)
 	{
 		auto translate_unit = translate(file, _options.commands);
 		if (!translate_unit.isValid())

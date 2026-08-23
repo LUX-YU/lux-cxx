@@ -64,9 +64,10 @@ Modern command-line argument parsing library with type safety and automatic help
 ### 🔧 [Reflection](reflection/README.md)
 Reflection system based on Clang LibTooling for code analysis and metadata generation.
 
-**Key Features**: Clang-based analysis, JSON metadata export, runtime type
-queries, and an experimental flat/indexed `reflection::ir::MetaUnit` with a
-bounded deterministic binary format
+**Key Features**: Clang-based analysis, runtime type queries, and a compact,
+flat/indexed `reflection::ir::MetaUnit` used as the parser-to-generator
+transport, with a bounded deterministic binary format. The legacy object AST
+remains only as a transitional template projection while consumers migrate.
 
 ### 🚀 [Subprogram](subprogram/README.md)
 Subprogram registration and management system for building modular applications.

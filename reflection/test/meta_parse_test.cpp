@@ -6,6 +6,7 @@
 // test instead of silently rewriting `out.json`.
 
 #include <lux/cxx/reflection/parser/CxxParser.hpp>
+#include <lux/cxx/reflection/runtime/MetaIrJson.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -72,7 +73,13 @@ int main(int argc, char* argv[])
         std::cerr << "[parse] " << m << "\n";
     });
 
-    auto [rst, meta] = parser.parse(target_file.string());
+    auto [compact_result, compact] = parser.parse(target_file.string());
+    check(compact_result == EParseResult::SUCCESS, "compact IR parse succeeded");
+    check(!compact.nodes().empty(), "compact IR contains semantic nodes");
+    const auto template_projection = ir::templateJson(compact);
+    check(template_projection.has_value(), "compact IR retains template projection");
+
+    auto [rst, meta] = parser.parseLegacy(target_file.string());
     check(rst == EParseResult::SUCCESS, "parse succeeded");
     if (rst != EParseResult::SUCCESS)
     {

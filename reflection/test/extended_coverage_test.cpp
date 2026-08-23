@@ -46,7 +46,7 @@ int main(int argc, char* argv[])
         }
     );
 
-    auto [rst, meta] = parser.parse(target_file.string());
+    auto [rst, meta] = parser.parseLegacy(target_file.string());
     if (rst != EParseResult::SUCCESS)
     {
         std::cerr << "Parse failed!" << std::endl;
@@ -234,17 +234,23 @@ int main(int argc, char* argv[])
         check(found, "ConversionClass found");
     }
 
-    // 10. Static field (note: static fields are typically not parsed as FieldDecl)
+    // 10. Static data member
     {
         bool found = false;
         for (auto* r : records) {
             if (r->full_qualified_name == "StaticFieldStruct") {
                 found = true;
-                // instance_val should be the field, static_count may not appear
-                std::cout << "  StaticFieldStruct fields: " << r->field_decls.size() << std::endl;
+                check(r->field_decls.size() == 1, "StaticFieldStruct has one instance field");
+                check(r->static_var_decls.size() == 1, "StaticFieldStruct has one static data member");
                 for (auto fidx : r->field_decls) {
                     auto* f = meta.getDeclAs<FieldDecl>(fidx);
                     if (f) std::cout << "    field: " << f->spelling << std::endl;
+                }
+                if (r->static_var_decls.size() == 1) {
+                    auto* var = meta.getDeclAs<VarDecl>(r->static_var_decls[0]);
+                    check(var && var->spelling == "static_count", "static_count spelling preserved");
+                    check(var && var->is_static_data_member, "static_count classified as static data member");
+                    check(var && var->parent_class == r->index, "static_count owner back-patched");
                 }
             }
         }

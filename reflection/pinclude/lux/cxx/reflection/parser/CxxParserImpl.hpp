@@ -41,7 +41,7 @@ namespace lux::cxx::reflection
 
         ~CxxParserImpl();
 
-        ParseResult parse(std::string_view file);
+        LegacyParseResult parse(std::string_view file);
 
         void setOnParseError(std::function<void(const std::string&)> callback);
     private:
@@ -75,6 +75,7 @@ namespace lux::cxx::reflection
         void parseFunctionDecl(const Cursor& cursor, FunctionDecl& decl);
         void parseCxxMethodDecl(const Cursor& cursor,    CXXMethodDecl& decl);
         void parseFieldDecl(const Cursor& cursor, FieldDecl& decl) ;
+        void parseVarDecl(const Cursor& cursor, VarDecl& decl);
         void parseCXXRecordDecl(const Cursor& cursor, CXXRecordDecl& decl);
         bool shouldExcludeMember(const Cursor& cursor) const;
     	void parseEnumDecl(const Cursor& cursor, EnumDecl& decl);

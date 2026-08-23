@@ -1,6 +1,7 @@
 #include "lux/cxx/reflection/generator/GeneratorHelper.hpp"
 #include "lux/cxx/reflection/parser/CxxParser.hpp"
 #include "lux/cxx/reflection/Error.hpp"
+#include "lux/cxx/reflection/runtime/MetaIrJson.hpp"
 #include <iostream>
 #include <inja/inja.hpp>
 #include <fstream>
@@ -150,7 +151,7 @@ static bool processTargetFile(const std::filesystem::path& file,
     });
 
     // Parse the target file.
-    auto [parse_rst, data] = cxx_parser->parse(file_path);
+    auto [parse_rst, compact_data] = cxx_parser->parse(file_path);
     if (parse_rst != EParseResult::SUCCESS)
     {
         std::cerr << "[Error] Parsing of '" << file_path << "' failed"
@@ -160,8 +161,19 @@ static bool processTargetFile(const std::filesystem::path& file,
         return false;
     }
 
-    // Convert the parsed data to JSON format.
-    nlohmann::json meta_json = nlohmann::json::parse(data.toJson());
+    // Project the canonical compact IR into the stable template JSON view.
+    auto template_json = ir::templateJson(compact_data);
+    if (!template_json)
+    {
+        std::cerr << "[Error] Compact reflection IR has no template projection for '"
+                  << file_path << "'.\n";
+        return false;
+    }
+    nlohmann::json meta_json = nlohmann::json::parse(*template_json);
+    // Parent-chain callbacks still use the private legacy view during this
+    // generator migration. It is reconstructed from the canonical IR and is
+    // never the parser/generator transport representation.
+    MetaUnit data = MetaUnit::fromJson(*template_json);
     // Augment the JSON with additional file-specific metadata.
     meta_json["source_path"]            = file_path;
     meta_json["source_parent"]          = source_parent;
