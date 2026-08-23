@@ -674,6 +674,47 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
         }
     );
 
+    // Generic canonical template queries. Downstream generators can identify
+    // their own domain templates without teaching lux-cxx those domain names
+    // or parsing a C++ spelling themselves.
+    inja_env.add_callback(
+        "type_is_specialization",
+        [&current](const inja::Arguments& args) -> nlohmann::json {
+            if (args.size() < 2)
+                return false;
+            const auto id = args.at(0)->get<std::string>();
+            auto expected = trim_copy(args.at(1)->get<std::string>());
+            if (expected.starts_with("::"))
+                expected.erase(0, 2);
+            const auto* type = current.meta_unit->findTypeById(id);
+            const auto* record = dynamic_cast<const RecordType*>(type);
+            if (!record || !record->isTemplateSpecialization())
+                return false;
+            auto actual = record->template_name;
+            if (actual.starts_with("::"))
+                actual.erase(0, 2);
+            return actual == expected;
+        }
+    );
+
+    inja_env.add_callback(
+        "type_argument_type_id",
+        [&current](const inja::Arguments& args) -> nlohmann::json {
+            if (args.size() < 2)
+                return nullptr;
+            const auto id = args.at(0)->get<std::string>();
+            const auto index = args.at(1)->get<std::size_t>();
+            const auto* type = current.meta_unit->findTypeById(id);
+            const auto* record = dynamic_cast<const RecordType*>(type);
+            if (!record || index >= record->template_arguments.size())
+                return nullptr;
+            const auto& argument = record->template_arguments[index];
+            if (argument.kind != TemplateArgument::Kind::Type || !argument.type)
+                return nullptr;
+            return argument.type->id;
+        }
+    );
+
     inja_env.add_callback(
         "parent_chain",
         [&current](const inja::Arguments& args) -> nlohmann::json

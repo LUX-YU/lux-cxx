@@ -683,22 +683,31 @@ namespace lux::cxx::reflection
 		const int num_template_args = clang_type.canonicalType().getNumTemplateArguments();
 		if (num_template_args > 0)
 		{
-			// Extract template name by stripping "<...>" from the type spelling
-			const auto& type_name = type.name;
-			auto angle_pos = type_name.find('<');
-			if (angle_pos != std::string::npos)
+			// The template primary is a semantic query key, so it must come from
+			// the canonical spelling rather than a source alias such as
+			// `signal_type<int>`. Preserve cv-qualification on Type itself, not in
+			// the primary name.
+			const auto& canonical_name = type.id;
+			const auto  angle_pos = canonical_name.find('<');
+			auto primary = std::string(lux::cxx::algorithm::trim(
+				angle_pos == std::string::npos
+					? std::string_view{canonical_name}
+					: std::string_view{canonical_name}.substr(0, angle_pos)));
+			for (;;)
 			{
-				type.template_name = type_name.substr(0, angle_pos);
+				if (primary.starts_with("const "))
+				{
+					primary.erase(0, 6);
+					continue;
+				}
+				if (primary.starts_with("volatile "))
+				{
+					primary.erase(0, 9);
+					continue;
+				}
+				break;
 			}
-			else
-			{
-				// Canonical name might have the angle brackets
-				const auto& canonical_name = type.id;
-				auto cangle_pos = canonical_name.find('<');
-				type.template_name = (cangle_pos != std::string::npos)
-					? canonical_name.substr(0, cangle_pos)
-					: type_name;
-			}
+			type.template_name = std::move(primary);
 
 			const auto canonical_type = clang_type.canonicalType();
 			for (int i = 0; i < num_template_args; i++)

@@ -257,6 +257,27 @@ int main(int argc, char* argv[])
         check(found, "StaticFieldStruct found");
     }
 
+    // Canonical template identity is independent of a source alias and cv.
+    {
+        bool found = false;
+        for (auto* r : records) {
+            if (r->full_qualified_name == "AliasedStaticTemplateStruct") {
+                found = true;
+                check(r->static_var_decls.size() == 1,
+                      "AliasedStaticTemplateStruct has one static member");
+                if (!r->static_var_decls.empty()) {
+                    auto* var = meta.getDeclAs<VarDecl>(r->static_var_decls.front());
+                    auto* type = var ? dynamic_cast<RecordType*>(var->type) : nullptr;
+                    check(type && type->template_name == "TemplateIdentityProbe",
+                          "static alias resolves to canonical template primary");
+                    check(type && type->template_arguments.size() == 2,
+                          "static alias preserves template arguments");
+                }
+            }
+        }
+        check(found, "AliasedStaticTemplateStruct found");
+    }
+
     // 11. Const fields
     {
         bool found = false;

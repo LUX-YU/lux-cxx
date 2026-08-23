@@ -436,7 +436,8 @@ namespace lux::cxx::reflection {
                 || k == ETypeKinds::Union;
         }
 
-        /// The template name without arguments (e.g., "std::vector").
+        /// Canonical template primary without arguments or cv qualifiers
+        /// (e.g., "std::vector"), independent of source aliases.
         /// Empty if this is not a template specialization.
         std::string template_name;
 

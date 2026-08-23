@@ -408,3 +408,15 @@ For fields with STL container types, you can inspect the template arguments in t
   {% endfor %}
 {% endif %}
 ```
+
+For semantic matching, prefer the canonical callbacks instead of parsing a
+C++ spelling:
+
+```jinja
+{% if type_is_specialization(field.type_id, "my::Template") %}
+  {% set first_type = type_argument_type_id(field.type_id, 0) %}
+{% endif %}
+```
+
+The query ignores source aliases and top-level cv qualifiers. It is generic;
+domain-specific template names remain owned by downstream generators.
