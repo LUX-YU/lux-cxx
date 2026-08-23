@@ -134,9 +134,9 @@ component_include_directories(
 
 target_link_libraries(
     reflection_parser
-    PUBLIC
+    PRIVATE
         LibClang::LibClang
-)  
+)
 
 component_add_internal_dependencies(
     reflection_parser
@@ -150,19 +150,9 @@ target_compile_definitions(
     LUX_CXX_LIBRARY
 )
 
-# Consumers that link reflection_parser pull in LibClang::LibClang transitively,
-# so the import must be able to find_package(LibClang). Ship FindLibClang.cmake
-# with the parser and point CMAKE_MODULE_PATH at its installed cmake_scripts/ dir.
-component_add_cmake_scripts(
-    reflection_parser
-    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindLibClang.cmake
-)
-
-component_add_transitive_commands(
-    reflection_parser
-    "list(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}/cmake_scripts\")"
-    "find_package(LibClang REQUIRED)"
-)
+# LibClang is entirely compiled into the shared host-side parser. Its public
+# headers expose only compact-IR types, so installed runtime/generator/parser
+# consumers do not need a LibClang package or find module.
 endif() # NOT CMAKE_CROSSCOMPILING — reflection_parser
 
 #[[==========================
