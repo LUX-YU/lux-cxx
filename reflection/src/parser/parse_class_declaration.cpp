@@ -23,6 +23,8 @@
 #include <lux/cxx/reflection/parser/CxxParserImpl.hpp>
 #include <lux/cxx/reflection/runtime/Declaration.hpp>
 
+#include <utility>
+
 namespace lux::cxx::reflection
 {
     /**
@@ -142,6 +144,24 @@ namespace lux::cxx::reflection
 
     void CxxParserImpl::parseCXXRecordDecl(const Cursor& cursor, CXXRecordDecl& decl)
     {
+		const auto cursor_id = cursor.USR().to_std();
+		const bool tracks_active = !cursor_id.empty()
+			&& _active_record_declarations.insert(cursor_id).second;
+		struct ActiveRecordGuard
+		{
+			std::unordered_set<std::string>* active{};
+			std::string id;
+
+			~ActiveRecordGuard()
+			{
+				if (active)
+					active->erase(id);
+			}
+		} active_guard{
+			tracks_active ? &_active_record_declarations : nullptr,
+			cursor_id
+		};
+
         // Iterate over each child element in the record declaration
         cursor.visitChildren(
             [this, &decl](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult

@@ -29,6 +29,7 @@
 #include <lux/cxx/reflection/runtime/Declaration.hpp>
 #include <lux/cxx/reflection/runtime/Type.hpp>
 #include <memory>
+#include <unordered_set>
 
 namespace lux::cxx::reflection
 {
@@ -84,6 +85,7 @@ namespace lux::cxx::reflection
 		void parsePointerType(const ClangType& clang_type, PointerType& type);
 		void parseReferenceType(const ClangType& clang_type, ReferenceType& type);
 		void parseRecordType(const ClangType& clang_type, RecordType& type);
+		void hydrateMarkedRecordTemplateArgument(const ClangType& clang_type);
 		void parseEnumType(const ClangType& clang_type, EnumType& type);
 		void parseFunctionType(const ClangType& clang_type, FunctionType& type);
 		void parseUnsupportedType(const ClangType& clang_type, UnsupportedType& type);
@@ -99,5 +101,6 @@ namespace lux::cxx::reflection
         // instead of SUCCESS — the MetaUnit is still valid, but the caller is
         // told that at least one marked declaration was skipped.
         bool                                    _saw_unsupported_kind = false;
+		std::unordered_set<std::string>         _active_record_declarations;
     };
 } // namespace lux::reflection

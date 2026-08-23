@@ -43,6 +43,47 @@ namespace
             if (e->full_qualified_name == fq) return e;
         return nullptr;
     }
+
+    void check_included_template_layout_dependency(
+        CxxParser& parser,
+        const std::filesystem::path& source)
+    {
+        auto [result, meta] = parser.parseLegacy(source.string());
+        check(result == EParseResult::SUCCESS,
+              "included template layout dependency parse succeeded");
+        check(meta.markedRecordDecls().size() == 1,
+              "included marked dependency is not emitted as a marked root");
+        if (meta.markedRecordDecls().empty())
+            return;
+
+        const auto* consumer = meta.markedRecordDecls().front();
+        check(consumer->bases.size() == 1,
+              "layout consumer retains its lineage wrapper");
+        if (consumer->bases.empty())
+            return;
+
+        const auto* wrapper = meta.getDeclAs<CXXRecordDecl>(consumer->bases.front());
+        const auto* wrapper_type = wrapper
+            ? dynamic_cast<const RecordType*>(wrapper->type)
+            : nullptr;
+        check(wrapper_type && wrapper_type->template_arguments.size() == 2,
+              "lineage wrapper retains canonical template arguments");
+        if (!wrapper_type || wrapper_type->template_arguments.size() != 2)
+            return;
+
+        const auto* base_type = dynamic_cast<const RecordType*>(
+            wrapper_type->template_arguments[1].type
+        );
+        const auto* base_decl = base_type
+            ? decl_cast<CXXRecordDecl>(base_type->decl)
+            : nullptr;
+        check(base_decl != nullptr,
+              "included marked template argument has a hydrated declaration");
+        check(base_decl
+                  && base_decl->full_qualified_name
+                      == "lux::cxx::reflection::test::IncludedLayout",
+              "hydrated declaration identifies the included layout dependency");
+    }
 }
 
 int main(int argc, char* argv[])
@@ -72,6 +113,11 @@ int main(int argc, char* argv[])
     parser.setOnParseError([](const std::string& m) {
         std::cerr << "[parse] " << m << "\n";
     });
+
+    check_included_template_layout_dependency(
+        parser,
+        test_file_dir / "template_layout_consumer.hpp"
+    );
 
     auto [compact_result, compact] = parser.parse(target_file.string());
     check(compact_result == EParseResult::SUCCESS, "compact IR parse succeeded");

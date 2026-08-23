@@ -720,6 +720,7 @@ namespace lux::cxx::reflection
 					targ.kind = TemplateArgument::Kind::Type;
 					targ.type = createOrFindType(arg_type);
 					targ.spelling = arg_type.typeSpelling().to_std();
+					hydrateMarkedRecordTemplateArgument(arg_type);
 				}
 				else
 				{
@@ -786,6 +787,45 @@ namespace lux::cxx::reflection
 				type.template_arguments.push_back(std::move(targ));
 			}
 		}
+	}
+
+	void CxxParserImpl::hydrateMarkedRecordTemplateArgument(
+		const ClangType& clang_type)
+	{
+		const auto canonical = clang_type.canonicalType();
+		if (canonical.kind() != CXType_Record)
+			return;
+
+		Cursor target = Cursor::declOfType(canonical);
+		if (!target.isValid())
+			return;
+
+		const auto definition = target.getDefinition();
+		if (definition.isValid())
+			target = definition;
+
+		const auto target_id = target.USR().to_std();
+		if (target_id.empty()
+			|| hasDeclaration(target_id)
+			|| _active_record_declarations.contains(target_id))
+		{
+			return;
+		}
+
+		const auto annotations = parseAnnotations(target);
+		const bool is_marked = std::ranges::any_of(
+			annotations,
+			[this](const std::string& annotation)
+			{
+				return annotation.find(_options.marker_symbol) != std::string::npos;
+			}
+		);
+		if (!is_marked)
+			return;
+
+		auto dependency = std::make_unique<CXXRecordDecl>();
+		parseCXXRecordDecl(target, *dependency);
+		registerDeclaration(std::move(dependency), false);
 	}
 
 	void CxxParserImpl::parseEnumType(const ClangType& clang_type, EnumType& type)
