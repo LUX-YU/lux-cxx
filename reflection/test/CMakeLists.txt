@@ -128,80 +128,79 @@ if(LUX_GENERATOR)
 		PROPERTIES WORKING_DIRECTORY ${REFLECTION_BINARY_DIR}
 	)
 
-	add_meta(
-		NAME			test_meta
-		GENERATOR		${LUX_GENERATOR}
-		OUT_DIR			${CMAKE_BINARY_DIR}/metagen
-		META_SUFFIX     "meta.hpp"
-		MARKER          "marked"
-		META_GENERATOR  ${GENERATOR}
-		TEMPLATE		${TEST_TEMPLATE_DIR}/test_meta.template.inja
-		TARGET_FILES	${CMAKE_CURRENT_SOURCE_DIR}/test_header.hpp
-		JSON_FIELD		"{\"foo\":123,\"bar\":[1,2,3]}"
-						"{\"foo2\":345,\"bar2\":[456]}"
-		ECHO
+	lux_add_codegen_job(
+		NAME          test_meta_job
+		GENERATOR     ${LUX_GENERATOR}
+		MARKER        marked
+		SOURCE_FILE   ${CMAKE_CURRENT_SOURCE_DIR}/generator_test.cpp
+		TARGET_FILES  ${CMAKE_CURRENT_SOURCE_DIR}/test_header.hpp
+		LOGICAL_PATHS test_header.hpp
 	)
-
-	add_meta(
-		NAME			test_annotation_meta
-		GENERATOR		${LUX_GENERATOR}
-		OUT_DIR			${CMAKE_BINARY_DIR}/metagen
-		META_SUFFIX     "anno.hpp"
-		MARKER          "marked"
-		META_GENERATOR  ${GENERATOR}
-		TEMPLATE		${TEST_TEMPLATE_DIR}/annotation_callbacks_test.template.inja
-		TARGET_FILES	${CMAKE_CURRENT_SOURCE_DIR}/test_annotation_callbacks.hpp
-		ECHO
+	lux_codegen_add_projection(
+		JOB           test_meta_job
+		NAME          static_meta
+		TEMPLATE      ${TEST_TEMPLATE_DIR}/test_meta.template.inja
+		OUTPUT_ROOT   ${CMAKE_BINARY_DIR}/metagen
+		OUTPUT_SUFFIX .meta.hpp
+		JSON_FIELD    "{\"foo\":123,\"bar\":[1,2,3]}"
 	)
-
-	add_meta(
-		NAME            test_template_lineage_meta
-		GENERATOR       ${LUX_GENERATOR}
-		OUT_DIR         ${CMAKE_BINARY_DIR}/metagen
-		META_SUFFIX     "lineage.hpp"
-		MARKER          "marked"
-		META_GENERATOR  ${GENERATOR}
-		TEMPLATE        ${TEST_TEMPLATE_DIR}/template_lineage_test.template.inja
-		TARGET_FILES    ${CMAKE_CURRENT_SOURCE_DIR}/template_layout_consumer.hpp
-		ECHO
+	# The second projection intentionally reuses the same parse and IR.
+	lux_codegen_add_projection(
+		JOB           test_meta_job
+		NAME          mirror_meta
+		TEMPLATE      ${TEST_TEMPLATE_DIR}/test_meta.template.inja
+		OUTPUT_ROOT   ${CMAKE_BINARY_DIR}/metagen
+		OUTPUT_SUFFIX .mirror.hpp
 	)
-
-	target_add_meta(
-		TARGET			generator_test
-		NAME			test_meta
-		ALWAYS_REGENERATE
+	lux_target_add_codegen(
+		TARGET generator_test
+		JOB test_meta_job
 		DONT_ADD_TO_SOURCE
-		ECHO
 	)
 
-	target_add_meta(
-		TARGET          generator_test
-		NAME            test_template_lineage_meta
-		ALWAYS_REGENERATE
+	lux_add_codegen_job(
+		NAME          test_annotation_job
+		GENERATOR     ${LUX_GENERATOR}
+		MARKER        marked
+		SOURCE_FILE   ${CMAKE_CURRENT_SOURCE_DIR}/generator_test.cpp
+		TARGET_FILES  ${CMAKE_CURRENT_SOURCE_DIR}/test_annotation_callbacks.hpp
+		LOGICAL_PATHS test_annotation_callbacks.hpp
+	)
+	lux_codegen_add_projection(
+		JOB           test_annotation_job
+		NAME          annotation
+		TEMPLATE      ${TEST_TEMPLATE_DIR}/annotation_callbacks_test.template.inja
+		OUTPUT_ROOT   ${CMAKE_BINARY_DIR}/metagen
+		OUTPUT_SUFFIX .anno.hpp
+	)
+	lux_target_add_codegen(
+		TARGET generator_test
+		JOB test_annotation_job
 		DONT_ADD_TO_SOURCE
-		ECHO
 	)
 
-	target_add_meta(
-		TARGET			generator_test
-		NAME			test_annotation_meta
-		ALWAYS_REGENERATE
+	lux_add_codegen_job(
+		NAME          test_lineage_job
+		GENERATOR     ${LUX_GENERATOR}
+		MARKER        marked
+		SOURCE_FILE   ${CMAKE_CURRENT_SOURCE_DIR}/generator_test.cpp
+		TARGET_FILES  ${CMAKE_CURRENT_SOURCE_DIR}/template_layout_consumer.hpp
+		LOGICAL_PATHS template_layout_consumer.hpp
+	)
+	lux_codegen_add_projection(
+		JOB           test_lineage_job
+		NAME          lineage
+		TEMPLATE      ${TEST_TEMPLATE_DIR}/template_lineage_test.template.inja
+		OUTPUT_ROOT   ${CMAKE_BINARY_DIR}/metagen
+		OUTPUT_SUFFIX .lineage.hpp
+	)
+	lux_target_add_codegen(
+		TARGET generator_test
+		JOB test_lineage_job
 		DONT_ADD_TO_SOURCE
-		ECHO
 	)
 
-	add_dependencies(
-		test_meta_gen
-		lux_meta_generator
-	)
-
-	add_dependencies(
-		test_annotation_meta_gen
-		lux_meta_generator
-	)
-
-	add_dependencies(
-		test_template_lineage_meta_gen
-		lux_meta_generator
-	)
+	add_dependencies(test_meta_job_generate lux_meta_generator)
+	add_dependencies(test_annotation_job_generate lux_meta_generator)
+	add_dependencies(test_lineage_job_generate lux_meta_generator)
 endif()

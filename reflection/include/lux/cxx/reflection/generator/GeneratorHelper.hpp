@@ -1,6 +1,7 @@
 #pragma once
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <vector>
 #include <lux/cxx/visibility.h>
 #include <lux/cxx/reflection/runtime/Declaration.hpp>
@@ -8,29 +9,40 @@
 
 namespace lux::cxx::reflection
 {
-	struct GeneratorConfig{
+	struct GeneratorTargetFile final
+	{
+		std::string physical_path;
+		std::string logical_path;
+	};
+
+	struct GeneratorProjection final
+	{
+		std::string              name;
+		std::string              template_path;
+		std::string              output_root;
+		std::string              output_suffix;
+		std::vector<std::string> custom_fields_json;
+		bool                     include_relative{true};
+		bool                     serial_meta{false};
+	};
+
+	struct GeneratorParseJob final
+	{
 		// 用于标记c++声明的注解字符
 		std::string              marker;
-		// 对应的生成模板, 使用inja语法
-		std::string              template_path;
-		// 生成的文件存放目录
-		std::string              out_dir;
 		// 编译命令文件，一般可以在构建系统中生成，对于cmake系统一般在BINARY_DIR下
 		std::string              compile_commands;
-		// 需要生成元信息的文件列表
-		std::vector<std::string> target_files;
-		// 生成的元信息文件后缀
-		std::string              meta_suffix;
+		// 需要生成元信息的物理文件及其稳定逻辑路径
+		std::vector<GeneratorTargetFile> target_files;
+		// 同一次 parse 复用的独立输出投影
+		std::vector<GeneratorProjection> projections;
 		// 这个源文件不是需要生成元信息的文件，而是在compile_commands中的源文件，用于找到对应的编译命令以得到对应的编译选项
 		// 如果没有提供，请在extra_compile_options中添加编译选项
 		std::string              source_file;
 		// 额外的编译选项，例如头文件的路径，平台特定的编译选项等
 		std::vector<std::string> extra_compile_options;
-		std::vector<std::string> custom_fields_json;
-		// 是否将解析的元信息序列化到json文件中，保存在out_dir目录下
-		bool					 serial_meta;
 		// 是否不生成任何文件
-		bool                     dry_run;
+		bool                     dry_run{false};
 		// 是否放行「被 include 的头中的标记声明」(ParseOptions::parse_included_marked)。
 		// 默认 false 保持仅主文件;注册型模板勿开(会按 TU 重复注册可见类型)。
 		bool                     parse_included_marked = false;
@@ -80,7 +92,7 @@ namespace lux::cxx::reflection
 		convertToDashI(const std::vector<std::filesystem::path>& paths);
 
 		static void 
-		loadGeneratorConfig(const std::string& filename, GeneratorConfig& config);
+		loadGeneratorParseJob(const std::string& filename, GeneratorParseJob& config);
 	};
 }
 

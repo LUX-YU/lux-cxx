@@ -11,6 +11,8 @@
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
+#include <map>
+#include <set>
 #include <string_view>
 
 using namespace ::lux::cxx::reflection;
@@ -26,17 +28,66 @@ using namespace ::lux::cxx::reflection;
 // Returns:
 //   true if all files exist, false otherwise.
 //---------------------------------------------------------------------
-static bool validateFiles(const GeneratorConfig& generator_config)
+struct PendingOutput final
+{
+    std::filesystem::path path;
+    std::string contents;
+};
+
+static std::filesystem::path projectionOutputPath(
+    const GeneratorTargetFile& target,
+    const GeneratorProjection& projection
+)
+{
+    std::filesystem::path relative = target.logical_path;
+    if (!projection.include_relative)
+    {
+        relative = relative.filename();
+    }
+    relative.replace_extension(projection.output_suffix);
+    return std::filesystem::path(projection.output_root) / relative;
+}
+
+static bool validateFiles(const GeneratorParseJob& generator_config)
 {
     bool ok = true;
 
     // Iterate over each target file and verify that the file exists.
     for (const auto& file : generator_config.target_files)
     {
-        if (!std::filesystem::exists(file))
+        if (!std::filesystem::exists(file.physical_path))
         {
-            std::cerr << "[Error] file_to_parse " << file << " does not exist.\n";
+            std::cerr << "[Error] file_to_parse " << file.physical_path
+                      << " does not exist.\n";
             ok = false;
+        }
+        const auto logical = std::filesystem::path(file.logical_path).lexically_normal();
+        if (logical.empty() || logical.is_absolute() ||
+            (!logical.empty() && *logical.begin() == ".."))
+        {
+            std::cerr << "[Error] logical_path must remain relative: "
+                      << file.logical_path << "\n";
+            ok = false;
+        }
+    }
+
+    std::set<std::filesystem::path> output_paths;
+    for (const auto& projection : generator_config.projections)
+    {
+        if (!std::filesystem::exists(projection.template_path))
+        {
+            std::cerr << "[Error] template " << projection.template_path
+                      << " does not exist.\n";
+            ok = false;
+        }
+        for (const auto& file : generator_config.target_files)
+        {
+            const auto output = projectionOutputPath(file, projection).lexically_normal();
+            if (!output_paths.emplace(output).second)
+            {
+                std::cerr << "[Error] projection output collision: " << output << "\n";
+                ok = false;
+            }
         }
     }
 
@@ -70,7 +121,10 @@ static bool validateFiles(const GeneratorConfig& generator_config)
 // Returns:
 //   A vector of strings representing the compile options to be used by the parser.
 //---------------------------------------------------------------------
-static std::vector<std::string> buildCompileOptions(const GeneratorConfig& generator_config, std::vector<std::filesystem::path>& includes)
+static std::vector<std::string> buildCompileOptions(
+    const GeneratorParseJob& generator_config,
+    std::vector<std::filesystem::path>& includes
+)
 {
     auto source_path = std::filesystem::path(generator_config.source_file);
     auto source_parent = source_path.parent_path();
@@ -122,13 +176,14 @@ static std::vector<std::string> buildCompileOptions(const GeneratorConfig& gener
 // Returns:
 //   true if the file is processed successfully, false otherwise.
 //---------------------------------------------------------------------
-static bool processTargetFile(const std::filesystem::path& file,
-    const GeneratorConfig& generator_config,
+static bool processTargetFile(const GeneratorTargetFile& target,
+    const GeneratorParseJob& generator_config,
     const std::vector<std::string>& options,
     std::vector<MetaUnit>& meta_list,
     std::vector<nlohmann::json>& meta_json_list,
     std::vector<std::filesystem::path>& includes)
 {
+    const std::filesystem::path file = target.physical_path;
     // Convert the current file path to a string.
     std::string file_path = file.string();
     // Obtain the parent directory of the file. This information is later stored in the meta JSON.
@@ -176,47 +231,13 @@ static bool processTargetFile(const std::filesystem::path& file,
     MetaUnit data = MetaUnit::fromJson(*template_json);
     // Augment the JSON with additional file-specific metadata.
     meta_json["source_path"]            = file_path;
+    meta_json["logical_path"]           = target.logical_path;
     meta_json["source_parent"]          = source_parent;
     meta_json["parser_compile_options"] = options;
-	meta_json["include_dir"]            = GeneratorHelper::findRelativeIncludePath(file, includes).value_or(std::string(""));
-
-    if (!generator_config.custom_fields_json.empty()) {
-        for (const std::string& field : generator_config.custom_fields_json) {
-            nlohmann::json extra;
-            try {
-                extra = nlohmann::json::parse(field);
-            }
-            catch (const nlohmann::json::parse_error& e) {
-                std::cerr << "[Error] Invalid custom_fields_json entry '" << field
-                          << "': " << e.what() << "\n";
-                return false;
-            }
-            for (auto& [key, val] : extra.items()) {
-                meta_json[key] = val;
-            }
-		}
-    }
-
-    // If the configuration requests serializing meta data into JSON files,
-    // generate a JSON file for the current source file.
-    if (generator_config.serial_meta)
-    {
-        // Convert the JSON data to a string.
-        auto meta_json_str = nlohmann::to_string(meta_json);
-        // Build the output file name based on the target file's stem (filename without extension).
-        auto json_file_name = std::filesystem::path(file).stem().string() + ".json";
-        // Combine with the output directory from the configuration.
-        auto out_path = std::filesystem::path(generator_config.out_dir) / json_file_name;
-
-        std::ofstream out_file(out_path, std::ios::binary);
-        if (!out_file.is_open()) {
-            std::cerr << "[Error] Failed to open file " << out_path << " for writing.\n";
-            return false;
-        }
-        // Write the meta JSON string to the file.
-        out_file << meta_json_str;
-        out_file.close();
-    }
+	meta_json["include_dir"] = GeneratorHelper::findRelativeIncludePath(
+        file,
+        includes
+    ).value_or(std::string(""));
 
     // Save the parsed meta unit and its JSON representation for later use in template rendering.
     meta_list.push_back(std::move(data));
@@ -567,17 +588,22 @@ static nlohmann::json annotation_map_for_head(
 // Returns:
 //   true if all templates are rendered and written successfully, false otherwise.
 //---------------------------------------------------------------------
-static bool renderTemplates(const GeneratorConfig& generator_config,
+static bool renderProjection(
+    const GeneratorParseJob& generator_config,
+    const GeneratorProjection& projection,
     const std::vector<MetaUnit>& meta_unit_list,
-    const std::vector<nlohmann::json>& meta_json_list)
+    const std::vector<nlohmann::json>& meta_json_list,
+    std::vector<PendingOutput>& outputs
+)
 {
     // Open the template file provided in the configuration.
-    std::ifstream     template_file(generator_config.template_path);
+    std::ifstream     template_file(projection.template_path);
     inja::Environment inja_env;
     inja::Template    inja_template;
 
     if (!template_file.is_open()) {
-        std::cerr << "[Error] Failed to open template file " << generator_config.template_path << "\n";
+        std::cerr << "[Error] Failed to open template file "
+                  << projection.template_path << "\n";
         return false;
     }
     // Read the entire template file into a string.
@@ -1143,44 +1169,202 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
     }
     catch (const std::exception& e) {
         std::cerr << "[Error] Failed to parse template "
-                  << generator_config.template_path << ": " << e.what() << "\n";
+                  << projection.template_path << ": " << e.what() << "\n";
         return false;
     }
 
     // Iterate over each meta JSON object.
     for (size_t i = 0; i < meta_json_list.size(); ++i)
     {
-        const auto& meta_json = meta_json_list[i];
+        auto meta_json = meta_json_list[i];
+        meta_json["projection_name"] = projection.name;
+        for (const std::string& field : projection.custom_fields_json)
+        {
+            try
+            {
+                const auto extra = nlohmann::json::parse(field);
+                for (const auto& [key, value] : extra.items())
+                {
+                    meta_json[key] = value;
+                }
+            }
+            catch (const nlohmann::json::parse_error& error)
+            {
+                std::cerr << "[Error] Invalid custom_fields_json entry for projection '"
+                          << projection.name << "': " << error.what() << "\n";
+                return false;
+            }
+        }
         // Update the per-iteration context that the file-aware callbacks
         // capture. Must be set before render() because inja invokes callbacks
         // synchronously during render.
         current.meta_unit = &meta_unit_list[i];
         current.meta_json = &meta_json;
 
-        // Derive the source file's base name (without extension) to be used for the output file.
-        auto source_file_name = std::filesystem::path(meta_json["source_path"].get<std::string>()).stem().string();
-        // Construct the output file path by combining the output directory with the source filename and meta suffix.
-        auto meta_file_path = std::filesystem::path(generator_config.out_dir) / (source_file_name + generator_config.meta_suffix);
-        std::ofstream out_file(meta_file_path, std::ios::binary);
-        if (!out_file.is_open()) {
-            std::cerr << "[Error] Failed to open file " << meta_file_path << " for writing.\n";
-            return false;
-        }
-
         try {
             // Render the pre-parsed template using the current meta JSON data.
-            auto render_rst = inja_env.render(inja_template, meta_json);
-            out_file << render_rst;
-            if (out_file.fail()) {
-                std::cerr << "[Error] Failed to write to file " << meta_file_path << "\n";
-                return false;
+            outputs.push_back(PendingOutput{
+                projectionOutputPath(generator_config.target_files[i], projection),
+                inja_env.render(inja_template, meta_json)
+            });
+            if (projection.serial_meta)
+            {
+                auto json_path = projectionOutputPath(
+                    generator_config.target_files[i],
+                    projection
+                );
+                json_path += ".json";
+                outputs.push_back(PendingOutput{
+                    std::move(json_path),
+                    nlohmann::to_string(meta_json)
+                });
             }
         }
         catch (const std::exception& e) {
-            std::cerr << "[Error] Failed to write to file " << meta_file_path << ": " << e.what() << "\n";
+            std::cerr << "[Error] Failed to render projection " << projection.name
+                      << ": " << e.what() << "\n";
             return false;
         }
-        out_file.close();
+    }
+    return true;
+}
+
+static bool readExisting(
+    const std::filesystem::path& path,
+    std::string& contents
+)
+{
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream.is_open())
+    {
+        return false;
+    }
+    contents.assign(
+        std::istreambuf_iterator<char>(stream),
+        std::istreambuf_iterator<char>()
+    );
+    return !stream.bad();
+}
+
+static bool publishOutputs(const std::vector<PendingOutput>& outputs)
+{
+    struct Publication final
+    {
+        std::filesystem::path destination;
+        std::filesystem::path temporary;
+        std::filesystem::path backup;
+        bool had_destination{};
+        bool published{};
+    };
+
+    std::vector<Publication> publications;
+    publications.reserve(outputs.size());
+
+    std::set<std::filesystem::path> unique;
+    for (const auto& output : outputs)
+    {
+        const auto normalized = output.path.lexically_normal();
+        if (!unique.emplace(normalized).second)
+        {
+            std::cerr << "[Error] duplicate rendered output: " << normalized << "\n";
+            return false;
+        }
+
+        std::string existing;
+        if (readExisting(normalized, existing) && existing == output.contents)
+        {
+            continue;
+        }
+
+        std::error_code error;
+        std::filesystem::create_directories(normalized.parent_path(), error);
+        if (error)
+        {
+            std::cerr << "[Error] failed to create output directory for "
+                      << normalized << ": " << error.message() << "\n";
+            return false;
+        }
+
+        Publication publication;
+        publication.destination = normalized;
+        publication.temporary = normalized;
+        publication.temporary += ".luxgen.tmp";
+        publication.backup = normalized;
+        publication.backup += ".luxgen.bak";
+        publication.had_destination = std::filesystem::exists(normalized);
+
+        std::filesystem::remove(publication.temporary, error);
+        error.clear();
+        std::ofstream stream(publication.temporary, std::ios::binary | std::ios::trunc);
+        if (!stream.is_open())
+        {
+            std::cerr << "[Error] failed to open temporary output "
+                      << publication.temporary << "\n";
+            return false;
+        }
+        stream.write(output.contents.data(), static_cast<std::streamsize>(output.contents.size()));
+        stream.close();
+        if (!stream)
+        {
+            std::cerr << "[Error] failed to write temporary output "
+                      << publication.temporary << "\n";
+            return false;
+        }
+        publications.push_back(std::move(publication));
+    }
+
+    const auto rollback = [&publications]() noexcept
+    {
+        for (auto iterator = publications.rbegin(); iterator != publications.rend(); ++iterator)
+        {
+            std::error_code ignored;
+            std::filesystem::remove(iterator->temporary, ignored);
+            if (iterator->published)
+            {
+                std::filesystem::remove(iterator->destination, ignored);
+            }
+            if (iterator->had_destination && std::filesystem::exists(iterator->backup))
+            {
+                std::filesystem::rename(iterator->backup, iterator->destination, ignored);
+            }
+        }
+    };
+
+    for (auto& publication : publications)
+    {
+        std::error_code error;
+        std::filesystem::remove(publication.backup, error);
+        error.clear();
+        if (publication.had_destination)
+        {
+            std::filesystem::rename(
+                publication.destination,
+                publication.backup,
+                error
+            );
+            if (error)
+            {
+                rollback();
+                return false;
+            }
+        }
+        std::filesystem::rename(
+            publication.temporary,
+            publication.destination,
+            error
+        );
+        if (error)
+        {
+            rollback();
+            return false;
+        }
+        publication.published = true;
+    }
+
+    for (const auto& publication : publications)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(publication.backup, ignored);
     }
     return true;
 }
@@ -1202,13 +1386,13 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    GeneratorConfig generator_config;
+    GeneratorParseJob generator_config;
     try {
         // Load the generator configuration from the JSON file.
         // The helper function GeneratorHelper::loadGeneratorConfig reads various settings such as:
         // marker, template_path, out_dir, compile_commands, target_files, meta_suffix, source_file,
         // and extra compile options.
-        GeneratorHelper::loadGeneratorConfig(argv[1], generator_config);
+        GeneratorHelper::loadGeneratorParseJob(argv[1], generator_config);
     }
     catch (const std::exception& e) {
         std::cerr << "[Error] Failed to load config: " << e.what() << "\n";
@@ -1218,15 +1402,6 @@ int main(int argc, char* argv[])
     // Ensure all required files exist.
     if (!validateFiles(generator_config)) {
         return 1;
-    }
-
-    // Check if the output directory exists, and attempt to create it if it does not.
-    if (!std::filesystem::exists(generator_config.out_dir)) {
-        if (!std::filesystem::create_directories(generator_config.out_dir))
-        {
-            std::cerr << "[Error] Failed to create output directory " << generator_config.out_dir << "\n";
-            return 1;
-        }
     }
 
     // Build compile options (including include paths) to be passed to the parser.
@@ -1258,10 +1433,29 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // Render the final output files using the previously collected metadata and the specified template.
-    if (!renderTemplates(generator_config, meta_unit_list, meta_json_list)) {
+    std::vector<PendingOutput> outputs;
+    outputs.reserve(generator_config.target_files.size() * generator_config.projections.size());
+    for (const auto& projection : generator_config.projections)
+    {
+        if (!renderProjection(
+                generator_config,
+                projection,
+                meta_unit_list,
+                meta_json_list,
+                outputs
+            ))
+        {
+            return 1;
+        }
+    }
+    if (!publishOutputs(outputs))
+    {
         return 1;
     }
+
+    std::cout << "[Info] Parsed " << generator_config.target_files.size()
+              << " target file(s) for " << generator_config.projections.size()
+              << " projection(s).\n";
 
     return 0;
 }

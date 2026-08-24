@@ -14,9 +14,9 @@
 
 #include "test_header.hpp"
 
-#include <test_headermeta.hpp>
-#include <test_annotation_callbacksanno.hpp>
-#include <template_layout_consumerlineage.hpp>
+#include <test_header.meta.hpp>
+#include <test_annotation_callbacks.anno.hpp>
+#include <template_layout_consumer.lineage.hpp>
 
 #include <cstddef>
 #include <cstdint>

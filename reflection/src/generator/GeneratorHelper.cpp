@@ -331,7 +331,10 @@ namespace lux::cxx::reflection
         return result;
     }
 
-    void GeneratorHelper::loadGeneratorConfig(const std::string& filename, GeneratorConfig& config)
+    void GeneratorHelper::loadGeneratorParseJob(
+        const std::string& filename,
+        GeneratorParseJob& config
+    )
     {
         std::ifstream ifs(filename);
         if (!ifs.is_open())
@@ -355,25 +358,61 @@ namespace lux::cxx::reflection
             return j[key];
         };
 
-        config.marker                   = require_field("marker").get<std::string>();
-        config.template_path            = require_field("template_path").get<std::string>();
-        config.out_dir                  = require_field("out_dir").get<std::string>();
-        config.compile_commands         = require_field("compile_commands").get<std::string>();
-        config.target_files             = require_field("target_files").get<std::vector<std::string>>();
-        config.meta_suffix              = require_field("meta_suffix").get<std::string>();
-        config.source_file              = require_field("source_file").get<std::string>();
-        config.extra_compile_options    = require_field("extra_compile_options").get<std::vector<std::string>>();
-        if (j.contains("custom_fields_json")) {
-			for (auto& [key, val] : j["custom_fields_json"].items()) {
-				if (val.is_string()) {
-					config.custom_fields_json.push_back(val.get<std::string>());
-				}
-			}
+        config.marker           = require_field("marker").get<std::string>();
+        config.compile_commands = require_field("compile_commands").get<std::string>();
+        config.source_file      = require_field("source_file").get<std::string>();
+        config.extra_compile_options =
+            require_field("extra_compile_options").get<std::vector<std::string>>();
+
+        const auto& target_files = require_field("target_files");
+        if (!target_files.is_array() || target_files.empty())
+        {
+            throw std::runtime_error("[Config] 'target_files' must be a non-empty array");
         }
-        else {
-            config.custom_fields_json.clear();
+        config.target_files.clear();
+        for (const auto& target : target_files)
+        {
+            GeneratorTargetFile file;
+            file.physical_path = target.at("physical_path").get<std::string>();
+            file.logical_path  = target.at("logical_path").get<std::string>();
+            if (file.logical_path.empty() || std::filesystem::path(file.logical_path).is_absolute())
+            {
+                throw std::runtime_error(
+                    "[Config] target logical_path must be non-empty and relative"
+                );
+            }
+            config.target_files.push_back(std::move(file));
         }
-		config.serial_meta              = j.value("serial_meta", true);
+
+        const auto& projections = require_field("projections");
+        if (!projections.is_array() || projections.empty())
+        {
+            throw std::runtime_error("[Config] 'projections' must be a non-empty array");
+        }
+        config.projections.clear();
+        for (const auto& item : projections)
+        {
+            GeneratorProjection projection;
+            projection.name            = item.at("name").get<std::string>();
+            projection.template_path   = item.at("template_path").get<std::string>();
+            projection.output_root     = item.at("output_root").get<std::string>();
+            projection.output_suffix   = item.at("output_suffix").get<std::string>();
+            projection.include_relative = item.value("include_relative", true);
+            projection.serial_meta      = item.value("serial_meta", false);
+            if (item.contains("custom_fields_json"))
+            {
+                projection.custom_fields_json =
+                    item["custom_fields_json"].get<std::vector<std::string>>();
+            }
+            if (projection.name.empty() || projection.output_suffix.empty())
+            {
+                throw std::runtime_error(
+                    "[Config] projection name and output_suffix must be non-empty"
+                );
+            }
+            config.projections.push_back(std::move(projection));
+        }
+
 		config.dry_run                  = j.value("dry_run", false);
 		config.parse_included_marked    = j.value("parse_included_marked", false);
 		config.cxx_standard             = j.value("cxx_standard", std::string("c++20"));
