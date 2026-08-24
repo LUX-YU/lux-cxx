@@ -234,10 +234,13 @@ static bool processTargetFile(const GeneratorTargetFile& target,
     meta_json["logical_path"]           = target.logical_path;
     meta_json["source_parent"]          = source_parent;
     meta_json["parser_compile_options"] = options;
-	meta_json["include_dir"] = GeneratorHelper::findRelativeIncludePath(
+    const auto include_path = GeneratorHelper::findRelativeIncludePath(
         file,
         includes
-    ).value_or(std::string(""));
+    );
+    meta_json["include_dir"] = include_path
+        ? include_path->generic_string()
+        : std::string{};
 
     // Save the parsed meta unit and its JSON representation for later use in template rendering.
     meta_list.push_back(std::move(data));
