@@ -1,7 +1,7 @@
 # Serialization codegen test.
 #
 # Generating meta_info<T> requires the reflection generator toolchain
-# (lux_meta_generator + add_meta/target_add_meta). When ENABLE_REFLECTION is OFF
+# (lux_meta_generator + multi-projection CMake API). When ENABLE_REFLECTION is OFF
 # those are unavailable, so the codegen test is skipped.
 if(NOT TARGET lux_meta_generator OR NOT TARGET lux::cxx::reflection_generator)
     message(STATUS "[serialization/test] reflection generator toolchain unavailable "
@@ -9,7 +9,7 @@ if(NOT TARGET lux_meta_generator OR NOT TARGET lux::cxx::reflection_generator)
     return()
 endif()
 
-# Bring add_meta()/target_add_meta() and lux_target_add_serialization() into scope.
+# Bring the projection API and lux_target_add_serialization() into scope.
 include_component_cmake_scripts(reflection_generator)
 include_component_cmake_scripts(serialization)
 

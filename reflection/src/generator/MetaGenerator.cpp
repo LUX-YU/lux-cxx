@@ -1392,7 +1392,8 @@ int main(int argc, char* argv[])
     GeneratorParseJob generator_config;
     try {
         // Load the generator configuration from the JSON file.
-        // The helper function GeneratorHelper::loadGeneratorConfig reads various settings such as:
+        // GeneratorHelper::loadGeneratorParseJob reads the shared parse inputs;
+        // each projection carries its own render settings.
         // marker, template_path, out_dir, compile_commands, target_files, meta_suffix, source_file,
         // and extra compile options.
         GeneratorHelper::loadGeneratorParseJob(argv[1], generator_config);
