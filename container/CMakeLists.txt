@@ -19,6 +19,7 @@ endif()
 lux_add_header_self_containment(
     container_changed_header_self_containment
     lux::cxx::container
+    lux/cxx/container/ScopeId.hpp
     lux/cxx/container/SlotMap.hpp
     lux/cxx/container/SmallVector.hpp
     lux/cxx/container/StableSlotMap.hpp

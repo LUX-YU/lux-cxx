@@ -47,6 +47,18 @@ target_link_libraries(
 add_test(NAME slot_map_test COMMAND slot_map_test)
 
 add_executable(
+	scope_id_test
+	scope_id_test.cpp
+)
+
+target_link_libraries(
+	scope_id_test
+	PRIVATE
+	lux::cxx::container
+)
+add_test(NAME scope_id_test COMMAND scope_id_test)
+
+add_executable(
 	basic_sparse_set_test
 	basic_sparse_set_test.cpp
 )
