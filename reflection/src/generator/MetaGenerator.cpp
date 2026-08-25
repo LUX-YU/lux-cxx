@@ -32,6 +32,9 @@ struct PendingOutput final
 {
     std::filesystem::path path;
     std::string contents;
+    std::string logical_path;
+    std::string projection_name;
+    bool validation{};
 };
 
 static std::filesystem::path projectionOutputPath(
@@ -79,6 +82,16 @@ static bool validateFiles(const GeneratorParseJob& generator_config)
             std::cerr << "[Error] template " << projection.template_path
                       << " does not exist.\n";
             ok = false;
+        }
+        if (projection.validation && projection.serial_meta)
+        {
+            std::cerr << "[Error] validation projection '" << projection.name
+                      << "' cannot publish serial metadata.\n";
+            ok = false;
+        }
+        if (projection.validation)
+        {
+            continue;
         }
         for (const auto& file : generator_config.target_files)
         {
@@ -664,6 +677,15 @@ static bool renderProjection(
         }
     );
 
+    // Return a complete JSON string literal, including quotes. Validation
+    // projections use JSON escaping rather than C++ literal escaping.
+    inja_env.add_callback(
+        "json_str",
+        [](const inja::Arguments& args) -> std::string {
+            return nlohmann::json(args.at(0)->get<std::string>()).dump();
+        }
+    );
+
     // Callback to retrieve a declaration based on its unique ID from the meta data.
     // The meta_unit_list is used to locate the declaration, and then the corresponding JSON data is returned.
     inja_env.add_callback(
@@ -1055,6 +1077,32 @@ static bool renderProjection(
         }
     );
 
+    // Count occurrences without merging annotation maps. Semantic validators
+    // must be able to reject duplicate declarations instead of observing only
+    // the last value.
+    inja_env.add_callback(
+        "annotation_count",
+        [](const inja::Arguments& args) -> nlohmann::json
+        {
+            if (args.size() < 2)
+            {
+                return 0U;
+            }
+            const auto target = trim_copy(args.at(1)->get<std::string>());
+            const auto parsed = parse_annotation_set(*args.at(0));
+            std::size_t count{};
+            for (const auto& ann : parsed)
+            {
+                if (ann.raw == target || ann.head == target ||
+                    ann.args.contains(target))
+                {
+                    ++count;
+                }
+            }
+            return count;
+        }
+    );
+
     // Returns merged key/value map of all annotations.
     inja_env.add_callback(
         "annotation_map",
@@ -1208,7 +1256,10 @@ static bool renderProjection(
             // Render the pre-parsed template using the current meta JSON data.
             outputs.push_back(PendingOutput{
                 projectionOutputPath(generator_config.target_files[i], projection),
-                inja_env.render(inja_template, meta_json)
+                inja_env.render(inja_template, meta_json),
+                generator_config.target_files[i].logical_path,
+                projection.name,
+                projection.validation
             });
             if (projection.serial_meta)
             {
@@ -1219,7 +1270,10 @@ static bool renderProjection(
                 json_path += ".json";
                 outputs.push_back(PendingOutput{
                     std::move(json_path),
-                    nlohmann::to_string(meta_json)
+                    nlohmann::to_string(meta_json),
+                    generator_config.target_files[i].logical_path,
+                    projection.name,
+                    false
                 });
             }
         }
@@ -1229,6 +1283,82 @@ static bool renderProjection(
             return false;
         }
     }
+    return true;
+}
+
+static bool validateRenderedOutputs(std::vector<PendingOutput>& outputs)
+{
+    bool ok = true;
+    for (const auto& output : outputs)
+    {
+        if (!output.validation)
+        {
+            continue;
+        }
+
+        try
+        {
+            const auto report = nlohmann::json::parse(output.contents);
+            const auto diagnostics = report.find("diagnostics");
+            if (!report.is_object() || diagnostics == report.end() ||
+                !diagnostics->is_array())
+            {
+                std::cerr << "[Validation] " << output.logical_path << ": "
+                          << output.projection_name
+                          << ": report must contain a diagnostics array.\n";
+                ok = false;
+                continue;
+            }
+
+            for (const auto& diagnostic : *diagnostics)
+            {
+                if (!diagnostic.is_object() ||
+                    !diagnostic.contains("message") ||
+                    !diagnostic["message"].is_string())
+                {
+                    std::cerr << "[Validation] " << output.logical_path << ": "
+                              << output.projection_name
+                              << ": malformed diagnostic entry.\n";
+                    ok = false;
+                    continue;
+                }
+
+                const auto severity = diagnostic.value("severity", "error");
+                const auto declaration = diagnostic.value(
+                    "declaration",
+                    std::string{}
+                );
+                std::cerr << "[Validation] " << output.logical_path;
+                if (!declaration.empty())
+                {
+                    std::cerr << ": " << declaration;
+                }
+                std::cerr << ": " << diagnostic["message"].get<std::string>()
+                          << "\n";
+                if (severity != "warning")
+                {
+                    ok = false;
+                }
+            }
+        }
+        catch (const nlohmann::json::exception& error)
+        {
+            std::cerr << "[Validation] " << output.logical_path << ": "
+                      << output.projection_name << ": invalid report: "
+                      << error.what() << "\n";
+            ok = false;
+        }
+    }
+
+    if (!ok)
+    {
+        return false;
+    }
+
+    std::erase_if(
+        outputs,
+        [](const PendingOutput& output) { return output.validation; }
+    );
     return true;
 }
 
@@ -1451,6 +1581,10 @@ int main(int argc, char* argv[])
         {
             return 1;
         }
+    }
+    if (!validateRenderedOutputs(outputs))
+    {
+        return 1;
     }
     if (!publishOutputs(outputs))
     {

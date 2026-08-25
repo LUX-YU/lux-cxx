@@ -173,10 +173,26 @@ if(LUX_GENERATOR)
 		OUTPUT_ROOT   ${CMAKE_BINARY_DIR}/metagen
 		OUTPUT_SUFFIX .anno.hpp
 	)
+	lux_codegen_add_validation(
+		JOB           test_annotation_job
+		NAME          annotation_semantics
+		TEMPLATE      ${TEST_TEMPLATE_DIR}/annotation_callbacks_test.validation.inja
+	)
 	lux_target_add_codegen(
 		TARGET generator_test
 		JOB test_annotation_job
 		DONT_ADD_TO_SOURCE
+	)
+	add_test(
+		NAME generator_validation_failure
+		COMMAND ${CMAKE_COMMAND}
+			-DGENERATOR=${LUX_GENERATOR}
+			-DCONFIG=${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/test_annotation_job.json
+			-DPASS_TEMPLATE=${TEST_TEMPLATE_DIR}/annotation_callbacks_test.validation.inja
+			-DFAIL_TEMPLATE=${TEST_TEMPLATE_DIR}/validation_failure_test.validation.inja
+			-DPUBLISHED_OUTPUT=${CMAKE_BINARY_DIR}/metagen/test_annotation_callbacks.anno.hpp
+			-DTEST_CONFIG=${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/test_annotation_failure.json
+			-P ${CMAKE_CURRENT_SOURCE_DIR}/generator_validation_failure_test.cmake
 	)
 
 	lux_add_codegen_job(

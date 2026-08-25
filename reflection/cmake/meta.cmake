@@ -121,6 +121,35 @@ function(lux_codegen_add_projection)
         "LUX_CODEGEN_${ARGS_NAME}_JSON_FIELDS" "${ARGS_JSON_FIELD}"
         "LUX_CODEGEN_${ARGS_NAME}_FLAT" "${ARGS_FLAT_OUTPUT}"
         "LUX_CODEGEN_${ARGS_NAME}_SERIAL_META" "${ARGS_SERIAL_META}"
+        "LUX_CODEGEN_${ARGS_NAME}_VALIDATION" FALSE
+    )
+endfunction()
+
+function(lux_codegen_add_validation)
+    set(one_value_args JOB NAME TEMPLATE)
+    set(multi_value_args JSON_FIELD)
+    cmake_parse_arguments(ARGS "" "${one_value_args}" "${multi_value_args}" ${ARGN})
+    if(NOT ARGS_JOB OR NOT TARGET "${ARGS_JOB}" OR NOT ARGS_NAME OR
+       NOT ARGS_TEMPLATE)
+        message(FATAL_ERROR
+            "[lux_codegen_add_validation] JOB, NAME and TEMPLATE are required")
+    endif()
+
+    get_target_property(_projections "${ARGS_JOB}" LUX_CODEGEN_PROJECTIONS)
+    if(ARGS_NAME IN_LIST _projections)
+        message(FATAL_ERROR
+            "[lux_codegen_add_validation] duplicate projection '${ARGS_NAME}'")
+    endif()
+    list(APPEND _projections "${ARGS_NAME}")
+    set_target_properties("${ARGS_JOB}" PROPERTIES
+        LUX_CODEGEN_PROJECTIONS "${_projections}"
+        "LUX_CODEGEN_${ARGS_NAME}_TEMPLATE" "${ARGS_TEMPLATE}"
+        "LUX_CODEGEN_${ARGS_NAME}_OUTPUT_ROOT" "${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/validation"
+        "LUX_CODEGEN_${ARGS_NAME}_OUTPUT_SUFFIX" ".${ARGS_NAME}.validation.json"
+        "LUX_CODEGEN_${ARGS_NAME}_JSON_FIELDS" "${ARGS_JSON_FIELD}"
+        "LUX_CODEGEN_${ARGS_NAME}_FLAT" FALSE
+        "LUX_CODEGEN_${ARGS_NAME}_SERIAL_META" FALSE
+        "LUX_CODEGEN_${ARGS_NAME}_VALIDATION" TRUE
     )
 endfunction()
 
@@ -195,6 +224,7 @@ function(lux_target_add_codegen)
 
     set(_outputs "")
     set(_templates "")
+    set(_publish_projection_count 0)
     list(LENGTH ARGS_PROJECTIONS _projection_count)
     math(EXPR _projection_last "${_projection_count} - 1")
     foreach(_pi RANGE 0 ${_projection_last})
@@ -205,6 +235,7 @@ function(lux_target_add_codegen)
         get_target_property(_fields "${ARGS_JOB}" "LUX_CODEGEN_${_projection}_JSON_FIELDS")
         get_target_property(_flat "${ARGS_JOB}" "LUX_CODEGEN_${_projection}_FLAT")
         get_target_property(_serial "${ARGS_JOB}" "LUX_CODEGEN_${_projection}_SERIAL_META")
+        get_target_property(_validation "${ARGS_JOB}" "LUX_CODEGEN_${_projection}_VALIDATION")
         list(APPEND _templates "${_template}")
         _meta_json_escape(_e_name "${_projection}")
         _meta_json_escape(_e_template "${_template}")
@@ -220,8 +251,14 @@ function(lux_target_add_codegen)
         else()
             set(_serial_json false)
         endif()
+        if(_validation)
+            set(_validation_json true)
+        else()
+            set(_validation_json false)
+            math(EXPR _publish_projection_count "${_publish_projection_count} + 1")
+        endif()
         file(APPEND "${_config}"
-            "    {\"name\": \"${_e_name}\", \"template_path\": \"${_e_template}\", \"output_root\": \"${_e_root}\", \"output_suffix\": \"${_e_suffix}\", \"include_relative\": ${_relative}, \"serial_meta\": ${_serial_json}, \"custom_fields_json\": [")
+            "    {\"name\": \"${_e_name}\", \"template_path\": \"${_e_template}\", \"output_root\": \"${_e_root}\", \"output_suffix\": \"${_e_suffix}\", \"include_relative\": ${_relative}, \"serial_meta\": ${_serial_json}, \"validation\": ${_validation_json}, \"custom_fields_json\": [")
         set(_first_field TRUE)
         foreach(_field IN LISTS _fields)
             _meta_json_escape(_e_field "${_field}")
@@ -238,15 +275,17 @@ function(lux_target_add_codegen)
         endif()
         file(APPEND "${_config}" "]}${_comma}\n")
 
-        foreach(_index RANGE 0 ${_last})
-            list(GET _logical ${_index} _path)
-            if(_flat)
-                get_filename_component(_path "${_path}" NAME)
-            endif()
-            get_filename_component(_directory "${_path}" DIRECTORY)
-            get_filename_component(_name "${_path}" NAME_WE)
-            list(APPEND _outputs "${_root}/${_directory}/${_name}${_suffix}")
-        endforeach()
+        if(NOT _validation)
+            foreach(_index RANGE 0 ${_last})
+                list(GET _logical ${_index} _path)
+                if(_flat)
+                    get_filename_component(_path "${_path}" NAME)
+                endif()
+                get_filename_component(_directory "${_path}" DIRECTORY)
+                get_filename_component(_name "${_path}" NAME_WE)
+                list(APPEND _outputs "${_root}/${_directory}/${_name}${_suffix}")
+            endforeach()
+        endif()
     endforeach()
     file(APPEND "${_config}" "  ],\n  \"extra_compile_options\": [")
     set(_first_option TRUE)
@@ -273,7 +312,7 @@ function(lux_target_add_codegen)
 
     list(REMOVE_DUPLICATES _outputs)
     list(LENGTH _outputs _unique_output_count)
-    math(EXPR _expected_output_count "${_count} * ${_projection_count}")
+    math(EXPR _expected_output_count "${_count} * ${_publish_projection_count}")
     if(NOT _unique_output_count EQUAL _expected_output_count)
         message(FATAL_ERROR "[lux_target_add_codegen] configured output collision")
     endif()

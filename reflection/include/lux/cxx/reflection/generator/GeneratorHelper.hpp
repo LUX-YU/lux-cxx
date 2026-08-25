@@ -24,6 +24,7 @@ namespace lux::cxx::reflection
 		std::vector<std::string> custom_fields_json;
 		bool                     include_relative{true};
 		bool                     serial_meta{false};
+		bool                     validation{false};
 	};
 
 	struct GeneratorParseJob final

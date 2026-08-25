@@ -399,12 +399,14 @@ namespace lux::cxx::reflection
             projection.output_suffix   = item.at("output_suffix").get<std::string>();
             projection.include_relative = item.value("include_relative", true);
             projection.serial_meta      = item.value("serial_meta", false);
+            projection.validation       = item.value("validation", false);
             if (item.contains("custom_fields_json"))
             {
                 projection.custom_fields_json =
                     item["custom_fields_json"].get<std::vector<std::string>>();
             }
-            if (projection.name.empty() || projection.output_suffix.empty())
+            if (projection.name.empty() ||
+                (!projection.validation && projection.output_suffix.empty()))
             {
                 throw std::runtime_error(
                     "[Config] projection name and output_suffix must be non-empty"

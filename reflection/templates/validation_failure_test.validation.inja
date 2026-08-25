@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "declaration": "ValidationFailureProbe",
+      "message": "intentional semantic validation failure"
+    }
+  ]
+}
