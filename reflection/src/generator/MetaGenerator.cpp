@@ -311,6 +311,7 @@ struct ParsedAnnotation
     std::string raw{};
     std::string head{};
     nlohmann::json args = nlohmann::json::object();
+    std::vector<std::string> arg_names{};
 };
 
 static std::string trim_copy(std::string_view text)
@@ -466,6 +467,7 @@ static ParsedAnnotation parse_annotation(std::string_view annotation_text)
                 const std::string key = trim_copy(token);
                 if (!key.empty())
                 {
+                    result.arg_names.push_back(key);
                     result.args[key] = true;
                 }
             }
@@ -481,6 +483,10 @@ static ParsedAnnotation parse_annotation(std::string_view annotation_text)
         if (is_head)
         {
             result.head = key;
+        }
+        else
+        {
+            result.arg_names.push_back(key);
         }
         result.args[key] = parse_annotation_value(value);
     };
@@ -1093,11 +1099,13 @@ static bool renderProjection(
             std::size_t count{};
             for (const auto& ann : parsed)
             {
-                if (ann.raw == target || ann.head == target ||
-                    ann.args.contains(target))
-                {
+                if (ann.raw == target || ann.head == target)
                     ++count;
-                }
+                count += static_cast<std::size_t>(std::count(
+                    ann.arg_names.begin(),
+                    ann.arg_names.end(),
+                    target
+                ));
             }
             return count;
         }
