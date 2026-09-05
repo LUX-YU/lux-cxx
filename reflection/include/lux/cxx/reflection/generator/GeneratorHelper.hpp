@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <lux/cxx/visibility.h>
 #include <lux/cxx/reflection/runtime/Declaration.hpp>
@@ -15,6 +16,12 @@ namespace lux::cxx::reflection
 		std::string logical_path;
 	};
 
+	struct GeneratorInputFile final
+	{
+		std::string name;
+		std::string path;
+	};
+
 	struct GeneratorProjection final
 	{
 		std::string              name;
@@ -22,6 +29,7 @@ namespace lux::cxx::reflection
 		std::string              output_root;
 		std::string              output_suffix;
 		std::vector<std::string> custom_fields_json;
+		std::vector<GeneratorInputFile> custom_field_files;
 		bool                     include_relative{true};
 		bool                     serial_meta{false};
 		bool                     validation{false};
@@ -40,6 +48,7 @@ namespace lux::cxx::reflection
 		// 这个源文件不是需要生成元信息的文件，而是在compile_commands中的源文件，用于找到对应的编译命令以得到对应的编译选项
 		// 如果没有提供，请在extra_compile_options中添加编译选项
 		std::string              source_file;
+		std::string              source_target;
 		std::string              depfile;
 		// 额外的编译选项，例如头文件的路径，平台特定的编译选项等
 		std::vector<std::string> extra_compile_options;
@@ -88,10 +97,12 @@ namespace lux::cxx::reflection
 		static std::string truncateAtLastParen(const std::string& funcName);
 
 		static Result<std::vector<std::filesystem::path>>
-		fetchIncludePaths(const std::filesystem::path& compile_command_path, const std::filesystem::path& source_file_path);
+		fetchIncludePaths(const std::filesystem::path& compile_command_path, const std::filesystem::path& source_file_path,
+			std::string_view source_target = {});
 
 		static Result<std::vector<std::string>> fetchCompileOptions(
-			const std::filesystem::path& compile_command_path, const std::filesystem::path& source_file_path);
+			const std::filesystem::path& compile_command_path, const std::filesystem::path& source_file_path,
+			std::string_view source_target = {});
 
 		static std::vector<std::string> 
 		convertToDashI(const std::vector<std::filesystem::path>& paths);

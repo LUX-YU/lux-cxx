@@ -106,7 +106,7 @@ endfunction()
 
 function(lux_codegen_add_projection)
     set(one_value_args JOB NAME TEMPLATE OUTPUT_ROOT OUTPUT_SUFFIX)
-    set(multi_value_args JSON_FIELD)
+    set(multi_value_args JSON_FIELD JSON_FILE)
     set(optional_args FLAT_OUTPUT SERIAL_META)
     cmake_parse_arguments(ARGS "${optional_args}" "${one_value_args}" "${multi_value_args}" ${ARGN})
     if(NOT ARGS_JOB OR NOT TARGET "${ARGS_JOB}" OR NOT ARGS_NAME OR
@@ -127,6 +127,7 @@ function(lux_codegen_add_projection)
         "LUX_CODEGEN_${ARGS_NAME}_OUTPUT_ROOT" "${ARGS_OUTPUT_ROOT}"
         "LUX_CODEGEN_${ARGS_NAME}_OUTPUT_SUFFIX" "${ARGS_OUTPUT_SUFFIX}"
         "LUX_CODEGEN_${ARGS_NAME}_JSON_FIELDS" "${ARGS_JSON_FIELD}"
+        "LUX_CODEGEN_${ARGS_NAME}_JSON_FILES" "${ARGS_JSON_FILE}"
         "LUX_CODEGEN_${ARGS_NAME}_FLAT" "${ARGS_FLAT_OUTPUT}"
         "LUX_CODEGEN_${ARGS_NAME}_SERIAL_META" "${ARGS_SERIAL_META}"
         "LUX_CODEGEN_${ARGS_NAME}_VALIDATION" FALSE
@@ -135,7 +136,7 @@ endfunction()
 
 function(lux_codegen_add_validation)
     set(one_value_args JOB NAME TEMPLATE)
-    set(multi_value_args JSON_FIELD)
+    set(multi_value_args JSON_FIELD JSON_FILE)
     cmake_parse_arguments(ARGS "" "${one_value_args}" "${multi_value_args}" ${ARGN})
     if(NOT ARGS_JOB OR NOT TARGET "${ARGS_JOB}" OR NOT ARGS_NAME OR
        NOT ARGS_TEMPLATE)
@@ -155,6 +156,7 @@ function(lux_codegen_add_validation)
         "LUX_CODEGEN_${ARGS_NAME}_OUTPUT_ROOT" "${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/validation"
         "LUX_CODEGEN_${ARGS_NAME}_OUTPUT_SUFFIX" ".${ARGS_NAME}.validation.json"
         "LUX_CODEGEN_${ARGS_NAME}_JSON_FIELDS" "${ARGS_JSON_FIELD}"
+        "LUX_CODEGEN_${ARGS_NAME}_JSON_FILES" "${ARGS_JSON_FILE}"
         "LUX_CODEGEN_${ARGS_NAME}_FLAT" FALSE
         "LUX_CODEGEN_${ARGS_NAME}_SERIAL_META" FALSE
         "LUX_CODEGEN_${ARGS_NAME}_VALIDATION" TRUE
@@ -226,9 +228,10 @@ function(lux_target_add_codegen)
     _meta_json_escape(_e_marker "${_marker}")
     _meta_json_escape(_e_cc "${_cc}")
     _meta_json_escape(_e_source "${_source}")
+    _meta_json_escape(_e_target "${ARGS_TARGET}")
     set(_config_contents "{\n  \"marker\": \"${_e_marker}\",\n")
     string(APPEND _config_contents "  \"compile_commands\": \"${_e_cc}\",\n  \"depfile\": \"${_e_depfile}\",\n")
-    string(APPEND _config_contents "  \"source_file\": \"${_e_source}\",\n")
+    string(APPEND _config_contents "  \"source_file\": \"${_e_source}\",\n  \"source_target\": \"${_e_target}\",\n")
     string(APPEND _config_contents "  \"target_files\": [\n")
     list(LENGTH _files _count)
     math(EXPR _last "${_count} - 1")
@@ -258,6 +261,7 @@ function(lux_target_add_codegen)
         get_target_property(_root "${ARGS_JOB}" "LUX_CODEGEN_${_projection}_OUTPUT_ROOT")
         get_target_property(_suffix "${ARGS_JOB}" "LUX_CODEGEN_${_projection}_OUTPUT_SUFFIX")
         get_target_property(_fields "${ARGS_JOB}" "LUX_CODEGEN_${_projection}_JSON_FIELDS")
+        get_target_property(_field_files "${ARGS_JOB}" "LUX_CODEGEN_${_projection}_JSON_FILES")
         get_target_property(_flat "${ARGS_JOB}" "LUX_CODEGEN_${_projection}_FLAT")
         get_target_property(_serial "${ARGS_JOB}" "LUX_CODEGEN_${_projection}_SERIAL_META")
         get_target_property(_validation "${ARGS_JOB}" "LUX_CODEGEN_${_projection}_VALIDATION")
@@ -298,6 +302,23 @@ function(lux_target_add_codegen)
         else()
             set(_comma "")
         endif()
+        string(APPEND _config_contents "], \"custom_field_files\": [")
+        set(_first_file TRUE)
+        foreach(_file_spec IN LISTS _field_files)
+            if(NOT _file_spec MATCHES "^([A-Za-z_][A-Za-z0-9_]*)=(.+)$")
+                message(FATAL_ERROR "[lux_target_add_codegen] JSON_FILE requires name=path")
+            endif()
+            set(_input_name "${CMAKE_MATCH_1}")
+            get_filename_component(_input_path "${CMAKE_MATCH_2}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+            _meta_json_escape(_input_name "${_input_name}")
+            _meta_json_escape(_input_path_json "${_input_path}")
+            if(NOT _first_file)
+                string(APPEND _config_contents ", ")
+            endif()
+            string(APPEND _config_contents "{\"name\":\"${_input_name}\",\"path\":\"${_input_path_json}\"}")
+            list(APPEND _depends "${_input_path}")
+            set(_first_file FALSE)
+        endforeach()
         string(APPEND _config_contents "]}${_comma}\n")
 
         if(NOT _validation)

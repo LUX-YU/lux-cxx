@@ -6,6 +6,9 @@
 #include <type_traits>
 
 namespace lux::cxx::reflection{
+{% if exists("external_data") %}
+    inline constexpr int projection_input_value = {{ external_data.value }};
+{% endif %}
 
     template<typename T> class test_meta;
 

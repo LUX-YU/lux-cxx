@@ -192,9 +192,20 @@ namespace lux::cxx::reflection
         return funcName;
     }
 
+    static bool matchesSourceTarget(const nlohmann::json& entry, std::string_view target)
+    {
+        if (target.empty()) return true;
+        auto output = entry.value("output", std::string{});
+        if (output.empty()) output = entry.value("command", std::string{});
+        if (output.empty() && entry.contains("arguments"))
+            for (const auto& argument : entry.at("arguments")) output += argument.get<std::string>() + " ";
+        std::replace(output.begin(), output.end(), '\\', '/');
+        return output.find("CMakeFiles/" + std::string(target) + ".dir/") != std::string::npos;
+    }
+
     Result<std::vector<std::filesystem::path>> GeneratorHelper::fetchIncludePaths(
         const std::filesystem::path& compile_command_path,
-        const std::filesystem::path& source_file_path)
+        const std::filesystem::path& source_file_path, std::string_view source_target)
     {
         namespace fs = std::filesystem;
 
@@ -236,6 +247,7 @@ namespace lux::cxx::reflection
 
             if (!entry.contains("file") || !entry.contains("directory"))
                 continue;
+            if (!matchesSourceTarget(entry, source_target)) continue;
 
             std::string fileStr = entry["file"].get<std::string>();
             if (normalizedPathKey(makeAbsolute(entry["directory"].get<std::string>(), fileStr)) != source_file_key)
@@ -321,7 +333,7 @@ namespace lux::cxx::reflection
     }
 
     Result<std::vector<std::string>> GeneratorHelper::fetchCompileOptions(
-        const std::filesystem::path& database, const std::filesystem::path& source)
+        const std::filesystem::path& database, const std::filesystem::path& source, std::string_view source_target)
     {
         std::ifstream input(database);
         if (!input)
@@ -340,6 +352,7 @@ namespace lux::cxx::reflection
         {
             if (!entry.is_object() || !entry.contains("directory") || !entry.contains("file"))
                 continue;
+            if (!matchesSourceTarget(entry, source_target)) continue;
             const std::filesystem::path directory = entry.at("directory").get<std::string>();
             const auto file = makeAbsolute(directory, entry.at("file").get<std::string>());
             if (normalizedPathKey(file) != normalizedPathKey(source))
@@ -469,6 +482,7 @@ namespace lux::cxx::reflection
         config.marker           = require_field("marker").get<std::string>();
         config.compile_commands = require_field("compile_commands").get<std::string>();
         config.depfile = j.value("depfile", std::string{});
+        config.source_target = j.value("source_target", std::string{});
         config.source_file      = require_field("source_file").get<std::string>();
         config.extra_compile_options =
             require_field("extra_compile_options").get<std::vector<std::string>>();
@@ -513,6 +527,12 @@ namespace lux::cxx::reflection
             {
                 projection.custom_fields_json =
                     item["custom_fields_json"].get<std::vector<std::string>>();
+            }
+            if (item.contains("custom_field_files"))
+            {
+                for (const auto& file : item.at("custom_field_files"))
+                    projection.custom_field_files.push_back({file.at("name").get<std::string>(),
+                        file.at("path").get<std::string>()});
             }
             if (projection.name.empty() ||
                 (!projection.validation && projection.output_suffix.empty()))

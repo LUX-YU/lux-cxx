@@ -40,6 +40,7 @@ namespace
 
 int main()
 {
+    static_assert(lux::cxx::reflection::projection_input_value == 73);
     static_assert(lux::cxx::reflection::test::generated::static_count == 2u);
     static_assert(lux::cxx::reflection::test::generated::local_index == 1u);
     static_assert(

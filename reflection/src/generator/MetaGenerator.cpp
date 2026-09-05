@@ -1259,6 +1259,27 @@ static bool renderProjection(
             }
         }
         // Update the per-iteration context that the file-aware callbacks
+        for (const auto& file : projection.custom_field_files)
+        {
+            if (file.name.empty() || meta_json.contains(file.name))
+            {
+                std::cerr << "[Error] duplicate or invalid projection input name: " << file.name << "\n";
+                return false;
+            }
+            std::ifstream input(file.path);
+            if (!input)
+            {
+                std::cerr << "[Error] cannot read projection input: " << file.path << "\n";
+                return false;
+            }
+            try { input >> meta_json[file.name]; }
+            catch (const nlohmann::json::exception& error)
+            {
+                std::cerr << "[Error] invalid projection input " << file.path << ": " << error.what() << "\n";
+                return false;
+            }
+        }
+        // Update the per-iteration context that the file-aware callbacks
         // capture. Must be set before render() because inja invokes callbacks
         // synchronously during render.
         current.meta_unit = &meta_unit_list[i];
@@ -1553,7 +1574,7 @@ int main(int argc, char* argv[])
     // Build compile options (including include paths) to be passed to the parser.
     // Fetch additional include paths from the compile commands based on the source file.
     auto includes_result = GeneratorHelper::fetchIncludePaths(
-        generator_config.compile_commands, generator_config.source_file
+        generator_config.compile_commands, generator_config.source_file, generator_config.source_target
     );
     if (!includes_result) {
         std::cerr << includes_result.error().message << "\n";
@@ -1561,7 +1582,7 @@ int main(int argc, char* argv[])
     }
     auto extra_includes = std::move(includes_result.value());
     auto command_options = GeneratorHelper::fetchCompileOptions(
-        generator_config.compile_commands, generator_config.source_file
+        generator_config.compile_commands, generator_config.source_file, generator_config.source_target
     );
     if (!command_options)
     {

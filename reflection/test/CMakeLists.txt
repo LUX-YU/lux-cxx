@@ -134,6 +134,8 @@ if(LUX_GENERATOR)
 		generator_test
 		PROPERTIES WORKING_DIRECTORY ${REFLECTION_BINARY_DIR}
 	)
+	set(codegen_input "${CMAKE_CURRENT_BINARY_DIR}/projection-input.json")
+	file(GENERATE OUTPUT "${codegen_input}" CONTENT "{\"value\":73}\n")
 
 	lux_add_codegen_job(
 		NAME          test_meta_job
@@ -150,6 +152,7 @@ if(LUX_GENERATOR)
 		OUTPUT_ROOT   ${CMAKE_BINARY_DIR}/metagen
 		OUTPUT_SUFFIX .meta.hpp
 		JSON_FIELD    "{\n  \"foo\":123,\n  \"bar\":[1,2,3]\n}"
+		JSON_FILE     "external_data=${codegen_input}"
 	)
 	# The second projection intentionally reuses the same parse and IR.
 	lux_codegen_add_projection(
