@@ -5,6 +5,10 @@ if(_COMPONENT_META_TOOLS_INCLUDED_)
   return()
 endif()
 set(_COMPONENT_META_TOOLS_INCLUDED_ TRUE)
+cmake_policy(PUSH)
+if(POLICY CMP0116)
+    cmake_policy(SET CMP0116 NEW)
+endif()
 
 # ---------------------------------------------------------------------------
 # Expose the generator as the namespaced target lux::cxx::lux_meta_generator,
@@ -42,6 +46,9 @@ function(_meta_json_escape _out _in)
     set(_t "${_in}")
     string(REPLACE "\\" "\\\\" _t "${_t}")
     string(REPLACE "\"" "\\\"" _t "${_t}")
+    string(REPLACE "\n" "\\n" _t "${_t}")
+    string(REPLACE "\r" "\\r" _t "${_t}")
+    string(REPLACE "\t" "\\t" _t "${_t}")
     set(${_out} "${_t}" PARENT_SCOPE)
 endfunction()
 # -----------------------------------------------------------------------------
@@ -52,7 +59,7 @@ endfunction()
 # -----------------------------------------------------------------------------
 function(lux_add_codegen_job)
     set(one_value_args NAME GENERATOR MARKER COMPILE_COMMANDS SOURCE_FILE)
-    set(multi_value_args TARGET_FILES LOGICAL_PATHS EXTRA_COMPILE_OPTIONS)
+    set(multi_value_args TARGET_FILES LOGICAL_PATHS EXTRA_COMPILE_OPTIONS DEPENDS)
     set(optional_args PARSE_INCLUDED_MARKED DRY_RUN)
     cmake_parse_arguments(ARGS "${optional_args}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
@@ -90,6 +97,7 @@ function(lux_add_codegen_job)
         LUX_CODEGEN_TARGET_FILES    "${ARGS_TARGET_FILES}"
         LUX_CODEGEN_LOGICAL_PATHS   "${ARGS_LOGICAL_PATHS}"
         LUX_CODEGEN_COMPILE_OPTIONS "${ARGS_EXTRA_COMPILE_OPTIONS}"
+        LUX_CODEGEN_DEPENDS         "${ARGS_DEPENDS}"
         LUX_CODEGEN_PARSE_INCLUDED  "${ARGS_PARSE_INCLUDED_MARKED}"
         LUX_CODEGEN_DRY_RUN         "${ARGS_DRY_RUN}"
         LUX_CODEGEN_PROJECTIONS     ""
@@ -181,6 +189,21 @@ function(lux_target_add_codegen)
     get_target_property(_cc "${ARGS_JOB}" LUX_CODEGEN_COMPILE_COMMANDS)
     get_target_property(_source "${ARGS_JOB}" LUX_CODEGEN_SOURCE_FILE)
     get_target_property(_options "${ARGS_JOB}" LUX_CODEGEN_COMPILE_OPTIONS)
+    get_target_property(_depends "${ARGS_JOB}" LUX_CODEGEN_DEPENDS)
+    if(NOT _depends)
+        set(_depends "")
+    endif()
+    if(MSVC)
+        if(CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "x64")
+            list(APPEND _options --target=x86_64-pc-windows-msvc)
+        elseif(CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "X86")
+            list(APPEND _options --target=i686-pc-windows-msvc)
+        elseif(CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "ARM64")
+            list(APPEND _options --target=aarch64-pc-windows-msvc)
+        else()
+            message(FATAL_ERROR "[lux_target_add_codegen] unsupported MSVC target architecture")
+        endif()
+    endif()
     get_target_property(_parse_included "${ARGS_JOB}" LUX_CODEGEN_PARSE_INCLUDED)
     get_target_property(_dry_run "${ARGS_JOB}" LUX_CODEGEN_DRY_RUN)
 
@@ -198,13 +221,15 @@ function(lux_target_add_codegen)
     set(_config_dir "${CMAKE_CURRENT_BINARY_DIR}/lux_codegen")
     file(MAKE_DIRECTORY "${_config_dir}")
     set(_config "${_config_dir}/${ARGS_JOB}.json")
+    set(_depfile "${_config_dir}/${ARGS_JOB}.d")
+    _meta_json_escape(_e_depfile "${_depfile}")
     _meta_json_escape(_e_marker "${_marker}")
     _meta_json_escape(_e_cc "${_cc}")
     _meta_json_escape(_e_source "${_source}")
-    file(WRITE "${_config}" "{\n  \"marker\": \"${_e_marker}\",\n")
-    file(APPEND "${_config}" "  \"compile_commands\": \"${_e_cc}\",\n")
-    file(APPEND "${_config}" "  \"source_file\": \"${_e_source}\",\n")
-    file(APPEND "${_config}" "  \"target_files\": [\n")
+    set(_config_contents "{\n  \"marker\": \"${_e_marker}\",\n")
+    string(APPEND _config_contents "  \"compile_commands\": \"${_e_cc}\",\n  \"depfile\": \"${_e_depfile}\",\n")
+    string(APPEND _config_contents "  \"source_file\": \"${_e_source}\",\n")
+    string(APPEND _config_contents "  \"target_files\": [\n")
     list(LENGTH _files _count)
     math(EXPR _last "${_count} - 1")
     foreach(_index RANGE 0 ${_last})
@@ -217,10 +242,10 @@ function(lux_target_add_codegen)
         else()
             set(_comma "")
         endif()
-        file(APPEND "${_config}"
+        string(APPEND _config_contents
             "    {\"physical_path\": \"${_e_file}\", \"logical_path\": \"${_e_path}\"}${_comma}\n")
     endforeach()
-    file(APPEND "${_config}" "  ],\n  \"projections\": [\n")
+    string(APPEND _config_contents "  ],\n  \"projections\": [\n")
 
     set(_outputs "")
     set(_templates "")
@@ -257,15 +282,15 @@ function(lux_target_add_codegen)
             set(_validation_json false)
             math(EXPR _publish_projection_count "${_publish_projection_count} + 1")
         endif()
-        file(APPEND "${_config}"
+        string(APPEND _config_contents
             "    {\"name\": \"${_e_name}\", \"template_path\": \"${_e_template}\", \"output_root\": \"${_e_root}\", \"output_suffix\": \"${_e_suffix}\", \"include_relative\": ${_relative}, \"serial_meta\": ${_serial_json}, \"validation\": ${_validation_json}, \"custom_fields_json\": [")
         set(_first_field TRUE)
         foreach(_field IN LISTS _fields)
             _meta_json_escape(_e_field "${_field}")
             if(NOT _first_field)
-                file(APPEND "${_config}" ", ")
+                string(APPEND _config_contents ", ")
             endif()
-            file(APPEND "${_config}" "\"${_e_field}\"")
+            string(APPEND _config_contents "\"${_e_field}\"")
             set(_first_field FALSE)
         endforeach()
         if(_pi LESS _projection_last)
@@ -273,7 +298,7 @@ function(lux_target_add_codegen)
         else()
             set(_comma "")
         endif()
-        file(APPEND "${_config}" "]}${_comma}\n")
+        string(APPEND _config_contents "]}${_comma}\n")
 
         if(NOT _validation)
             foreach(_index RANGE 0 ${_last})
@@ -287,14 +312,14 @@ function(lux_target_add_codegen)
             endforeach()
         endif()
     endforeach()
-    file(APPEND "${_config}" "  ],\n  \"extra_compile_options\": [")
+    string(APPEND _config_contents "  ],\n  \"extra_compile_options\": [")
     set(_first_option TRUE)
     foreach(_option IN LISTS _options)
         _meta_json_escape(_e_option "${_option}")
         if(NOT _first_option)
-            file(APPEND "${_config}" ", ")
+            string(APPEND _config_contents ", ")
         endif()
-        file(APPEND "${_config}" "\"${_e_option}\"")
+        string(APPEND _config_contents "\"${_e_option}\"")
         set(_first_option FALSE)
     endforeach()
     if(_parse_included)
@@ -307,8 +332,10 @@ function(lux_target_add_codegen)
     else()
         set(_dry_json false)
     endif()
-    file(APPEND "${_config}"
+    string(APPEND _config_contents
         "],\n  \"parse_included_marked\": ${_parse_json},\n  \"dry_run\": ${_dry_json}\n}\n")
+
+    file(GENERATE OUTPUT "${_config}" CONTENT "${_config_contents}")
 
     list(REMOVE_DUPLICATES _outputs)
     list(LENGTH _outputs _unique_output_count)
@@ -320,7 +347,8 @@ function(lux_target_add_codegen)
     add_custom_command(
         OUTPUT ${_outputs}
         COMMAND "${_generator}" "${_config}"
-        DEPENDS "${_generator}" ${_files} ${_templates} "${_config}"
+        DEPENDS "${_generator}" ${_files} ${_templates} ${_depends} "${_config}" "${_cc}"
+        DEPFILE "${_depfile}"
         COMMENT "[lux_target_add_codegen] ${ARGS_JOB}: parse once, render ${_projection_count} projection(s)"
         VERBATIM
     )
@@ -338,3 +366,5 @@ function(lux_target_add_codegen)
         endforeach()
     endif()
 endfunction()
+
+cmake_policy(POP)

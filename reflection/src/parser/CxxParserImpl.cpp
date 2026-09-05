@@ -364,6 +364,36 @@ namespace lux::cxx::reflection
 		}
 
 		const Cursor cursor(translate_unit);
+		if (translate_unit.hasErrors())
+			return {EParseResult::FAILED, MetaUnit{}};
+		if (_options.on_included_file)
+		{
+			struct InclusionVisit final
+			{
+				const ParseOptions* options{};
+				bool failed{};
+			} visit{&_options};
+			clang_getInclusions(translate_unit.get(), [](CXFile included, CXSourceLocation*, unsigned, CXClientData data)
+			{
+				auto& current = *static_cast<InclusionVisit*>(data);
+				const auto name = clang_getFileName(included);
+				try
+				{
+					if (const auto* text = clang_getCString(name); text != nullptr)
+						current.options->on_included_file(text);
+				}
+				catch (...)
+				{
+					current.failed = true;
+				}
+				clang_disposeString(name);
+			}, &visit);
+			if (visit.failed)
+			{
+				if (_callback) _callback("Failed to collect translation-unit dependencies");
+				return {EParseResult::FAILED, MetaUnit{}};
+			}
+		}
 		const auto marked_cursors = findMarkedCursors(cursor);
 
 		// set global parse context

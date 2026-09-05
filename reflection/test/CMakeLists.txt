@@ -3,6 +3,13 @@ set(REFLECTION_PUBLIC_DIR ${PARENT_DIR}/include)
 
 include_component_cmake_scripts(reflection_generator)
 
+add_executable(compile_environment_test compile_environment_test.cpp)
+target_link_libraries(compile_environment_test PRIVATE
+    lux::cxx::reflection_generator lux::cxx::reflection_parser lux::cxx::nlohmann_json)
+add_test(NAME compile_environment_test
+    COMMAND compile_environment_test "${CMAKE_CURRENT_BINARY_DIR}/compile-environment-fixture")
+set_tests_properties(compile_environment_test PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/..")
+
 add_executable(
 	meta_parse_test
 	${CMAKE_CURRENT_SOURCE_DIR}/meta_parse_test.cpp
@@ -142,7 +149,7 @@ if(LUX_GENERATOR)
 		TEMPLATE      ${TEST_TEMPLATE_DIR}/test_meta.template.inja
 		OUTPUT_ROOT   ${CMAKE_BINARY_DIR}/metagen
 		OUTPUT_SUFFIX .meta.hpp
-		JSON_FIELD    "{\"foo\":123,\"bar\":[1,2,3]}"
+		JSON_FIELD    "{\n  \"foo\":123,\n  \"bar\":[1,2,3]\n}"
 	)
 	# The second projection intentionally reuses the same parse and IR.
 	lux_codegen_add_projection(

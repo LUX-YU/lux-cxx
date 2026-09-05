@@ -194,7 +194,8 @@ static bool processTargetFile(const GeneratorTargetFile& target,
     const std::vector<std::string>& options,
     std::vector<MetaUnit>& meta_list,
     std::vector<nlohmann::json>& meta_json_list,
-    std::vector<std::filesystem::path>& includes)
+    std::vector<std::filesystem::path>& includes,
+    std::set<std::string>& dependencies)
 {
     const std::filesystem::path file = target.physical_path;
     // Convert the current file path to a string.
@@ -210,6 +211,9 @@ static bool processTargetFile(const GeneratorTargetFile& target,
     parse_options.name = file_path;                // The name of the file to parse.
     parse_options.pch_file = "";                       // Placeholder: PCH support to be added later.
     parse_options.version = "1.0.0";                  // Placeholder: version support to be added later.
+    parse_options.on_included_file = [&dependencies](std::string_view included) {
+        dependencies.emplace(std::filesystem::path(included).lexically_normal().generic_string());
+    };
 
     // Create a parser instance with the provided options.
     auto cxx_parser = std::make_unique<CxxParser>(parse_options);
@@ -1556,14 +1560,26 @@ int main(int argc, char* argv[])
         return 1;
     }
     auto extra_includes = std::move(includes_result.value());
+    auto command_options = GeneratorHelper::fetchCompileOptions(
+        generator_config.compile_commands, generator_config.source_file
+    );
+    if (!command_options)
+    {
+        std::cerr << command_options.error().message << "\n";
+        return 1;
+    }
+    generator_config.extra_compile_options.insert(generator_config.extra_compile_options.begin(),
+        command_options->begin(), command_options->end());
     auto options = buildCompileOptions(generator_config, extra_includes);
     std::vector<MetaUnit>       meta_unit_list;
     std::vector<nlohmann::json> meta_json_list;
+    std::set<std::string> dependencies;
 
     // Process each target file by parsing and collecting metadata.
     for (const auto& file : generator_config.target_files)
     {
-        if (!processTargetFile(file, generator_config, options, meta_unit_list, meta_json_list, extra_includes)) {
+        if (!processTargetFile(file, generator_config, options, meta_unit_list, meta_json_list,
+                extra_includes, dependencies)) {
             return 1;
         }
     }
@@ -1579,6 +1595,8 @@ int main(int argc, char* argv[])
     outputs.reserve(generator_config.target_files.size() * generator_config.projections.size());
     for (const auto& projection : generator_config.projections)
     {
+        if (!projection.validation)
+            continue;
         if (!renderProjection(
                 generator_config,
                 projection,
@@ -1593,6 +1611,34 @@ int main(int argc, char* argv[])
     if (!validateRenderedOutputs(outputs))
     {
         return 1;
+    }
+    for (const auto& projection : generator_config.projections)
+    {
+        if (projection.validation)
+            continue;
+        if (!renderProjection(generator_config, projection, meta_unit_list, meta_json_list, outputs))
+            return 1;
+    }
+    if (!generator_config.depfile.empty())
+    {
+        const auto escape = [](std::string_view path) {
+            std::string result;
+            for (const auto ch : path)
+            {
+                if (ch == '$') result += '$';
+                else if (ch == ' ' || ch == '#' || ch == ':') result += '\\';
+                result += ch;
+            }
+            return result;
+        };
+        std::string contents;
+        for (const auto& output : outputs)
+            contents += escape(output.path.generic_string()) + " ";
+        contents += ":";
+        for (const auto& dependency : dependencies)
+            contents += " \\\n  " + escape(dependency);
+        contents += "\n";
+        outputs.push_back({generator_config.depfile, std::move(contents), {}, {}, false});
     }
     if (!publishOutputs(outputs))
     {

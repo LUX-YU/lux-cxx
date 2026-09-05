@@ -238,7 +238,7 @@ namespace lux::cxx::reflection
                 continue;
 
             std::string fileStr = entry["file"].get<std::string>();
-            if (normalizedPathKey(fs::path(fileStr)) != source_file_key)
+            if (normalizedPathKey(makeAbsolute(entry["directory"].get<std::string>(), fileStr)) != source_file_key)
                 continue;
 
             fs::path baseDir = entry["directory"].get<std::string>();
@@ -264,9 +264,9 @@ namespace lux::cxx::reflection
                 std::string pathStr;
                 bool is_system_include = false;
 
-                if (argStr.rfind("-I", 0) == 0)
+                if (argStr.rfind("-I", 0) == 0 || argStr.rfind("/I", 0) == 0)
                 {
-                    if (argStr == "-I") {
+                    if (argStr == "-I" || argStr == "/I") {
                         if (i + 1 < args.size()) {
                             pathStr = args[++i];
                         }
@@ -287,10 +287,10 @@ namespace lux::cxx::reflection
                         pathStr = argStr.substr(std::string("-isystem").length());
                     }
                 }
-                else if (argStr.rfind("-external:I", 0) == 0)
+                else if (argStr.rfind("-external:I", 0) == 0 || argStr.rfind("/external:I", 0) == 0)
                 {
                     is_system_include = true;
-                    if (argStr == "-external:I") {
+                    if (argStr == "-external:I" || argStr == "/external:I") {
                         if (i + 1 < args.size()) {
                             pathStr = args[++i];
                         }
@@ -318,6 +318,114 @@ namespace lux::cxx::reflection
         std::vector<fs::path> includes = std::move(regular_includes);
         includes.insert(includes.end(), system_includes.begin(), system_includes.end());
         return includes;
+    }
+
+    Result<std::vector<std::string>> GeneratorHelper::fetchCompileOptions(
+        const std::filesystem::path& database, const std::filesystem::path& source)
+    {
+        std::ifstream input(database);
+        if (!input)
+            return make_error(EErrorCode::CompileCommandsNotFound, "Cannot open " + database.string());
+        nlohmann::json commands;
+        try { input >> commands; }
+        catch (const nlohmann::json::exception& error)
+        {
+            return make_error(EErrorCode::CompileCommandsParseError, error.what());
+        }
+        if (!commands.is_array())
+            return make_error(EErrorCode::CompileCommandsParseError, "Compilation database must be an array");
+        std::vector<std::string> result;
+        bool found{};
+        for (const auto& entry : commands)
+        {
+            if (!entry.is_object() || !entry.contains("directory") || !entry.contains("file"))
+                continue;
+            const std::filesystem::path directory = entry.at("directory").get<std::string>();
+            const auto file = makeAbsolute(directory, entry.at("file").get<std::string>());
+            if (normalizedPathKey(file) != normalizedPathKey(source))
+                continue;
+            if (found)
+                return make_error(EErrorCode::CompileCommandsParseError, "Ambiguous compile command for " + source.string());
+            found = true;
+            const auto args = entry.contains("arguments")
+                ? entry.at("arguments").get<std::vector<std::string>>()
+                : splitCommand(entry.at("command").get<std::string>());
+            for (std::size_t index{1U}; index < args.size(); ++index)
+            {
+                const auto& arg = args[index];
+                const auto missing = [&]() {
+                    return make_error(EErrorCode::CompileCommandsParseError, "Missing compile option value: " + arg);
+                };
+                if (arg.starts_with("@"))
+                    return make_error(EErrorCode::CompileCommandsParseError,
+                        "Response-file compile commands require expanded arguments: " + arg);
+                const bool definition = arg.starts_with("/D") || arg.starts_with("-D") ||
+                    arg.starts_with("/U") || arg.starts_with("-U");
+                if (definition)
+                {
+                    auto value = arg.substr(2);
+                    if (value.empty())
+                    {
+                        if (++index == args.size()) return missing();
+                        value = args[index];
+                    }
+                    result.push_back(std::string{"-"} + arg[1] + value);
+                }
+                else if (arg.starts_with("/std:") || arg.starts_with("-std:"))
+                    result.push_back("-std=" + arg.substr(5));
+                else if (arg.starts_with("/Zp") || arg.starts_with("-Zp"))
+                    result.push_back("-fpack-struct=" + (arg.size() == 3U ? std::string{"8"} : arg.substr(3)));
+                else if (arg.starts_with("/FI") || arg.starts_with("-FI"))
+                {
+                    auto value = arg.substr(3);
+                    if (value.empty())
+                    {
+                        if (++index == args.size()) return missing();
+                        value = args[index];
+                    }
+                    result.emplace_back("-include");
+                    result.push_back(makeAbsolute(directory, value).string());
+                }
+                else if (arg == "-target" || arg == "--target" || arg == "-isysroot" ||
+                    arg == "--sysroot" || arg == "-Xclang" || arg == "-x" || arg == "-include" || arg == "-imacros")
+                {
+                    if (index + 1U == args.size()) return missing();
+                    result.push_back(arg);
+                    const auto& value = args[++index];
+                    const bool path = arg == "-include" || arg == "-imacros" || arg == "-isysroot" || arg == "--sysroot";
+                    result.push_back(path ? makeAbsolute(directory, value).string() : value);
+                }
+                else if (arg.starts_with("-std=") || arg.starts_with("--target=") || arg.starts_with("--sysroot=") ||
+                    arg.starts_with("-f") || arg.starts_with("-m") || arg.starts_with("-O"))
+                    result.push_back(arg);
+                else if (arg == "/J" || arg == "-J") result.emplace_back("-funsigned-char");
+                else if (arg == "/GR-" || arg == "-GR-") result.emplace_back("-fno-rtti");
+                else if (arg == "/O2" || arg == "/Ox") result.emplace_back("-O2");
+                else if (arg == "/Od") result.emplace_back("-O0");
+                else if (arg == "/MD" || arg == "/MDd")
+                {
+                    result.emplace_back("-D_MT");
+                    result.emplace_back("-D_DLL");
+                    if (arg == "/MDd") result.emplace_back("-D_DEBUG");
+                }
+                else if (arg == "/MT" || arg == "/MTd")
+                {
+                    result.emplace_back("-D_MT");
+                    if (arg == "/MTd") result.emplace_back("-D_DEBUG");
+                }
+                else if (arg.starts_with("/Zc:") || arg.starts_with("-Zc:"))
+                {
+                    if (arg.substr(4) == "wchar_t-") result.emplace_back("-fno-wchar");
+                    else if (arg.substr(4) != "__cplusplus" && arg.substr(4) != "inline" &&
+                        arg.substr(4) != "preprocessor" && arg.substr(4) != "wchar_t" && arg.substr(4) != "sizedDealloc" &&
+                        arg.substr(4) != "externConstexpr")
+                        return make_error(EErrorCode::CompileCommandsParseError, "Unsupported semantic option: " + arg);
+                }
+            }
+        }
+        if (!found)
+            return make_error(EErrorCode::SourceFileNotFound, "No compile command for " + source.string());
+        return result;
     }
 
     std::vector<std::string> GeneratorHelper::convertToDashI(const std::vector<std::filesystem::path>& paths)
@@ -360,6 +468,7 @@ namespace lux::cxx::reflection
 
         config.marker           = require_field("marker").get<std::string>();
         config.compile_commands = require_field("compile_commands").get<std::string>();
+        config.depfile = j.value("depfile", std::string{});
         config.source_file      = require_field("source_file").get<std::string>();
         config.extra_compile_options =
             require_field("extra_compile_options").get<std::vector<std::string>>();

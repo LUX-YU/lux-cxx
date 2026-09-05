@@ -109,9 +109,24 @@ namespace lux::cxx::reflection
 			return *this;
 		}
 
-		[[nodiscard]] bool isValid() const
+		[[nodiscard]] bool isValid() const noexcept
 		{
 			return _unit != nullptr;
+		}
+
+		[[nodiscard]] CXTranslationUnit get() const noexcept { return _unit; }
+
+		[[nodiscard]] bool hasErrors() const noexcept
+		{
+			for (unsigned int index{}; index < clang_getNumDiagnostics(_unit); ++index)
+			{
+				const auto diagnostic = clang_getDiagnostic(_unit, index);
+				const auto severity = clang_getDiagnosticSeverity(diagnostic);
+				clang_disposeDiagnostic(diagnostic);
+				if (severity >= CXDiagnostic_Error)
+					return true;
+			}
+			return false;
 		}
 
 		std::vector<std::string> diagnostics() {

@@ -40,6 +40,7 @@ namespace lux::cxx::reflection
 		// 这个源文件不是需要生成元信息的文件，而是在compile_commands中的源文件，用于找到对应的编译命令以得到对应的编译选项
 		// 如果没有提供，请在extra_compile_options中添加编译选项
 		std::string              source_file;
+		std::string              depfile;
 		// 额外的编译选项，例如头文件的路径，平台特定的编译选项等
 		std::vector<std::string> extra_compile_options;
 		// 是否不生成任何文件
@@ -88,6 +89,9 @@ namespace lux::cxx::reflection
 
 		static Result<std::vector<std::filesystem::path>>
 		fetchIncludePaths(const std::filesystem::path& compile_command_path, const std::filesystem::path& source_file_path);
+
+		static Result<std::vector<std::string>> fetchCompileOptions(
+			const std::filesystem::path& compile_command_path, const std::filesystem::path& source_file_path);
 
 		static std::vector<std::string> 
 		convertToDashI(const std::vector<std::filesystem::path>& paths);

@@ -1,5 +1,26 @@
 # Code Generation
 
+## Compilation environment and incremental jobs
+
+Multi-projection CMake jobs now consume the selected translation unit's semantic options, including
+definitions/undefinitions, language version, forced includes, target and packing flags. MSVC target
+architecture is passed explicitly by the CMake job. Ambiguous source commands, hidden response-file
+arguments and unsupported semantic switches fail closed instead of merging unrelated environments.
+The parser reports transitive includes to a Ninja depfile; hard Clang diagnostics fail parsing.
+`lux_add_codegen_job(DEPENDS ...)` tracks additional projection inputs such as identity ledgers.
+Config and generated output files preserve timestamps when their contents have not changed.
+Validation projections finish before executable projections render, so an invalid declaration cannot
+cause a secondary missing-key error to hide its validation diagnostic or publish partial outputs.
+
+Development verification (MSVC 19.44, 2026-09-05): all build and 52/52 CTest, including macro/packing,
+relative source selection, transitive include collection, parse failure and atomic validation failure.
+Engine consumers additionally exercise multiline JSON projection inputs and installed generation.
+This is not cross-platform qualification. Expanded compilation commands are required for response files.
+
+MSVC `/Zc:externConstexpr` requests standard external linkage; the Clang parser already uses that
+standard rule, so this positive conformance option requires no translated flag. The disabling variant
+is not silently accepted. See [Microsoft's option contract](https://learn.microsoft.com/en-us/cpp/build/reference/zc-externconstexpr).
+
 The code generation pipeline transforms parsed reflection metadata (JSON) into C++ source files using the **inja** template engine. This document covers the `lux_meta_generator` CLI, template callbacks, the built-in template, and how to write custom templates.
 
 ## Pipeline Overview

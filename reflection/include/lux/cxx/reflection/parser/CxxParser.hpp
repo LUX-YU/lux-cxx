@@ -69,6 +69,8 @@ namespace lux::cxx::reflection
         // commands The commands to pass to the parser
 		std::vector<std::string> commands;
 		std::string              pch_file;
+		// Called while the translation unit is alive; the view is borrowed only for this call.
+		std::function<void(std::string_view)> on_included_file;
 	};
 
     class LUX_CXX_PUBLIC CxxParser
