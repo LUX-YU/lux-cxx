@@ -30,3 +30,8 @@ constexpr std::string_view kLabels_{{ rec_i }}_{{ loop.index }} = "{{ cxx_str(an
 static_assert(kLabels_{{ rec_i }}_{{ loop.index }} == "X|Y|Z", "field labels annotation must be parsed");
 {% endfor %}
 {% endfor %}
+#ifdef __cplusplus
+{% set combined = concat_arrays([1, 2], [3]) %}
+static_assert({{ length(combined) }} == 3 && {{ at(combined, 0) }} == 1 && {{ at(combined, 2) }} == 3);
+static_assert({{ length(concat_arrays([], [])) }} == 0);
+#endif

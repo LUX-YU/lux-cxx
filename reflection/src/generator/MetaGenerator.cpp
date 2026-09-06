@@ -696,6 +696,18 @@ static bool renderProjection(
         }
     );
 
+    // Generic list composition for projections, e.g. static and non-static member declarations.
+    inja_env.add_callback(
+        "concat_arrays",
+        [](const inja::Arguments& args) -> nlohmann::json {
+            if (args.size() != 2U || !args[0]->is_array() || !args[1]->is_array())
+                throw std::runtime_error("concat_arrays requires two arrays");
+            auto result = *args[0];
+            for (const auto& value : *args[1]) result.push_back(value);
+            return result;
+        }
+    );
+
     // Callback to retrieve a declaration based on its unique ID from the meta data.
     // The meta_unit_list is used to locate the declaration, and then the corresponding JSON data is returned.
     inja_env.add_callback(
