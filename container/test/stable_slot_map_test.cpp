@@ -1,6 +1,7 @@
 #include <lux/cxx/container/StableSlotMap.hpp>
 
 #include <cassert>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -160,6 +161,7 @@ int main()
     assert(!prepared.tryEmplacePrepared(1));
     prepared.reserve(64U);
     const auto preparation_allocations = prepared_allocator.allocations();
+    const auto prepared_bytes = prepared.storageBytes();
     prepared_allocator.failAfter(preparation_allocations);
     std::array<AllocatedMap::key_type, 64U> prepared_keys;
     for (std::size_t index{}; index < prepared_keys.size(); ++index)
@@ -173,6 +175,7 @@ int main()
     assert(prepared.erase(prepared_keys[0]) && prepared.find(prepared_keys[63]) == pinned);
     assert(prepared.tryEmplacePrepared(66));
     assert(*pinned == 63 && prepared_allocator.allocations() == preparation_allocations);
+    assert(prepared.storageBytes() == prepared_bytes && prepared_bytes > 64U * sizeof(int));
 
     using RetiringMap = lux::cxx::StableSlotMap<int, void, lux::cxx::NoAux, 1U,
         std::allocator<int>, std::uint8_t, std::uint8_t>;

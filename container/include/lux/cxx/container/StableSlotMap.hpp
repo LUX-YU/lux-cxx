@@ -138,6 +138,13 @@ namespace lux::cxx
             return blocks_.size() * BlockSize;
         }
 
+        // Allocator-owned backing plus container metadata; excludes allocator/OS bookkeeping.
+        [[nodiscard]] std::size_t storageBytes() const noexcept
+        {
+            return sizeof(*this) + blocks_.size() * sizeof(Block) + blocks_.capacity() * sizeof(Block*) +
+                dense_indices_.capacity() * sizeof(Index);
+        }
+
         void reserve(std::size_t count)
         {
             while (capacity() < count) addBlock();
