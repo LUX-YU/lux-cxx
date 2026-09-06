@@ -155,6 +155,38 @@ int main()
     }
     assert(allocator.allocations() < 64);
 
+    CountingAllocator<int> prepared_allocator;
+    AllocatedMap prepared(prepared_allocator);
+    assert(!prepared.tryEmplacePrepared(1));
+    prepared.reserve(64U);
+    const auto preparation_allocations = prepared_allocator.allocations();
+    prepared_allocator.failAfter(preparation_allocations);
+    std::array<AllocatedMap::key_type, 64U> prepared_keys;
+    for (std::size_t index{}; index < prepared_keys.size(); ++index)
+    {
+        auto inserted = prepared.tryEmplacePrepared(static_cast<int>(index));
+        assert(inserted);
+        prepared_keys[index] = *inserted;
+    }
+    auto* pinned = prepared.find(prepared_keys[63]);
+    assert(!prepared.tryEmplacePrepared(65) && prepared.capacity() == 64U);
+    assert(prepared.erase(prepared_keys[0]) && prepared.find(prepared_keys[63]) == pinned);
+    assert(prepared.tryEmplacePrepared(66));
+    assert(*pinned == 63 && prepared_allocator.allocations() == preparation_allocations);
+
+    using RetiringMap = lux::cxx::StableSlotMap<int, void, lux::cxx::NoAux, 1U,
+        std::allocator<int>, std::uint8_t, std::uint8_t>;
+    RetiringMap retiring;
+    retiring.reserve(1U);
+    for (unsigned generation{1U}; generation < 255U; ++generation)
+    {
+        const auto key = retiring.tryEmplacePrepared(1);
+        assert(key && key->gen == generation);
+        assert(retiring.erase(*key));
+        assert(!retiring.isValid(*key));
+    }
+    assert(!retiring.tryEmplacePrepared(2) && retiring.capacity() == 1U);
+
 
     CountingAllocator<int> failing_allocator;
     AllocatedMap failing(failing_allocator);

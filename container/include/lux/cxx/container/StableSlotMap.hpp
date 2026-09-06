@@ -10,6 +10,7 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -141,6 +142,25 @@ namespace lux::cxx
         {
             while (capacity() < count) addBlock();
             dense_indices_.reserve(count);
+        }
+
+        template <typename... Args>
+            requires std::is_nothrow_constructible_v<Value, Args...>
+        [[nodiscard]] std::optional<key_type> tryEmplacePrepared(Args&&... args) noexcept
+        {
+            // No page/index growth and no throwing value construction. Retired generations do not
+            // cause an implicit replacement page; callers can enforce a smaller logical capacity.
+            if (free_head_ == INVALID_INDEX || dense_indices_.size() == dense_indices_.capacity())
+                return std::nullopt;
+            const Index index = free_head_;
+            Slot& target = slot(index);
+            std::construct_at(value(index), std::forward<Args>(args)...);
+            dense_indices_.push_back(index);
+            free_head_ = target.next_free;
+            target.next_free = INVALID_INDEX;
+            target.dense_position = dense_indices_.size() - 1U;
+            target.occupied = true;
+            return key_type{index, target.generation};
         }
 
         template <typename... Args>
