@@ -108,17 +108,9 @@ target_link_libraries(
 )
 
 message(STATUS "REFLECTION_BINARY_DIR: ${REFLECTION_BINARY_DIR}")
-find_program(
-	LUX_GENERATOR
-	lux_meta_generator
-	PATHS ${REFLECTION_BINARY_DIR}
-	NO_CACHE
-	NO_DEFAULT_PATH
-	NO_CMAKE_INSTALL_PREFIX
-	NO_PACKAGE_ROOT_PATH
-	NO_CMAKE_PATH
-)
-if(LUX_GENERATOR)
+if(TARGET lux_meta_generator)
+    # The build dependency, not a leftover executable, controls fresh-tree test registration.
+    set(LUX_GENERATOR "$<TARGET_FILE:lux_meta_generator>")
 	add_executable(
 		generator_test
 		${CMAKE_CURRENT_SOURCE_DIR}/generator_test.cpp
