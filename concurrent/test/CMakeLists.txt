@@ -5,6 +5,13 @@ function(lux_add_concurrent_test target source)
     add_test(NAME ${target} COMMAND ${target})
 endfunction()
 
+lux_add_concurrent_test(scene_exchange_test scene_exchange_test.cpp)
+if(MSVC)
+    target_compile_options(scene_exchange_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(scene_exchange_test PRIVATE -UNDEBUG)
+endif()
+
 lux_add_concurrent_test(timer_test timer_test.cpp)
 lux_add_concurrent_test(thread_pool_test thread_pool_test.cpp)
 lux_add_concurrent_test(blocking_queue_test blocking_queue_test.cpp)
