@@ -654,6 +654,7 @@ namespace lux::cxx::reflection
     {
         switch (k)
         {
+        case ETypeKinds::Array:             return std::make_unique<ArrayType>();
         case ETypeKinds::Builtin:           return std::make_unique<BuiltinType>();
 		case ETypeKinds::PointerToDataMember: [[fallthrough]];
 		case ETypeKinds::PointerToMemberFunction: [[fallthrough]];
@@ -689,6 +690,13 @@ namespace lux::cxx::reflection
 
         switch (t->kind)
         {
+        case ETypeKinds::Array:
+        {
+            const auto* array = static_cast<const ArrayType*>(t);
+            j["element_type_id"] = array->element_type ? array->element_type->id : "";
+            j["array_size"] = array->array_size;
+        }
+        break;
         case ETypeKinds::Builtin:
         {
             auto* b = static_cast<const BuiltinType*>(t);
@@ -795,6 +803,9 @@ namespace lux::cxx::reflection
 
         switch (k)
         {
+        case ETypeKinds::Array:
+            static_cast<ArrayType*>(raw)->array_size = j.at("array_size").get<std::size_t>();
+            break;
         case ETypeKinds::Builtin:
         {
             auto* b = static_cast<BuiltinType*>(raw);
@@ -834,6 +845,12 @@ namespace lux::cxx::reflection
 
         switch (t->kind)
         {
+        case ETypeKinds::Array:
+        {
+            auto* array = static_cast<ArrayType*>(t);
+            array->element_type = typeMap.at(j.at("element_type_id").get<std::string>());
+        }
+        break;
         case ETypeKinds::PointerToDataMember: [[fallthrough]];
         case ETypeKinds::PointerToMemberFunction: [[fallthrough]];
         case ETypeKinds::PointerToFunction: [[fallthrough]];

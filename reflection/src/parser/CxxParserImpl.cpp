@@ -1020,6 +1020,15 @@ namespace lux::cxx::reflection
 			r_reference_type->kind = ETypeKinds::RvalueReference;
 			return registerType(std::move(r_reference_type));
 		}
+        case CXType_ConstantArray:
+        {
+            auto array_type = std::make_unique<ArrayType>();
+            parseBasicType(clang_type, *array_type);
+            array_type->kind = ETypeKinds::Array;
+            array_type->element_type = createOrFindType(canonical_type.getArrayElementType());
+            array_type->array_size = canonical_type.getArraySize();
+            return registerType(std::move(array_type));
+        }
 		case CXType_Record:
 		{
 			auto record_type = std::make_unique<RecordType>();
@@ -1041,7 +1050,6 @@ namespace lux::cxx::reflection
 		// case CXType_ObjCObjectPointer:
 		// case CXType_FunctionNoProto:
 		case CXType_FunctionProto:
-		// case CXType_ConstantArray:
 		// case CXType_Vector:
 		// case CXType_VariableArray:
 		// case CXType_DependentSizedArray:

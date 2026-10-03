@@ -102,6 +102,7 @@ namespace lux::cxx::reflection {
     class EnumType;
     class FunctionType;
     class UnsupportedType;
+    class ArrayType;
 
     /**
      * Interface for visiting different concrete Type classes.
@@ -124,6 +125,7 @@ namespace lux::cxx::reflection {
         virtual void visit(FunctionType*) = 0;
 
 		virtual void visit(UnsupportedType*) = 0;
+        virtual void visit(ArrayType*) = 0;
     };
 
     /**
@@ -158,6 +160,19 @@ namespace lux::cxx::reflection {
     class UnsupportedType : public Type {
     public:
         void accept(TypeVisitor* visitor) override {
+            visitor->visit(this);
+        }
+    };
+
+    /// A constant-size C array. Element identity and extent come from the parser, never the spelling.
+    class ArrayType final : public Type
+    {
+    public:
+        Type* element_type = nullptr;
+        std::size_t array_size = 0;
+
+        void accept(TypeVisitor* visitor) override
+        {
             visitor->visit(this);
         }
     };

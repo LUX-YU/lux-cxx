@@ -222,3 +222,8 @@ if(TARGET lux_meta_generator)
 	add_dependencies(test_annotation_job_generate lux_meta_generator)
 	add_dependencies(test_lineage_job_generate lux_meta_generator)
 endif()
+
+add_executable(array_type_test array_type_test.cpp)
+target_link_libraries(array_type_test PRIVATE lux::cxx::reflection_parser)
+add_test(NAME array_type_test COMMAND array_type_test "${CMAKE_CURRENT_BINARY_DIR}/array-type-fixture.hpp")
+set_tests_properties(array_type_test PROPERTIES WORKING_DIRECTORY "${REFLECTION_BINARY_DIR}")

@@ -251,6 +251,7 @@ function(lux_target_add_codegen)
     string(APPEND _config_contents "  ],\n  \"projections\": [\n")
 
     set(_outputs "")
+    set(_sidecars "")
     set(_templates "")
     set(_publish_projection_count 0)
     list(LENGTH ARGS_PROJECTIONS _projection_count)
@@ -330,6 +331,9 @@ function(lux_target_add_codegen)
                 get_filename_component(_directory "${_path}" DIRECTORY)
                 get_filename_component(_name "${_path}" NAME_WE)
                 list(APPEND _outputs "${_root}/${_directory}/${_name}${_suffix}")
+                if(_serial)
+                    list(APPEND _sidecars "${_root}/${_directory}/${_name}${_suffix}.json")
+                endif()
             endforeach()
         endif()
     endforeach()
@@ -366,7 +370,7 @@ function(lux_target_add_codegen)
     endif()
 
     add_custom_command(
-        OUTPUT ${_outputs}
+        OUTPUT ${_outputs} ${_sidecars}
         COMMAND "${_generator}" "${_config}"
         DEPENDS "${_generator}" ${_files} ${_templates} ${_depends} "${_config}" "${_cc}"
         DEPFILE "${_depfile}"
@@ -374,7 +378,7 @@ function(lux_target_add_codegen)
         VERBATIM
     )
     set(_generation_target "${ARGS_JOB}_generate")
-    add_custom_target("${_generation_target}" DEPENDS ${_outputs})
+    add_custom_target("${_generation_target}" DEPENDS ${_outputs} ${_sidecars})
     add_dependencies("${ARGS_TARGET}" "${_generation_target}")
     if(NOT ARGS_DONT_ADD_TO_SOURCE)
         target_sources("${ARGS_TARGET}" PRIVATE ${_outputs})
