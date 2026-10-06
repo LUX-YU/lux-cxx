@@ -30,6 +30,7 @@
 
 #include "SparseKeyTraits.hpp"
 
+#include <algorithm>
 #include <vector>
 #include <limits>
 #include <stdexcept>
@@ -100,6 +101,27 @@ namespace lux::cxx
         {
             dense_keys_.reserve(n);
             dense_values_.reserve(n);
+        }
+
+        /** Prepares both dense and sparse storage without inserting keys. */
+        void prepareCapacity(size_type dense_count, size_type sparse_count)
+        {
+            const auto grow = [](auto& values, size_type required)
+            {
+                if (required > values.capacity())
+                {
+                    const auto capacity = values.capacity();
+                    const auto extra = capacity / 2;
+                    const auto grown = extra <= values.max_size() - capacity ? capacity + extra : required;
+                    values.reserve((std::max)(required, grown));
+                }
+            };
+            grow(dense_keys_, dense_count);
+            grow(dense_values_, dense_count);
+            if (sparse_count > sparse_.size())
+            {
+                sparse_.resize(sparse_count, INVALID_INDEX);
+            }
         }
 
         /**
@@ -400,7 +422,7 @@ namespace lux::cxx
         explicit GenericAutoSparseSet(size_type initial_capacity)
             : next_id_(ATraits::initial_next())
         {
-            base_.reserve(initial_capacity);
+            reserve(initial_capacity);
         }
 
         // ---- capacity -------------------------------------------------------
@@ -408,13 +430,77 @@ namespace lux::cxx
         [[nodiscard]] size_type size()  const noexcept { return base_.size(); }
         [[nodiscard]] bool      empty() const noexcept { return base_.empty(); }
 
-        void reserve(size_type n) { base_.reserve(n); }
+        void reserve(size_type n)
+        {
+            if (n > size() && !prepareInsert(n - size()))
+            {
+                throw std::length_error("GenericAutoSparseSet: key space exhausted");
+            }
+        }
+
+        /**
+         * Prepares an insertion batch without issuing identities or moving values.
+         * Returns false on identity/size exhaustion. Allocation failures retain the
+         * normal allocator contract. Prepared nothrow values can be inserted and
+         * extracted without further allocation, provided no intervening insertion
+         * consumes the prepared capacity. Erased generations are never reissued.
+         */
+        [[nodiscard]] bool prepareInsert(size_type additional)
+        {
+            if (additional == 0)
+            {
+                return true;
+            }
+            constexpr auto limit = (std::numeric_limits<size_type>::max)();
+            const bool is_dense_overflow = additional > limit - size();
+            if (is_dense_overflow)
+            {
+                return false;
+            }
+            const auto fresh = additional > free_ids_.size() ? additional - free_ids_.size() : 0;
+            if constexpr (requires { ATraits::remaining_fresh(next_id_); })
+            {
+                if (fresh > ATraits::remaining_fresh(next_id_))
+                {
+                    return false;
+                }
+            }
+            const auto next_index = STraits::sparse_index(next_id_);
+            const bool is_sparse_overflow = fresh > limit - next_index;
+            const bool is_recycle_overflow = free_ids_.size() > limit - size() ||
+                fresh > limit - size() - free_ids_.size();
+            if (is_sparse_overflow || is_recycle_overflow)
+            {
+                return false;
+            }
+            base_.prepareCapacity(size() + additional, fresh == 0 ? 0 : next_index + fresh);
+            const auto recyclable = size() + fresh + free_ids_.size();
+            if (recyclable > free_ids_.capacity())
+            {
+                const auto capacity = free_ids_.capacity();
+                const auto extra = capacity / 2;
+                const auto grown = extra <= free_ids_.max_size() - capacity ? capacity + extra : recyclable;
+                free_ids_.reserve((std::max)(recyclable, grown));
+            }
+            return true;
+        }
 
         void clear()
         {
-            base_.clear();
-            free_ids_.clear();
-            next_id_ = ATraits::initial_next();
+            if constexpr (preserve_issued_keys)
+            {
+                // Recycle live generations; keep already-free and exhausted slots.
+                while (!empty())
+                {
+                    erase(base_.keys().back());
+                }
+            }
+            else
+            {
+                base_.clear();
+                free_ids_.clear();
+                next_id_ = ATraits::initial_next();
+            }
         }
 
         // ---- auto-insert ----------------------------------------------------
@@ -425,8 +511,13 @@ namespace lux::cxx
          */
         Key insert(const Value& value)
         {
-            Key k = acquire_key();
+            if (!prepareInsert(1))
+            {
+                return Key{};
+            }
+            const auto k = peekKey();
             base_.insert(k, value);
+            consumeKey();
             return k;
         }
 
@@ -436,8 +527,13 @@ namespace lux::cxx
          */
         Key insert(Value&& value)
         {
-            Key k = acquire_key();
+            if (!prepareInsert(1))
+            {
+                return Key{};
+            }
+            const auto k = peekKey();
             base_.insert(k, std::move(value));
+            consumeKey();
             return k;
         }
 
@@ -448,19 +544,32 @@ namespace lux::cxx
         template <class... Args>
         Key emplace(Args&&... args)
         {
-            Key k = acquire_key();
+            if (!prepareInsert(1))
+            {
+                return Key{};
+            }
+            const auto k = peekKey();
             base_.emplace(k, std::forward<Args>(args)...);
+            consumeKey();
             return k;
         }
 
         // ---- manual insert --------------------------------------------------
 
         /**
-         * @brief Allows manual insertion by key, returning a reference.
+         * @brief Accesses a value. Only non-generational keys allow manual insertion;
+         * generational identities must be issued by the allocator above.
          */
         Value& operator[](Key key)
         {
-            return base_[key];
+            if constexpr (preserve_issued_keys)
+            {
+                return base_.at(key);
+            }
+            else
+            {
+                return base_[key];
+            }
         }
 
         // ---- erase ----------------------------------------------------------
@@ -472,7 +581,7 @@ namespace lux::cxx
         {
             if (base_.erase(key))
             {
-                free_ids_.push_back(ATraits::recycled(key));
+                recycleKey(key);
                 return true;
             }
             return false;
@@ -485,7 +594,7 @@ namespace lux::cxx
         {
             if (base_.extract(key, value))
             {
-                free_ids_.push_back(ATraits::recycled(key));
+                recycleKey(key);
                 return true;
             }
             return false;
@@ -517,17 +626,39 @@ namespace lux::cxx
         [[nodiscard]] size_type free_ids_count() const noexcept { return free_ids_.size(); }
 
     private:
-        Key acquire_key()
+        static constexpr bool preserve_issued_keys = []
+        {
+            if constexpr (requires { ATraits::preserve_issued_keys; })
+            {
+                return ATraits::preserve_issued_keys;
+            }
+            return false;
+        }();
+
+        [[nodiscard]] Key peekKey() const noexcept
+        {
+            return free_ids_.empty() ? next_id_ : free_ids_.back();
+        }
+
+        void consumeKey() noexcept
         {
             if (!free_ids_.empty())
             {
-                Key k = free_ids_.back();
                 free_ids_.pop_back();
-                return k;
             }
-            Key k = next_id_;
-            next_id_ = ATraits::next_fresh(next_id_);
-            return k;
+            else
+            {
+                next_id_ = ATraits::next_fresh(next_id_);
+            }
+        }
+
+        void recycleKey(Key key)
+        {
+            const auto recycled = ATraits::recycled(key);
+            if (!ATraits::is_null(recycled))
+            {
+                free_ids_.push_back(recycled);
+            }
         }
 
         BasicSparseSet<Key, Value, STraits> base_;

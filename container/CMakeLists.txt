@@ -23,4 +23,6 @@ lux_add_header_self_containment(
     lux/cxx/container/SlotMap.hpp
     lux/cxx/container/SmallVector.hpp
     lux/cxx/container/StableSlotMap.hpp
+    lux/cxx/container/BasicSparseSet.hpp
+    lux/cxx/container/SparseKeyTraits.hpp
 )

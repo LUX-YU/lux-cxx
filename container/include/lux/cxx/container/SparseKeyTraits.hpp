@@ -237,6 +237,13 @@ namespace lux::cxx
     {
         using key_type = SlotKey<Tag, IndexType, GenerationType>;
 
+        static constexpr bool preserve_issued_keys = true;
+
+        static constexpr std::size_t remaining_fresh(key_type k) noexcept
+        {
+            return static_cast<std::size_t>((std::numeric_limits<IndexType>::max)() - k.index);
+        }
+
         static constexpr key_type initial_next() noexcept
         {
             return key_type{ IndexType{0}, GenerationType{1} };
@@ -244,6 +251,10 @@ namespace lux::cxx
 
         static constexpr key_type next_fresh(key_type k) noexcept
         {
+            if (k.isNull())
+            {
+                return k;
+            }
             return key_type{
                 static_cast<IndexType>(k.index + 1),
                 GenerationType{1}
@@ -253,6 +264,10 @@ namespace lux::cxx
         /** @brief Bumps generation so stale handles with the same index stay invalid. */
         static constexpr key_type recycled(key_type old_key) noexcept
         {
+            if (old_key.gen == (std::numeric_limits<GenerationType>::max)())
+            {
+                return key_type::invalid();
+            }
             return key_type{
                 old_key.index,
                 static_cast<GenerationType>(old_key.gen + 1)
