@@ -16,7 +16,7 @@ Each module is designed independently and includes comprehensive documentation. 
 
 ### Core
 Header-only language-level facilities: SBO `move_only_function`, borrowed
-`function_ref`, `Delegate`, `scope_exit`, `FixedText`, `EnumFlags`, strong and
+`function_ref` (both callback wrappers support throwing and `noexcept` signatures), `Delegate`, `scope_exit`, `FixedText`, `EnumFlags`, strong and
 stable identifiers, schema identifiers, and checked constexpr arithmetic.
 The existing lowercase `expected` API remains in `compile_time`: C++23 uses
 `std::expected`, while C++20 uses the bundled external `tl::expected`.
