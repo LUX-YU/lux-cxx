@@ -287,16 +287,21 @@ namespace lux::cxx::reflection
                         pathStr = argStr.substr(2);
                     }
                 }
-                else if (argStr.rfind("-isystem", 0) == 0)
+                else if (argStr.starts_with("-isystem") || argStr.starts_with("-imsvc"))
                 {
                     is_system_include = true;
-                    if (argStr == "-isystem") {
-                        if (i + 1 < args.size()) {
+                    const auto prefix = argStr.starts_with("-imsvc") ? std::string_view{"-imsvc"}
+                                                                   : std::string_view{"-isystem"};
+                    if (argStr.size() == prefix.size())
+                    {
+                        if (i + 1 < args.size())
+                        {
                             pathStr = args[++i];
                         }
                     }
-                    else {
-                        pathStr = argStr.substr(std::string("-isystem").length());
+                    else
+                    {
+                        pathStr = argStr.substr(prefix.size());
                     }
                 }
                 else if (argStr.rfind("-external:I", 0) == 0 || argStr.rfind("/external:I", 0) == 0)

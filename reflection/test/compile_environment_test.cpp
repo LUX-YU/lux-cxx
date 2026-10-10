@@ -7,6 +7,96 @@
 #include <fstream>
 #include <iostream>
 #include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace
+{
+    bool verifyClangSystemIncludes(const std::filesystem::path& root)
+    {
+        using namespace lux::cxx::reflection;
+        const auto regular = root / "regular";
+        const auto system = root / "system headers";
+        std::filesystem::create_directories(regular);
+        std::filesystem::create_directories(system);
+        const auto source = root / "clang.cpp";
+        const auto header = root / "clang.hpp";
+        const auto database = root / "clang_commands.json";
+        std::ofstream(source) << "// clang-cl include extraction\n";
+        std::ofstream(regular / "priority.hpp") << "#define INCLUDE_PRIORITY 1\n";
+        std::ofstream(system / "priority.hpp") << "#error system header shadowed the regular header\n";
+        std::ofstream(system / "dependency.hpp") << "struct Dependency { int value; };\n";
+        std::ofstream(header) << R"cpp(
+#include "priority.hpp"
+#include "dependency.hpp"
+static_assert(INCLUDE_PRIORITY == 1);
+struct __attribute__((annotate("fixture::type"))) ClangLayout { Dependency value; };
+)cpp";
+        for (const bool joined : {false, true})
+        {
+            for (const bool string_command : {false, true})
+            {
+                nlohmann::json command{
+                    {"directory", root.generic_string()}, {"file", source.generic_string()}
+                };
+                if (string_command)
+                {
+                    const auto option = joined ? "-imsvc\"" : "-imsvc \"";
+                    command["command"] = std::string{"clang-cl.exe "} + option + system.generic_string() +
+                        "\" -I\"" + regular.generic_string() + "\" -imsvc \"" + system.generic_string() +
+                        "\" /c \"" + source.generic_string() + "\"";
+                }
+                else
+                {
+                    std::vector<std::string> arguments{"clang-cl.exe"};
+                    if (joined)
+                    {
+                        arguments.push_back("-imsvc" + system.generic_string());
+                    }
+                    else
+                    {
+                        arguments.insert(arguments.end(), {"-imsvc", system.generic_string()});
+                    }
+                    arguments.insert(
+                        arguments.end(),
+                        {"-I" + regular.generic_string(), "-imsvc", system.generic_string(), "/c", source.generic_string()}
+                    );
+                    command["arguments"] = std::move(arguments);
+                }
+                std::ofstream(database) << nlohmann::json::array({command}).dump();
+                const auto includes = GeneratorHelper::fetchIncludePaths(database, source);
+                const std::vector<std::filesystem::path> expected{regular, system};
+                if (!includes || *includes != expected)
+                {
+                    std::cerr << "clang-cl system include extraction failed: joined=" << joined
+                              << ", command=" << string_command << '\n';
+                    return false;
+                }
+                ParseOptions parse;
+                parse.marker_symbol = "fixture";
+                parse.commands = GeneratorHelper::convertToDashI(*includes);
+                std::set<std::filesystem::path> dependencies;
+                parse.on_included_file = [&](std::string_view file) {
+                    dependencies.insert(std::filesystem::weakly_canonical(file));
+                };
+                CxxParser parser(std::move(parse));
+                const auto result = parser.parse(header.generic_string());
+                const bool parsed = result.first == EParseResult::SUCCESS;
+                const auto dependency = std::filesystem::weakly_canonical(system / "dependency.hpp");
+                const auto regular_header = std::filesystem::weakly_canonical(regular / "priority.hpp");
+                const bool has_dependency = dependencies.contains(dependency);
+                const bool has_regular = dependencies.contains(regular_header);
+                const bool is_invalid_parse = !parsed || !has_dependency || !has_regular;
+                if (is_invalid_parse)
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+}
 
 int main(int argc, char** argv)
 {
@@ -72,5 +162,6 @@ static_assert(sizeof(Layout) == 5);
     command["arguments"] = {"cl.exe", "@hidden.rsp"};
     save(nlohmann::json::array({command}));
     if (GeneratorHelper::fetchCompileOptions(database, source)) return 10;
+    if (!verifyClangSystemIncludes(root / "clang fixture")) return 13;
     std::cout << "compile options, transitive includes and failed parse: PASS\n";
 }
