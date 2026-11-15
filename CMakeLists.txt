@@ -117,6 +117,15 @@ endif()
 
 add_subdirectory(serialization)
 
+option(LUX_CXX_ENABLE_EXECUTION "Build the optional stdexec execution component" OFF)
+if(LUX_CXX_ENABLE_EXECUTION)
+    if(CMAKE_VERSION VERSION_LESS 3.24)
+        message(FATAL_ERROR "The execution component requires CMake 3.24 or later")
+    endif()
+    add_subdirectory(execution)
+    list(APPEND ENABLE_COMPONENTS execution)
+endif()
+
 install_components(
     PROJECT_NAME    lux-cxx
     VERSION         ${PROJECT_VERSION}

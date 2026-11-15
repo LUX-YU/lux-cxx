@@ -82,6 +82,10 @@ timeout and stop-token support, plus allocation-free admission and budget ticket
 Intrusive ownership and object pools, explicit `SharedBytes`, and PMR decorators
 for allocation counting, byte budgets, and deterministic allocation failure.
 
+### [Execution](execution/README.md)
+Optional C++20 `ManualContext` with a stdexec scheduler, a multi-producer queue,
+and a manually driven single consumer.
+
 
 ## Build Requirements
 
