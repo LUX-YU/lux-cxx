@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+{% set emitted = false %}{% for rec_index in marked_record_decls %}{% set rec = decl_from_index(rec_index) %}{% if annotation_count(rec, "render::feature") != 1 %}{% if emitted %},{% endif %}
+    {
+      "severity": "error",
+      "declaration": {{ json_str(rec.fq_name) }},
+      "message": "render::feature must be declared exactly once"
+    }{% set emitted = true %}{% endif %}{% endfor %}
+  ]
+}

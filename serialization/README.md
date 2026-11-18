@@ -1,10 +1,10 @@
 # Serialization (`lux::cxx::ser`)
 
 Reflection-driven serialization for C++20. **Annotate a type once** and get
-JSON, XML, and command-line (Arguments) binding for free — no per-type
-boilerplate, and **no third-party header leaks into your build** (nlohmann_json
-and tinyxml2 are hidden inside compiled `.cpp`s, so they can never clash with
-your own copies).
+JSON, YAML, XML, and command-line (Arguments) binding for free — no per-type
+boilerplate, and **no third-party header leaks into your build** (nlohmann_json,
+rapidyaml, and tinyxml2 are hidden inside compiled `.cpp`s, so they can never
+clash with your own copies).
 
 It is built on top of the [`reflection`](../reflection/README.md) code
 generator: a `LUX_META(serializable)` annotation drives generation of a
@@ -18,7 +18,7 @@ single generic traversal turns that into any supported format.
 - **One annotation:** `LUX_META(serializable)` on a struct/class (and on enums).
 - **Or zero annotations:** reflect a third-party type you can't touch with
   `LUX_REFLECT_EXTERNAL(serializable, ::ext::Type)` written in your own code.
-- **Backends:** JSON · XML · Arguments (CLI). Same data model, pluggable sinks.
+- **Backends:** JSON · YAML · XML · Arguments (CLI). Same data model, pluggable sinks.
 - **Types:** scalars, `bool`, strings, enums (by name), most std containers
   (`vector`/`list`/`deque`/`set`/`map`/`unordered_map`), `pair`/`tuple`/`array`,
   `optional`, `unique_ptr`/`shared_ptr`, nested serializable types, and
@@ -62,6 +62,7 @@ struct LUX_META(serializable) Config {
 #include "config.serialize.hpp"           // generated (see CMake below)
 
 #include <lux/cxx/serialization/json.hpp>
+#include <lux/cxx/serialization/yaml.hpp>
 #include <lux/cxx/serialization/xml.hpp>
 #include <lux/cxx/serialization/arguments.hpp>
 using namespace lux::cxx::ser;
@@ -72,10 +73,13 @@ int main(int argc, char** argv) {
     std::string j = to_json(c, 2);                       // -> JSON text
     auto c2 = from_json<Config>(j);                      // -> result<Config>
 
-    std::string x = to_xml(c, "config");                 // -> XML text
-    auto c3 = from_xml<Config>(x);
+    std::string y = to_yaml(c);                          // -> block-style YAML
+    auto c3 = from_yaml<Config>(y);
 
-    auto c4 = from_args<Config>(argc, argv);             // CLI -> struct
+    std::string x = to_xml(c, "config");                 // -> XML text
+    auto c4 = from_xml<Config>(x);
+
+    auto c5 = from_args<Config>(argc, argv);             // CLI -> struct
     std::cout << usage<Config>("app");                   // --name --level --db.port ...
 }
 ```
@@ -168,6 +172,20 @@ reused, removing the per-message parser/padding allocations (a fixed ~constant p
 A bare `parser.parse()` returns a cursor valid only until the next `parse()` on it;
 `from_json(parser, text)` is the safe form — it loads into a `T` that owns its data.
 
+### YAML — `<lux/cxx/serialization/yaml.hpp>` (link `lux::cxx::serialization_yaml`)
+```cpp
+std::string   to_yaml(const T&, bool pretty = true);  // block or compact flow style
+result<T>     from_yaml<T>(std::string_view);
+```
+The backend implements the YAML 1.2 Core Schema with strict scalar typing and
+accepts exactly one document. Duplicate mapping keys are rejected. Standard
+scalar tags (`!!str`, `!!bool`, `!!int`, `!!float`, `!!null`) are supported;
+custom tags, merge keys, anchors, and aliases are deliberately rejected because
+the shared serialization model is a tree rather than a YAML representation graph.
+Strings that look like nulls, booleans, or numbers are quoted automatically so
+their type survives a round trip. rapidyaml v0.16.0 is compiled into the backend
+and remains invisible to consumers.
+
 ### XML — `<lux/cxx/serialization/xml.hpp>` (link `lux::cxx::serialization_xml`)
 ```cpp
 std::string   to_xml(const T&, std::string_view root = "root", bool pretty = true);
@@ -194,8 +212,8 @@ and `push_back` sequences (`--inputs a b`).
 ## CMake integration
 
 `find_package(lux-cxx)` exposes the backends and the codegen helpers. The vendored
-**tinyxml2 and nlohmann_json are internal** — you never request, link, or even see
-them; they are compiled inside the backends.
+**tinyxml2, rapidyaml, and nlohmann_json are internal** — you never request, link,
+or even see them; they are compiled inside the backends.
 
 ```cmake
 # The codegen helpers (include_component_cmake_scripts / add_meta / ...) are
@@ -207,6 +225,7 @@ find_package(lux-cxx REQUIRED COMPONENTS
     reflection_generator        # codegen helpers: add_meta / target_add_meta
     serialization               # core + lux_target_add_serialization
     serialization_json          # JSON backend  (request only the backends you use)
+    serialization_yaml          # YAML backend
     serialization_xml)          # XML backend
 
 # Pass the NAMESPACED component name. The bare name (e.g. "serialization") only
@@ -217,6 +236,7 @@ include_component_cmake_scripts(lux::cxx::serialization)         # lux_target_ad
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE
     lux::cxx::serialization_json
+    lux::cxx::serialization_yaml
     lux::cxx::serialization_xml)
 
 # Generate <header-stem>.serialize.hpp from the annotated headers and attach it.
@@ -269,18 +289,20 @@ LUX_META(serializable)  ──(lux_meta_generator + serializable.template.inja)�
                                                                                        │
                                           core.hpp:  save(ar,v) / load(cur,out)  ◄──────┘  (the only traversal)
                                                           │  dispatches by type, recurses
-                          ┌───────────────┬───────────────┼───────────────┐
-                     JsonArchive      XmlArchive     ArgumentsArchive   (your serializer<T>)
-                     (nlohmann)       (tinyxml2)     (lux::cxx::Parser)
-                     hidden in .cpp   hidden in .cpp   header-only
+                          ┌───────────────┬───────────────┬───────────────┼───────────────┐
+                     JsonArchive     YamlArchive      XmlArchive     ArgumentsArchive   (your serializer<T>)
+                     (nlohmann)      (rapidyaml)      (tinyxml2)     (lux::cxx::Parser)
+                     hidden in .cpp  hidden in .cpp   hidden in .cpp   header-only
 ```
 
 ---
 
 ## Limitations
 
-- Maps with non-string keys serialize as `[[k,v],…]` (JSON/XML); XML string-map
+- Maps with non-string keys serialize as `[[k,v],…]` (JSON/YAML/XML); XML string-map
   keys must be valid XML element names.
+- YAML accepts one document and string mapping keys. Anchors, aliases, merge keys,
+  custom tags, and comment/style preservation are outside the typed tree model.
 - The Arguments backend is for *flat/shallow* config; deeply nested types become
   long dotted option names. Maps/tuples/containers-of-structs have no CLI form.
 - Raw pointers are not serialized by default (specialize `serializer<T>`).

@@ -1,6 +1,7 @@
 #include "lux/cxx/reflection/generator/GeneratorHelper.hpp"
 #include "lux/cxx/reflection/parser/CxxParser.hpp"
 #include "lux/cxx/reflection/Error.hpp"
+#include "lux/cxx/reflection/runtime/MetaIrJson.hpp"
 #include <iostream>
 #include <inja/inja.hpp>
 #include <fstream>
@@ -10,6 +11,8 @@
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
+#include <map>
+#include <set>
 #include <string_view>
 
 using namespace ::lux::cxx::reflection;
@@ -25,17 +28,79 @@ using namespace ::lux::cxx::reflection;
 // Returns:
 //   true if all files exist, false otherwise.
 //---------------------------------------------------------------------
-static bool validateFiles(const GeneratorConfig& generator_config)
+struct PendingOutput final
+{
+    std::filesystem::path path;
+    std::string contents;
+    std::string logical_path;
+    std::string projection_name;
+    bool validation{};
+};
+
+static std::filesystem::path projectionOutputPath(
+    const GeneratorTargetFile& target,
+    const GeneratorProjection& projection
+)
+{
+    std::filesystem::path relative = target.logical_path;
+    if (!projection.include_relative)
+    {
+        relative = relative.filename();
+    }
+    relative.replace_extension(projection.output_suffix);
+    return std::filesystem::path(projection.output_root) / relative;
+}
+
+static bool validateFiles(const GeneratorParseJob& generator_config)
 {
     bool ok = true;
 
     // Iterate over each target file and verify that the file exists.
     for (const auto& file : generator_config.target_files)
     {
-        if (!std::filesystem::exists(file))
+        if (!std::filesystem::exists(file.physical_path))
         {
-            std::cerr << "[Error] file_to_parse " << file << " does not exist.\n";
+            std::cerr << "[Error] file_to_parse " << file.physical_path
+                      << " does not exist.\n";
             ok = false;
+        }
+        const auto logical = std::filesystem::path(file.logical_path).lexically_normal();
+        if (logical.empty() || logical.is_absolute() ||
+            (!logical.empty() && *logical.begin() == ".."))
+        {
+            std::cerr << "[Error] logical_path must remain relative: "
+                      << file.logical_path << "\n";
+            ok = false;
+        }
+    }
+
+    std::set<std::filesystem::path> output_paths;
+    for (const auto& projection : generator_config.projections)
+    {
+        if (!std::filesystem::exists(projection.template_path))
+        {
+            std::cerr << "[Error] template " << projection.template_path
+                      << " does not exist.\n";
+            ok = false;
+        }
+        if (projection.validation && projection.serial_meta)
+        {
+            std::cerr << "[Error] validation projection '" << projection.name
+                      << "' cannot publish serial metadata.\n";
+            ok = false;
+        }
+        if (projection.validation)
+        {
+            continue;
+        }
+        for (const auto& file : generator_config.target_files)
+        {
+            const auto output = projectionOutputPath(file, projection).lexically_normal();
+            if (!output_paths.emplace(output).second)
+            {
+                std::cerr << "[Error] projection output collision: " << output << "\n";
+                ok = false;
+            }
         }
     }
 
@@ -69,7 +134,10 @@ static bool validateFiles(const GeneratorConfig& generator_config)
 // Returns:
 //   A vector of strings representing the compile options to be used by the parser.
 //---------------------------------------------------------------------
-static std::vector<std::string> buildCompileOptions(const GeneratorConfig& generator_config, std::vector<std::filesystem::path>& includes)
+static std::vector<std::string> buildCompileOptions(
+    const GeneratorParseJob& generator_config,
+    std::vector<std::filesystem::path>& includes
+)
 {
     auto source_path = std::filesystem::path(generator_config.source_file);
     auto source_parent = source_path.parent_path();
@@ -121,13 +189,15 @@ static std::vector<std::string> buildCompileOptions(const GeneratorConfig& gener
 // Returns:
 //   true if the file is processed successfully, false otherwise.
 //---------------------------------------------------------------------
-static bool processTargetFile(const std::filesystem::path& file,
-    const GeneratorConfig& generator_config,
+static bool processTargetFile(const GeneratorTargetFile& target,
+    const GeneratorParseJob& generator_config,
     const std::vector<std::string>& options,
     std::vector<MetaUnit>& meta_list,
     std::vector<nlohmann::json>& meta_json_list,
-    std::vector<std::filesystem::path>& includes)
+    std::vector<std::filesystem::path>& includes,
+    std::set<std::string>& dependencies)
 {
+    const std::filesystem::path file = target.physical_path;
     // Convert the current file path to a string.
     std::string file_path = file.string();
     // Obtain the parent directory of the file. This information is later stored in the meta JSON.
@@ -141,6 +211,9 @@ static bool processTargetFile(const std::filesystem::path& file,
     parse_options.name = file_path;                // The name of the file to parse.
     parse_options.pch_file = "";                       // Placeholder: PCH support to be added later.
     parse_options.version = "1.0.0";                  // Placeholder: version support to be added later.
+    parse_options.on_included_file = [&dependencies](std::string_view included) {
+        dependencies.emplace(std::filesystem::path(included).lexically_normal().generic_string());
+    };
 
     // Create a parser instance with the provided options.
     auto cxx_parser = std::make_unique<CxxParser>(parse_options);
@@ -150,7 +223,7 @@ static bool processTargetFile(const std::filesystem::path& file,
     });
 
     // Parse the target file.
-    auto [parse_rst, data] = cxx_parser->parse(file_path);
+    auto [parse_rst, compact_data] = cxx_parser->parse(file_path);
     if (parse_rst != EParseResult::SUCCESS)
     {
         std::cerr << "[Error] Parsing of '" << file_path << "' failed"
@@ -160,51 +233,31 @@ static bool processTargetFile(const std::filesystem::path& file,
         return false;
     }
 
-    // Convert the parsed data to JSON format.
-    nlohmann::json meta_json = nlohmann::json::parse(data.toJson());
+    // Project the canonical compact IR into the stable template JSON view.
+    auto template_json = ir::templateJson(compact_data);
+    if (!template_json)
+    {
+        std::cerr << "[Error] Compact reflection IR has no template projection for '"
+                  << file_path << "'.\n";
+        return false;
+    }
+    nlohmann::json meta_json = nlohmann::json::parse(*template_json);
+    // Parent-chain callbacks still use the private legacy view during this
+    // generator migration. It is reconstructed from the canonical IR and is
+    // never the parser/generator transport representation.
+    MetaUnit data = MetaUnit::fromJson(*template_json);
     // Augment the JSON with additional file-specific metadata.
     meta_json["source_path"]            = file_path;
+    meta_json["logical_path"]           = target.logical_path;
     meta_json["source_parent"]          = source_parent;
     meta_json["parser_compile_options"] = options;
-	meta_json["include_dir"]            = GeneratorHelper::findRelativeIncludePath(file, includes).value_or(std::string(""));
-
-    if (!generator_config.custom_fields_json.empty()) {
-        for (const std::string& field : generator_config.custom_fields_json) {
-            nlohmann::json extra;
-            try {
-                extra = nlohmann::json::parse(field);
-            }
-            catch (const nlohmann::json::parse_error& e) {
-                std::cerr << "[Error] Invalid custom_fields_json entry '" << field
-                          << "': " << e.what() << "\n";
-                return false;
-            }
-            for (auto& [key, val] : extra.items()) {
-                meta_json[key] = val;
-            }
-		}
-    }
-
-    // If the configuration requests serializing meta data into JSON files,
-    // generate a JSON file for the current source file.
-    if (generator_config.serial_meta)
-    {
-        // Convert the JSON data to a string.
-        auto meta_json_str = nlohmann::to_string(meta_json);
-        // Build the output file name based on the target file's stem (filename without extension).
-        auto json_file_name = std::filesystem::path(file).stem().string() + ".json";
-        // Combine with the output directory from the configuration.
-        auto out_path = std::filesystem::path(generator_config.out_dir) / json_file_name;
-
-        std::ofstream out_file(out_path, std::ios::binary);
-        if (!out_file.is_open()) {
-            std::cerr << "[Error] Failed to open file " << out_path << " for writing.\n";
-            return false;
-        }
-        // Write the meta JSON string to the file.
-        out_file << meta_json_str;
-        out_file.close();
-    }
+    const auto include_path = GeneratorHelper::findRelativeIncludePath(
+        file,
+        includes
+    );
+    meta_json["include_dir"] = include_path
+        ? include_path->generic_string()
+        : std::string{};
 
     // Save the parsed meta unit and its JSON representation for later use in template rendering.
     meta_list.push_back(std::move(data));
@@ -214,10 +267,10 @@ static bool processTargetFile(const std::filesystem::path& file,
 }
 
 static bool dfsFindChain(const CXXRecordDecl* current,
-    std::string_view            target_name,
-    std::vector<const CXXRecordDecl*>& path,
+    std::string_view                          target_name,
+    std::vector<const CXXRecordDecl*>&        path,
     std::unordered_set<const CXXRecordDecl*>& visited,
-    const MetaUnit& meta_unit)
+    const MetaUnit&                           meta_unit)
 {
     if (!current || visited.count(current)) return false;
     visited.insert(current);
@@ -262,6 +315,7 @@ struct ParsedAnnotation
     std::string raw{};
     std::string head{};
     nlohmann::json args = nlohmann::json::object();
+    std::vector<std::string> arg_names{};
 };
 
 static std::string trim_copy(std::string_view text)
@@ -417,6 +471,7 @@ static ParsedAnnotation parse_annotation(std::string_view annotation_text)
                 const std::string key = trim_copy(token);
                 if (!key.empty())
                 {
+                    result.arg_names.push_back(key);
                     result.args[key] = true;
                 }
             }
@@ -432,6 +487,10 @@ static ParsedAnnotation parse_annotation(std::string_view annotation_text)
         if (is_head)
         {
             result.head = key;
+        }
+        else
+        {
+            result.arg_names.push_back(key);
         }
         result.args[key] = parse_annotation_value(value);
     };
@@ -555,17 +614,22 @@ static nlohmann::json annotation_map_for_head(
 // Returns:
 //   true if all templates are rendered and written successfully, false otherwise.
 //---------------------------------------------------------------------
-static bool renderTemplates(const GeneratorConfig& generator_config,
+static bool renderProjection(
+    const GeneratorParseJob& generator_config,
+    const GeneratorProjection& projection,
     const std::vector<MetaUnit>& meta_unit_list,
-    const std::vector<nlohmann::json>& meta_json_list)
+    const std::vector<nlohmann::json>& meta_json_list,
+    std::vector<PendingOutput>& outputs
+)
 {
     // Open the template file provided in the configuration.
-    std::ifstream     template_file(generator_config.template_path);
+    std::ifstream     template_file(projection.template_path);
     inja::Environment inja_env;
     inja::Template    inja_template;
 
     if (!template_file.is_open()) {
-        std::cerr << "[Error] Failed to open template file " << generator_config.template_path << "\n";
+        std::cerr << "[Error] Failed to open template file "
+                  << projection.template_path << "\n";
         return false;
     }
     // Read the entire template file into a string.
@@ -623,6 +687,27 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
         }
     );
 
+    // Return a complete JSON string literal, including quotes. Validation
+    // projections use JSON escaping rather than C++ literal escaping.
+    inja_env.add_callback(
+        "json_str",
+        [](const inja::Arguments& args) -> std::string {
+            return nlohmann::json(args.at(0)->get<std::string>()).dump();
+        }
+    );
+
+    // Generic list composition for projections, e.g. static and non-static member declarations.
+    inja_env.add_callback(
+        "concat_arrays",
+        [](const inja::Arguments& args) -> nlohmann::json {
+            if (args.size() != 2U || !args[0]->is_array() || !args[1]->is_array())
+                throw std::runtime_error("concat_arrays requires two arrays");
+            auto result = *args[0];
+            for (const auto& value : *args[1]) result.push_back(value);
+            return result;
+        }
+    );
+
     // Callback to retrieve a declaration based on its unique ID from the meta data.
     // The meta_unit_list is used to locate the declaration, and then the corresponding JSON data is returned.
     inja_env.add_callback(
@@ -659,6 +744,264 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
                 throw std::runtime_error("Type not found");
             }
             return (*current.meta_json)["types"][type->index];
+        }
+    );
+
+    // Generic canonical template queries. Downstream generators can identify
+    // their own domain templates without teaching lux-cxx those domain names
+    // or parsing a C++ spelling themselves.
+    inja_env.add_callback(
+        "type_is_specialization",
+        [&current](const inja::Arguments& args) -> nlohmann::json {
+            if (args.size() < 2)
+                return false;
+            const auto id = args.at(0)->get<std::string>();
+            auto expected = trim_copy(args.at(1)->get<std::string>());
+            if (expected.starts_with("::"))
+                expected.erase(0, 2);
+            const auto* type = current.meta_unit->findTypeById(id);
+            const auto* record = dynamic_cast<const RecordType*>(type);
+            if (!record || !record->isTemplateSpecialization())
+                return false;
+            auto actual = record->template_name;
+            if (actual.starts_with("::"))
+                actual.erase(0, 2);
+            return actual == expected;
+        }
+    );
+
+    inja_env.add_callback(
+        "type_argument_type_id",
+        [&current](const inja::Arguments& args) -> nlohmann::json {
+            if (args.size() < 2)
+                return nullptr;
+            const auto id = args.at(0)->get<std::string>();
+            const auto index = args.at(1)->get<std::size_t>();
+            const auto* type = current.meta_unit->findTypeById(id);
+            const auto* record = dynamic_cast<const RecordType*>(type);
+            if (!record || index >= record->template_arguments.size())
+                return nullptr;
+            const auto& argument = record->template_arguments[index];
+            if (argument.kind != TemplateArgument::Kind::Type || !argument.type)
+                return nullptr;
+            return argument.type->id;
+        }
+    );
+
+    inja_env.add_callback(
+        "type_template_name",
+        [&current](const inja::Arguments& args) -> nlohmann::json {
+            if (args.empty())
+                return nullptr;
+            const auto id = args.at(0)->get<std::string>();
+            const auto* type = current.meta_unit->findTypeById(id);
+            const auto* record = dynamic_cast<const RecordType*>(type);
+            if (!record || record->template_name.empty())
+                return nullptr;
+            auto name = trim_copy(record->template_name);
+            if (name.starts_with("::"))
+                name.erase(0, 2);
+            return name;
+        }
+    );
+
+    // Compute a stable prefix layout for static members selected by a generic
+    // template primary.  The generator is deliberately unaware of the
+    // downstream meanings of either template: callers provide both the
+    // lineage wrapper and member template names.
+    const auto lineage_base =
+        [&current](const CXXRecordDecl* record,
+                   std::string_view wrapper_template,
+                   std::size_t base_argument_index) -> const CXXRecordDecl* {
+        if (!record)
+            return nullptr;
+
+        auto normalized_wrapper = trim_copy(wrapper_template);
+        if (normalized_wrapper.starts_with("::"))
+            normalized_wrapper.erase(0, 2);
+
+        const RecordType* wrapped_base_type = nullptr;
+        for (const auto base_index : record->bases)
+        {
+            const auto* base = current.meta_unit->getDeclAs<CXXRecordDecl>(base_index);
+            const auto* base_type = base
+                ? dynamic_cast<const RecordType*>(base->type)
+                : nullptr;
+            if (!base_type)
+                continue;
+            auto actual_wrapper = trim_copy(base_type->template_name);
+            if (actual_wrapper.starts_with("::"))
+                actual_wrapper.erase(0, 2);
+            if (actual_wrapper != normalized_wrapper)
+                continue;
+            if (wrapped_base_type)
+                throw std::runtime_error(
+                    "template lineage: multiple direct lineage wrappers on "
+                    + record->full_qualified_name
+                );
+            wrapped_base_type = base_type;
+        }
+
+        if (!wrapped_base_type)
+            return nullptr;
+        if (base_argument_index >= wrapped_base_type->template_arguments.size())
+            throw std::runtime_error(
+                "template lineage: base type argument index is out of range on "
+                + record->full_qualified_name
+            );
+        const auto& base_argument =
+            wrapped_base_type->template_arguments[base_argument_index];
+        const auto* actual_base_type = base_argument.type
+            ? dynamic_cast<const RecordType*>(base_argument.type)
+            : nullptr;
+        return actual_base_type
+            ? decl_cast<CXXRecordDecl>(actual_base_type->decl)
+            : nullptr;
+    };
+
+    const auto template_lineage_static_count =
+        [&current, &lineage_base](const CXXRecordDecl* record,
+                   std::string_view wrapper_template,
+                   std::size_t base_argument_index,
+                   std::string_view member_template,
+                   const auto& self) -> std::size_t {
+        if (!record)
+            return 0;
+
+        std::size_t inherited_count = 0;
+        if (const auto* actual_base =
+                lineage_base(record, wrapper_template, base_argument_index))
+        {
+            inherited_count = self(
+                actual_base,
+                wrapper_template,
+                base_argument_index,
+                member_template,
+                self
+            );
+        }
+
+        std::size_t local_count = 0;
+        for (const auto member_index : record->static_var_decls)
+        {
+            const auto* member = current.meta_unit->getDeclAs<VarDecl>(member_index);
+            const auto* member_type = member
+                ? dynamic_cast<const RecordType*>(member->type)
+                : nullptr;
+            if (member_type && member_type->template_name == member_template)
+                ++local_count;
+        }
+        return inherited_count + local_count;
+    };
+
+    inja_env.add_callback(
+        "template_lineage_static_count",
+        [&current, &template_lineage_static_count](const inja::Arguments& args) -> nlohmann::json {
+            if (args.size() < 4)
+                return nullptr;
+            const auto* decl = current.meta_unit->findDeclById(
+                args.at(0)->get<std::string>()
+            );
+            const auto* record = decl_cast<CXXRecordDecl>(decl);
+            if (!record)
+                throw std::runtime_error(
+                    "template_lineage_static_count: record declaration not found"
+                );
+            return template_lineage_static_count(
+                record,
+                trim_copy(args.at(1)->get<std::string>()),
+                args.at(2)->get<std::size_t>(),
+                trim_copy(args.at(3)->get<std::string>()),
+                template_lineage_static_count
+            );
+        }
+    );
+
+    inja_env.add_callback(
+        "template_lineage_static_index",
+        [&current, &lineage_base, &template_lineage_static_count](const inja::Arguments& args) -> nlohmann::json {
+            if (args.size() < 5)
+                return nullptr;
+            const auto* decl = current.meta_unit->findDeclById(
+                args.at(0)->get<std::string>()
+            );
+            const auto* record = decl_cast<CXXRecordDecl>(decl);
+            if (!record)
+                throw std::runtime_error(
+                    "template_lineage_static_index: record declaration not found"
+                );
+
+            const auto wrapper_template = trim_copy(args.at(2)->get<std::string>());
+            const auto base_argument_index = args.at(3)->get<std::size_t>();
+            const auto member_template = trim_copy(args.at(4)->get<std::string>());
+            std::size_t inherited_count = 0;
+            if (const auto* actual_base =
+                    lineage_base(record, wrapper_template, base_argument_index))
+            {
+                inherited_count = template_lineage_static_count(
+                    actual_base,
+                    wrapper_template,
+                    base_argument_index,
+                    member_template,
+                    template_lineage_static_count
+                );
+            }
+
+            const auto member_id = args.at(1)->get<std::string>();
+            std::size_t local_ordinal = 0;
+            for (const auto member_index : record->static_var_decls)
+            {
+                const auto* member = current.meta_unit->getDeclAs<VarDecl>(member_index);
+                const auto* member_type = member
+                    ? dynamic_cast<const RecordType*>(member->type)
+                    : nullptr;
+                if (!member_type || member_type->template_name != member_template)
+                    continue;
+                if (member->id == member_id)
+                    return inherited_count + local_ordinal;
+                ++local_ordinal;
+            }
+            throw std::runtime_error(
+                "template_lineage_static_index: selected member is not a matching static member"
+            );
+        }
+    );
+
+    inja_env.add_callback(
+        "template_lineage_record_hashes",
+        [&current, &lineage_base](const inja::Arguments& args) -> nlohmann::json {
+            if (args.size() < 3)
+                return nlohmann::json::array();
+            const auto* decl = current.meta_unit->findDeclById(
+                args.at(0)->get<std::string>()
+            );
+            const auto* record = decl_cast<CXXRecordDecl>(decl);
+            if (!record)
+                throw std::runtime_error(
+                    "template_lineage_record_hashes: record declaration not found"
+                );
+
+            const auto wrapper_template = trim_copy(args.at(1)->get<std::string>());
+            const auto base_argument_index = args.at(2)->get<std::size_t>();
+            nlohmann::json result = nlohmann::json::array();
+            auto* base = lineage_base(
+                record,
+                wrapper_template,
+                base_argument_index
+            );
+            while (base)
+            {
+                result.push_back({
+                    {"id", base->id},
+                    {"hash", std::to_string(base->hash)}
+                });
+                base = lineage_base(
+                    base,
+                    wrapper_template,
+                    base_argument_index
+                );
+            }
+            return result;
         }
     );
 
@@ -753,6 +1096,34 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
                 }
             }
             return false;
+        }
+    );
+
+    // Count occurrences without merging annotation maps. Semantic validators
+    // must be able to reject duplicate declarations instead of observing only
+    // the last value.
+    inja_env.add_callback(
+        "annotation_count",
+        [](const inja::Arguments& args) -> nlohmann::json
+        {
+            if (args.size() < 2)
+            {
+                return 0U;
+            }
+            const auto target = trim_copy(args.at(1)->get<std::string>());
+            const auto parsed = parse_annotation_set(*args.at(0));
+            std::size_t count{};
+            for (const auto& ann : parsed)
+            {
+                if (ann.raw == target || ann.head == target)
+                    ++count;
+                count += static_cast<std::size_t>(std::count(
+                    ann.arg_names.begin(),
+                    ann.arg_names.end(),
+                    target
+                ));
+            }
+            return count;
         }
     );
 
@@ -873,44 +1244,305 @@ static bool renderTemplates(const GeneratorConfig& generator_config,
     }
     catch (const std::exception& e) {
         std::cerr << "[Error] Failed to parse template "
-                  << generator_config.template_path << ": " << e.what() << "\n";
+                  << projection.template_path << ": " << e.what() << "\n";
         return false;
     }
 
     // Iterate over each meta JSON object.
     for (size_t i = 0; i < meta_json_list.size(); ++i)
     {
-        const auto& meta_json = meta_json_list[i];
+        auto meta_json = meta_json_list[i];
+        meta_json["projection_name"] = projection.name;
+        for (const std::string& field : projection.custom_fields_json)
+        {
+            try
+            {
+                const auto extra = nlohmann::json::parse(field);
+                for (const auto& [key, value] : extra.items())
+                {
+                    meta_json[key] = value;
+                }
+            }
+            catch (const nlohmann::json::parse_error& error)
+            {
+                std::cerr << "[Error] Invalid custom_fields_json entry for projection '"
+                          << projection.name << "': " << error.what() << "\n";
+                return false;
+            }
+        }
+        // Update the per-iteration context that the file-aware callbacks
+        for (const auto& file : projection.custom_field_files)
+        {
+            if (file.name.empty() || meta_json.contains(file.name))
+            {
+                std::cerr << "[Error] duplicate or invalid projection input name: " << file.name << "\n";
+                return false;
+            }
+            std::ifstream input(file.path);
+            if (!input)
+            {
+                std::cerr << "[Error] cannot read projection input: " << file.path << "\n";
+                return false;
+            }
+            try { input >> meta_json[file.name]; }
+            catch (const nlohmann::json::exception& error)
+            {
+                std::cerr << "[Error] invalid projection input " << file.path << ": " << error.what() << "\n";
+                return false;
+            }
+        }
         // Update the per-iteration context that the file-aware callbacks
         // capture. Must be set before render() because inja invokes callbacks
         // synchronously during render.
         current.meta_unit = &meta_unit_list[i];
         current.meta_json = &meta_json;
 
-        // Derive the source file's base name (without extension) to be used for the output file.
-        auto source_file_name = std::filesystem::path(meta_json["source_path"].get<std::string>()).stem().string();
-        // Construct the output file path by combining the output directory with the source filename and meta suffix.
-        auto meta_file_path = std::filesystem::path(generator_config.out_dir) / (source_file_name + generator_config.meta_suffix);
-        std::ofstream out_file(meta_file_path, std::ios::binary);
-        if (!out_file.is_open()) {
-            std::cerr << "[Error] Failed to open file " << meta_file_path << " for writing.\n";
-            return false;
-        }
-
         try {
             // Render the pre-parsed template using the current meta JSON data.
-            auto render_rst = inja_env.render(inja_template, meta_json);
-            out_file << render_rst;
-            if (out_file.fail()) {
-                std::cerr << "[Error] Failed to write to file " << meta_file_path << "\n";
-                return false;
+            outputs.push_back(PendingOutput{
+                projectionOutputPath(generator_config.target_files[i], projection),
+                inja_env.render(inja_template, meta_json),
+                generator_config.target_files[i].logical_path,
+                projection.name,
+                projection.validation
+            });
+            if (projection.serial_meta)
+            {
+                auto json_path = projectionOutputPath(
+                    generator_config.target_files[i],
+                    projection
+                );
+                json_path += ".json";
+                outputs.push_back(PendingOutput{
+                    std::move(json_path),
+                    nlohmann::to_string(meta_json),
+                    generator_config.target_files[i].logical_path,
+                    projection.name,
+                    false
+                });
             }
         }
         catch (const std::exception& e) {
-            std::cerr << "[Error] Failed to write to file " << meta_file_path << ": " << e.what() << "\n";
+            std::cerr << "[Error] Failed to render projection " << projection.name
+                      << ": " << e.what() << "\n";
             return false;
         }
-        out_file.close();
+    }
+    return true;
+}
+
+static bool validateRenderedOutputs(std::vector<PendingOutput>& outputs)
+{
+    bool ok = true;
+    for (const auto& output : outputs)
+    {
+        if (!output.validation)
+        {
+            continue;
+        }
+
+        try
+        {
+            const auto report = nlohmann::json::parse(output.contents);
+            const auto diagnostics = report.find("diagnostics");
+            if (!report.is_object() || diagnostics == report.end() ||
+                !diagnostics->is_array())
+            {
+                std::cerr << "[Validation] " << output.logical_path << ": "
+                          << output.projection_name
+                          << ": report must contain a diagnostics array.\n";
+                ok = false;
+                continue;
+            }
+
+            for (const auto& diagnostic : *diagnostics)
+            {
+                if (!diagnostic.is_object() ||
+                    !diagnostic.contains("message") ||
+                    !diagnostic["message"].is_string())
+                {
+                    std::cerr << "[Validation] " << output.logical_path << ": "
+                              << output.projection_name
+                              << ": malformed diagnostic entry.\n";
+                    ok = false;
+                    continue;
+                }
+
+                const auto severity = diagnostic.value("severity", "error");
+                const auto declaration = diagnostic.value(
+                    "declaration",
+                    std::string{}
+                );
+                std::cerr << "[Validation] " << output.logical_path;
+                if (!declaration.empty())
+                {
+                    std::cerr << ": " << declaration;
+                }
+                std::cerr << ": " << diagnostic["message"].get<std::string>()
+                          << "\n";
+                if (severity != "warning")
+                {
+                    ok = false;
+                }
+            }
+        }
+        catch (const nlohmann::json::exception& error)
+        {
+            std::cerr << "[Validation] " << output.logical_path << ": "
+                      << output.projection_name << ": invalid report: "
+                      << error.what() << "\n";
+            ok = false;
+        }
+    }
+
+    if (!ok)
+    {
+        return false;
+    }
+
+    std::erase_if(
+        outputs,
+        [](const PendingOutput& output) { return output.validation; }
+    );
+    return true;
+}
+
+static bool readExisting(
+    const std::filesystem::path& path,
+    std::string& contents
+)
+{
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream.is_open())
+    {
+        return false;
+    }
+    contents.assign(
+        std::istreambuf_iterator<char>(stream),
+        std::istreambuf_iterator<char>()
+    );
+    return !stream.bad();
+}
+
+static bool publishOutputs(const std::vector<PendingOutput>& outputs)
+{
+    struct Publication final
+    {
+        std::filesystem::path destination;
+        std::filesystem::path temporary;
+        std::filesystem::path backup;
+        bool had_destination{};
+        bool published{};
+    };
+
+    std::vector<Publication> publications;
+    publications.reserve(outputs.size());
+
+    std::set<std::filesystem::path> unique;
+    for (const auto& output : outputs)
+    {
+        const auto normalized = output.path.lexically_normal();
+        if (!unique.emplace(normalized).second)
+        {
+            std::cerr << "[Error] duplicate rendered output: " << normalized << "\n";
+            return false;
+        }
+
+        std::string existing;
+        if (readExisting(normalized, existing) && existing == output.contents)
+        {
+            continue;
+        }
+
+        std::error_code error;
+        std::filesystem::create_directories(normalized.parent_path(), error);
+        if (error)
+        {
+            std::cerr << "[Error] failed to create output directory for "
+                      << normalized << ": " << error.message() << "\n";
+            return false;
+        }
+
+        Publication publication;
+        publication.destination = normalized;
+        publication.temporary = normalized;
+        publication.temporary += ".luxgen.tmp";
+        publication.backup = normalized;
+        publication.backup += ".luxgen.bak";
+        publication.had_destination = std::filesystem::exists(normalized);
+
+        std::filesystem::remove(publication.temporary, error);
+        error.clear();
+        std::ofstream stream(publication.temporary, std::ios::binary | std::ios::trunc);
+        if (!stream.is_open())
+        {
+            std::cerr << "[Error] failed to open temporary output "
+                      << publication.temporary << "\n";
+            return false;
+        }
+        stream.write(output.contents.data(), static_cast<std::streamsize>(output.contents.size()));
+        stream.close();
+        if (!stream)
+        {
+            std::cerr << "[Error] failed to write temporary output "
+                      << publication.temporary << "\n";
+            return false;
+        }
+        publications.push_back(std::move(publication));
+    }
+
+    const auto rollback = [&publications]() noexcept
+    {
+        for (auto iterator = publications.rbegin(); iterator != publications.rend(); ++iterator)
+        {
+            std::error_code ignored;
+            std::filesystem::remove(iterator->temporary, ignored);
+            if (iterator->published)
+            {
+                std::filesystem::remove(iterator->destination, ignored);
+            }
+            if (iterator->had_destination && std::filesystem::exists(iterator->backup))
+            {
+                std::filesystem::rename(iterator->backup, iterator->destination, ignored);
+            }
+        }
+    };
+
+    for (auto& publication : publications)
+    {
+        std::error_code error;
+        std::filesystem::remove(publication.backup, error);
+        error.clear();
+        if (publication.had_destination)
+        {
+            std::filesystem::rename(
+                publication.destination,
+                publication.backup,
+                error
+            );
+            if (error)
+            {
+                rollback();
+                return false;
+            }
+        }
+        std::filesystem::rename(
+            publication.temporary,
+            publication.destination,
+            error
+        );
+        if (error)
+        {
+            rollback();
+            return false;
+        }
+        publication.published = true;
+    }
+
+    for (const auto& publication : publications)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(publication.backup, ignored);
     }
     return true;
 }
@@ -932,13 +1564,14 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    GeneratorConfig generator_config;
+    GeneratorParseJob generator_config;
     try {
         // Load the generator configuration from the JSON file.
-        // The helper function GeneratorHelper::loadGeneratorConfig reads various settings such as:
+        // GeneratorHelper::loadGeneratorParseJob reads the shared parse inputs;
+        // each projection carries its own render settings.
         // marker, template_path, out_dir, compile_commands, target_files, meta_suffix, source_file,
         // and extra compile options.
-        GeneratorHelper::loadGeneratorConfig(argv[1], generator_config);
+        GeneratorHelper::loadGeneratorParseJob(argv[1], generator_config);
     }
     catch (const std::exception& e) {
         std::cerr << "[Error] Failed to load config: " << e.what() << "\n";
@@ -950,33 +1583,36 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // Check if the output directory exists, and attempt to create it if it does not.
-    if (!std::filesystem::exists(generator_config.out_dir)) {
-        if (!std::filesystem::create_directories(generator_config.out_dir))
-        {
-            std::cerr << "[Error] Failed to create output directory " << generator_config.out_dir << "\n";
-            return 1;
-        }
-    }
-
     // Build compile options (including include paths) to be passed to the parser.
     // Fetch additional include paths from the compile commands based on the source file.
     auto includes_result = GeneratorHelper::fetchIncludePaths(
-        generator_config.compile_commands, generator_config.source_file
+        generator_config.compile_commands, generator_config.source_file, generator_config.source_target
     );
     if (!includes_result) {
         std::cerr << includes_result.error().message << "\n";
         return 1;
     }
     auto extra_includes = std::move(includes_result.value());
+    auto command_options = GeneratorHelper::fetchCompileOptions(
+        generator_config.compile_commands, generator_config.source_file, generator_config.source_target
+    );
+    if (!command_options)
+    {
+        std::cerr << command_options.error().message << "\n";
+        return 1;
+    }
+    generator_config.extra_compile_options.insert(generator_config.extra_compile_options.begin(),
+        command_options->begin(), command_options->end());
     auto options = buildCompileOptions(generator_config, extra_includes);
     std::vector<MetaUnit>       meta_unit_list;
     std::vector<nlohmann::json> meta_json_list;
+    std::set<std::string> dependencies;
 
     // Process each target file by parsing and collecting metadata.
     for (const auto& file : generator_config.target_files)
     {
-        if (!processTargetFile(file, generator_config, options, meta_unit_list, meta_json_list, extra_includes)) {
+        if (!processTargetFile(file, generator_config, options, meta_unit_list, meta_json_list,
+                extra_includes, dependencies)) {
             return 1;
         }
     }
@@ -988,10 +1624,63 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // Render the final output files using the previously collected metadata and the specified template.
-    if (!renderTemplates(generator_config, meta_unit_list, meta_json_list)) {
+    std::vector<PendingOutput> outputs;
+    outputs.reserve(generator_config.target_files.size() * generator_config.projections.size());
+    for (const auto& projection : generator_config.projections)
+    {
+        if (!projection.validation)
+            continue;
+        if (!renderProjection(
+                generator_config,
+                projection,
+                meta_unit_list,
+                meta_json_list,
+                outputs
+            ))
+        {
+            return 1;
+        }
+    }
+    if (!validateRenderedOutputs(outputs))
+    {
         return 1;
     }
+    for (const auto& projection : generator_config.projections)
+    {
+        if (projection.validation)
+            continue;
+        if (!renderProjection(generator_config, projection, meta_unit_list, meta_json_list, outputs))
+            return 1;
+    }
+    if (!generator_config.depfile.empty())
+    {
+        const auto escape = [](std::string_view path) {
+            std::string result;
+            for (const auto ch : path)
+            {
+                if (ch == '$') result += '$';
+                else if (ch == ' ' || ch == '#' || ch == ':') result += '\\';
+                result += ch;
+            }
+            return result;
+        };
+        std::string contents;
+        for (const auto& output : outputs)
+            contents += escape(output.path.generic_string()) + " ";
+        contents += ":";
+        for (const auto& dependency : dependencies)
+            contents += " \\\n  " + escape(dependency);
+        contents += "\n";
+        outputs.push_back({generator_config.depfile, std::move(contents), {}, {}, false});
+    }
+    if (!publishOutputs(outputs))
+    {
+        return 1;
+    }
+
+    std::cout << "[Info] Parsed " << generator_config.target_files.size()
+              << " target file(s) for " << generator_config.projections.size()
+              << " projection(s).\n";
 
     return 0;
 }

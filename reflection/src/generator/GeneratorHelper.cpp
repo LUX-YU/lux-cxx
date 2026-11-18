@@ -192,9 +192,20 @@ namespace lux::cxx::reflection
         return funcName;
     }
 
+    static bool matchesSourceTarget(const nlohmann::json& entry, std::string_view target)
+    {
+        if (target.empty()) return true;
+        auto output = entry.value("output", std::string{});
+        if (output.empty()) output = entry.value("command", std::string{});
+        if (output.empty() && entry.contains("arguments"))
+            for (const auto& argument : entry.at("arguments")) output += argument.get<std::string>() + " ";
+        std::replace(output.begin(), output.end(), '\\', '/');
+        return output.find("CMakeFiles/" + std::string(target) + ".dir/") != std::string::npos;
+    }
+
     Result<std::vector<std::filesystem::path>> GeneratorHelper::fetchIncludePaths(
         const std::filesystem::path& compile_command_path,
-        const std::filesystem::path& source_file_path)
+        const std::filesystem::path& source_file_path, std::string_view source_target)
     {
         namespace fs = std::filesystem;
 
@@ -236,9 +247,10 @@ namespace lux::cxx::reflection
 
             if (!entry.contains("file") || !entry.contains("directory"))
                 continue;
+            if (!matchesSourceTarget(entry, source_target)) continue;
 
             std::string fileStr = entry["file"].get<std::string>();
-            if (normalizedPathKey(fs::path(fileStr)) != source_file_key)
+            if (normalizedPathKey(makeAbsolute(entry["directory"].get<std::string>(), fileStr)) != source_file_key)
                 continue;
 
             fs::path baseDir = entry["directory"].get<std::string>();
@@ -264,9 +276,9 @@ namespace lux::cxx::reflection
                 std::string pathStr;
                 bool is_system_include = false;
 
-                if (argStr.rfind("-I", 0) == 0)
+                if (argStr.rfind("-I", 0) == 0 || argStr.rfind("/I", 0) == 0)
                 {
-                    if (argStr == "-I") {
+                    if (argStr == "-I" || argStr == "/I") {
                         if (i + 1 < args.size()) {
                             pathStr = args[++i];
                         }
@@ -275,22 +287,27 @@ namespace lux::cxx::reflection
                         pathStr = argStr.substr(2);
                     }
                 }
-                else if (argStr.rfind("-isystem", 0) == 0)
+                else if (argStr.starts_with("-isystem") || argStr.starts_with("-imsvc"))
                 {
                     is_system_include = true;
-                    if (argStr == "-isystem") {
-                        if (i + 1 < args.size()) {
+                    const auto prefix = argStr.starts_with("-imsvc") ? std::string_view{"-imsvc"}
+                                                                   : std::string_view{"-isystem"};
+                    if (argStr.size() == prefix.size())
+                    {
+                        if (i + 1 < args.size())
+                        {
                             pathStr = args[++i];
                         }
                     }
-                    else {
-                        pathStr = argStr.substr(std::string("-isystem").length());
+                    else
+                    {
+                        pathStr = argStr.substr(prefix.size());
                     }
                 }
-                else if (argStr.rfind("-external:I", 0) == 0)
+                else if (argStr.rfind("-external:I", 0) == 0 || argStr.rfind("/external:I", 0) == 0)
                 {
                     is_system_include = true;
-                    if (argStr == "-external:I") {
+                    if (argStr == "-external:I" || argStr == "/external:I") {
                         if (i + 1 < args.size()) {
                             pathStr = args[++i];
                         }
@@ -320,6 +337,115 @@ namespace lux::cxx::reflection
         return includes;
     }
 
+    Result<std::vector<std::string>> GeneratorHelper::fetchCompileOptions(
+        const std::filesystem::path& database, const std::filesystem::path& source, std::string_view source_target)
+    {
+        std::ifstream input(database);
+        if (!input)
+            return make_error(EErrorCode::CompileCommandsNotFound, "Cannot open " + database.string());
+        nlohmann::json commands;
+        try { input >> commands; }
+        catch (const nlohmann::json::exception& error)
+        {
+            return make_error(EErrorCode::CompileCommandsParseError, error.what());
+        }
+        if (!commands.is_array())
+            return make_error(EErrorCode::CompileCommandsParseError, "Compilation database must be an array");
+        std::vector<std::string> result;
+        bool found{};
+        for (const auto& entry : commands)
+        {
+            if (!entry.is_object() || !entry.contains("directory") || !entry.contains("file"))
+                continue;
+            if (!matchesSourceTarget(entry, source_target)) continue;
+            const std::filesystem::path directory = entry.at("directory").get<std::string>();
+            const auto file = makeAbsolute(directory, entry.at("file").get<std::string>());
+            if (normalizedPathKey(file) != normalizedPathKey(source))
+                continue;
+            if (found)
+                return make_error(EErrorCode::CompileCommandsParseError, "Ambiguous compile command for " + source.string());
+            found = true;
+            const auto args = entry.contains("arguments")
+                ? entry.at("arguments").get<std::vector<std::string>>()
+                : splitCommand(entry.at("command").get<std::string>());
+            for (std::size_t index{1U}; index < args.size(); ++index)
+            {
+                const auto& arg = args[index];
+                const auto missing = [&]() {
+                    return make_error(EErrorCode::CompileCommandsParseError, "Missing compile option value: " + arg);
+                };
+                if (arg.starts_with("@"))
+                    return make_error(EErrorCode::CompileCommandsParseError,
+                        "Response-file compile commands require expanded arguments: " + arg);
+                const bool definition = arg.starts_with("/D") || arg.starts_with("-D") ||
+                    arg.starts_with("/U") || arg.starts_with("-U");
+                if (definition)
+                {
+                    auto value = arg.substr(2);
+                    if (value.empty())
+                    {
+                        if (++index == args.size()) return missing();
+                        value = args[index];
+                    }
+                    result.push_back(std::string{"-"} + arg[1] + value);
+                }
+                else if (arg.starts_with("/std:") || arg.starts_with("-std:"))
+                    result.push_back("-std=" + arg.substr(5));
+                else if (arg.starts_with("/Zp") || arg.starts_with("-Zp"))
+                    result.push_back("-fpack-struct=" + (arg.size() == 3U ? std::string{"8"} : arg.substr(3)));
+                else if (arg.starts_with("/FI") || arg.starts_with("-FI"))
+                {
+                    auto value = arg.substr(3);
+                    if (value.empty())
+                    {
+                        if (++index == args.size()) return missing();
+                        value = args[index];
+                    }
+                    result.emplace_back("-include");
+                    result.push_back(makeAbsolute(directory, value).string());
+                }
+                else if (arg == "-target" || arg == "--target" || arg == "-isysroot" ||
+                    arg == "--sysroot" || arg == "-Xclang" || arg == "-x" || arg == "-include" || arg == "-imacros")
+                {
+                    if (index + 1U == args.size()) return missing();
+                    result.push_back(arg);
+                    const auto& value = args[++index];
+                    const bool path = arg == "-include" || arg == "-imacros" || arg == "-isysroot" || arg == "--sysroot";
+                    result.push_back(path ? makeAbsolute(directory, value).string() : value);
+                }
+                else if (arg.starts_with("-std=") || arg.starts_with("--target=") || arg.starts_with("--sysroot=") ||
+                    arg.starts_with("-f") || arg.starts_with("-m") || arg.starts_with("-O"))
+                    result.push_back(arg);
+                else if (arg == "/J" || arg == "-J") result.emplace_back("-funsigned-char");
+                else if (arg == "/GR-" || arg == "-GR-") result.emplace_back("-fno-rtti");
+                else if (arg == "/O2" || arg == "/Ox") result.emplace_back("-O2");
+                else if (arg == "/Od") result.emplace_back("-O0");
+                else if (arg == "/MD" || arg == "/MDd")
+                {
+                    result.emplace_back("-D_MT");
+                    result.emplace_back("-D_DLL");
+                    if (arg == "/MDd") result.emplace_back("-D_DEBUG");
+                }
+                else if (arg == "/MT" || arg == "/MTd")
+                {
+                    result.emplace_back("-D_MT");
+                    if (arg == "/MTd") result.emplace_back("-D_DEBUG");
+                }
+                else if (arg.starts_with("/Zc:") || arg.starts_with("-Zc:"))
+                {
+                    if (arg.substr(4) == "wchar_t-") result.emplace_back("-fno-wchar");
+                    else if (arg.substr(4) != "__cplusplus" && arg.substr(4) != "inline" &&
+                        arg.substr(4) != "preprocessor" && arg.substr(4) != "wchar_t" && arg.substr(4) != "sizedDealloc" &&
+                        arg.substr(4) != "externConstexpr")
+                        return make_error(EErrorCode::CompileCommandsParseError, "Unsupported semantic option: " + arg);
+                }
+            }
+        }
+        if (!found)
+            return make_error(EErrorCode::SourceFileNotFound, "No compile command for " + source.string());
+        return result;
+    }
+
     std::vector<std::string> GeneratorHelper::convertToDashI(const std::vector<std::filesystem::path>& paths)
     {
         std::vector<std::string> result;
@@ -331,7 +457,10 @@ namespace lux::cxx::reflection
         return result;
     }
 
-    void GeneratorHelper::loadGeneratorConfig(const std::string& filename, GeneratorConfig& config)
+    void GeneratorHelper::loadGeneratorParseJob(
+        const std::string& filename,
+        GeneratorParseJob& config
+    )
     {
         std::ifstream ifs(filename);
         if (!ifs.is_open())
@@ -355,25 +484,71 @@ namespace lux::cxx::reflection
             return j[key];
         };
 
-        config.marker                   = require_field("marker").get<std::string>();
-        config.template_path            = require_field("template_path").get<std::string>();
-        config.out_dir                  = require_field("out_dir").get<std::string>();
-        config.compile_commands         = require_field("compile_commands").get<std::string>();
-        config.target_files             = require_field("target_files").get<std::vector<std::string>>();
-        config.meta_suffix              = require_field("meta_suffix").get<std::string>();
-        config.source_file              = require_field("source_file").get<std::string>();
-        config.extra_compile_options    = require_field("extra_compile_options").get<std::vector<std::string>>();
-        if (j.contains("custom_fields_json")) {
-			for (auto& [key, val] : j["custom_fields_json"].items()) {
-				if (val.is_string()) {
-					config.custom_fields_json.push_back(val.get<std::string>());
-				}
-			}
+        config.marker           = require_field("marker").get<std::string>();
+        config.compile_commands = require_field("compile_commands").get<std::string>();
+        config.depfile = j.value("depfile", std::string{});
+        config.source_target = j.value("source_target", std::string{});
+        config.source_file      = require_field("source_file").get<std::string>();
+        config.extra_compile_options =
+            require_field("extra_compile_options").get<std::vector<std::string>>();
+
+        const auto& target_files = require_field("target_files");
+        if (!target_files.is_array() || target_files.empty())
+        {
+            throw std::runtime_error("[Config] 'target_files' must be a non-empty array");
         }
-        else {
-            config.custom_fields_json.clear();
+        config.target_files.clear();
+        for (const auto& target : target_files)
+        {
+            GeneratorTargetFile file;
+            file.physical_path = target.at("physical_path").get<std::string>();
+            file.logical_path  = target.at("logical_path").get<std::string>();
+            if (file.logical_path.empty() || std::filesystem::path(file.logical_path).is_absolute())
+            {
+                throw std::runtime_error(
+                    "[Config] target logical_path must be non-empty and relative"
+                );
+            }
+            config.target_files.push_back(std::move(file));
         }
-		config.serial_meta              = j.value("serial_meta", true);
+
+        const auto& projections = require_field("projections");
+        if (!projections.is_array() || projections.empty())
+        {
+            throw std::runtime_error("[Config] 'projections' must be a non-empty array");
+        }
+        config.projections.clear();
+        for (const auto& item : projections)
+        {
+            GeneratorProjection projection;
+            projection.name            = item.at("name").get<std::string>();
+            projection.template_path   = item.at("template_path").get<std::string>();
+            projection.output_root     = item.at("output_root").get<std::string>();
+            projection.output_suffix   = item.at("output_suffix").get<std::string>();
+            projection.include_relative = item.value("include_relative", true);
+            projection.serial_meta      = item.value("serial_meta", false);
+            projection.validation       = item.value("validation", false);
+            if (item.contains("custom_fields_json"))
+            {
+                projection.custom_fields_json =
+                    item["custom_fields_json"].get<std::vector<std::string>>();
+            }
+            if (item.contains("custom_field_files"))
+            {
+                for (const auto& file : item.at("custom_field_files"))
+                    projection.custom_field_files.push_back({file.at("name").get<std::string>(),
+                        file.at("path").get<std::string>()});
+            }
+            if (projection.name.empty() ||
+                (!projection.validation && projection.output_suffix.empty()))
+            {
+                throw std::runtime_error(
+                    "[Config] projection name and output_suffix must be non-empty"
+                );
+            }
+            config.projections.push_back(std::move(projection));
+        }
+
 		config.dry_run                  = j.value("dry_run", false);
 		config.parse_included_marked    = j.value("parse_included_marked", false);
 		config.cxx_standard             = j.value("cxx_standard", std::string("c++20"));

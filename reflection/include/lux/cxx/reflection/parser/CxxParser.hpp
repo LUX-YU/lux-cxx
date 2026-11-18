@@ -28,6 +28,7 @@
 #include <functional>
 #include <lux/cxx/visibility.h>
 #include <lux/cxx/reflection/runtime/MetaUnit.hpp>
+#include <lux/cxx/reflection/runtime/MetaIr.hpp>
 
 namespace lux::cxx::reflection
 {
@@ -44,7 +45,8 @@ namespace lux::cxx::reflection
         FAILED
     };
 
-    using ParseResult = std::pair<EParseResult, MetaUnit>;
+    using ParseResult = std::pair<EParseResult, ir::MetaUnit>;
+    using LegacyParseResult = std::pair<EParseResult, MetaUnit>;
 
 	struct ParseOptions
 	{
@@ -67,6 +69,8 @@ namespace lux::cxx::reflection
         // commands The commands to pass to the parser
 		std::vector<std::string> commands;
 		std::string              pch_file;
+		// Called while the translation unit is alive; the view is borrowed only for this call.
+		std::function<void(std::string_view)> on_included_file;
 	};
 
     class LUX_CXX_PUBLIC CxxParser
@@ -89,6 +93,10 @@ namespace lux::cxx::reflection
 		 * @param file The file to parse
          */
         [[nodiscard]] ParseResult parse(std::string_view file) const;
+
+        /// Transitional test/debug face. Production generator transport uses
+        /// compact MetaIr through parse().
+        [[nodiscard]] LegacyParseResult parseLegacy(std::string_view file) const;
 
 		/**
 		 * @brief Set the callback for parse error

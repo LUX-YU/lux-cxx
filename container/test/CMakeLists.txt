@@ -47,6 +47,18 @@ target_link_libraries(
 add_test(NAME slot_map_test COMMAND slot_map_test)
 
 add_executable(
+	scope_id_test
+	scope_id_test.cpp
+)
+
+target_link_libraries(
+	scope_id_test
+	PRIVATE
+	lux::cxx::container
+)
+add_test(NAME scope_id_test COMMAND scope_id_test)
+
+add_executable(
 	basic_sparse_set_test
 	basic_sparse_set_test.cpp
 )
@@ -57,6 +69,10 @@ target_link_libraries(
 	lux::cxx::container
 )
 add_test(NAME basic_sparse_set_test COMMAND basic_sparse_set_test)
+
+add_executable(sparse_identity_test sparse_identity_test.cpp)
+target_link_libraries(sparse_identity_test PRIVATE lux::cxx::container)
+add_test(NAME sparse_identity_test COMMAND sparse_identity_test)
 
 add_executable(
 	small_vector_test

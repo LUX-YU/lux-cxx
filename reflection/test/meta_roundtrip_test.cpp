@@ -63,7 +63,7 @@ namespace
             std::cerr << "[parse] " << m << "\n";
         });
 
-        auto [rst, meta] = parser.parse(header.string());
+        auto [rst, meta] = parser.parseLegacy(header.string());
         if (rst != EParseResult::SUCCESS)
         {
             std::cerr << "[FATAL] parse of " << header << " failed\n";
@@ -102,6 +102,8 @@ namespace
             eq(ra->is_abstract == rb->is_abstract, "record.is_abstract");
             eq(ra->is_template == rb->is_template, "record.is_template");
             eq(ra->field_decls.size() == rb->field_decls.size(), "record.field_decls.size()");
+            eq(ra->static_var_decls.size() == rb->static_var_decls.size(),
+               "record.static_var_decls.size()");
             eq(ra->method_decls.size() == rb->method_decls.size(), "record.method_decls.size()");
             eq(ra->static_method_decls.size() == rb->static_method_decls.size(),
                "record.static_method_decls.size()");

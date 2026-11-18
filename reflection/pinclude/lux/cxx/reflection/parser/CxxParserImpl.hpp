@@ -29,6 +29,7 @@
 #include <lux/cxx/reflection/runtime/Declaration.hpp>
 #include <lux/cxx/reflection/runtime/Type.hpp>
 #include <memory>
+#include <unordered_set>
 
 namespace lux::cxx::reflection
 {
@@ -41,7 +42,7 @@ namespace lux::cxx::reflection
 
         ~CxxParserImpl();
 
-        ParseResult parse(std::string_view file);
+        LegacyParseResult parse(std::string_view file);
 
         void setOnParseError(std::function<void(const std::string&)> callback);
     private:
@@ -75,6 +76,7 @@ namespace lux::cxx::reflection
         void parseFunctionDecl(const Cursor& cursor, FunctionDecl& decl);
         void parseCxxMethodDecl(const Cursor& cursor,    CXXMethodDecl& decl);
         void parseFieldDecl(const Cursor& cursor, FieldDecl& decl) ;
+        void parseVarDecl(const Cursor& cursor, VarDecl& decl);
         void parseCXXRecordDecl(const Cursor& cursor, CXXRecordDecl& decl);
         bool shouldExcludeMember(const Cursor& cursor) const;
     	void parseEnumDecl(const Cursor& cursor, EnumDecl& decl);
@@ -83,6 +85,7 @@ namespace lux::cxx::reflection
 		void parsePointerType(const ClangType& clang_type, PointerType& type);
 		void parseReferenceType(const ClangType& clang_type, ReferenceType& type);
 		void parseRecordType(const ClangType& clang_type, RecordType& type);
+		void hydrateMarkedRecordTemplateArgument(const ClangType& clang_type);
 		void parseEnumType(const ClangType& clang_type, EnumType& type);
 		void parseFunctionType(const ClangType& clang_type, FunctionType& type);
 		void parseUnsupportedType(const ClangType& clang_type, UnsupportedType& type);
@@ -98,5 +101,6 @@ namespace lux::cxx::reflection
         // instead of SUCCESS — the MetaUnit is still valid, but the caller is
         // told that at least one marked declaration was skipped.
         bool                                    _saw_unsupported_kind = false;
+		std::unordered_set<std::string>         _active_record_declarations;
     };
 } // namespace lux::reflection

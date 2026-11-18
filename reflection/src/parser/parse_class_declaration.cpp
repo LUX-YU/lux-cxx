@@ -23,6 +23,8 @@
 #include <lux/cxx/reflection/parser/CxxParserImpl.hpp>
 #include <lux/cxx/reflection/runtime/Declaration.hpp>
 
+#include <utility>
+
 namespace lux::cxx::reflection
 {
     /**
@@ -109,6 +111,13 @@ namespace lux::cxx::reflection
         parseNamedDecl(cursor, decl);
     }
 
+    void CxxParserImpl::parseVarDecl(const Cursor& cursor, VarDecl& decl)
+    {
+        decl.visibility = visibilityFromClangVisibility(cursor.accessSpecifier());
+        decl.is_static_data_member = true;
+        parseNamedDecl(cursor, decl);
+    }
+
     /**
      * @brief Parses a C++ record declaration (class/struct/union).
      *
@@ -135,6 +144,24 @@ namespace lux::cxx::reflection
 
     void CxxParserImpl::parseCXXRecordDecl(const Cursor& cursor, CXXRecordDecl& decl)
     {
+		const auto cursor_id = cursor.USR().to_std();
+		const bool tracks_active = !cursor_id.empty()
+			&& _active_record_declarations.insert(cursor_id).second;
+		struct ActiveRecordGuard
+		{
+			std::unordered_set<std::string>* active{};
+			std::string id;
+
+			~ActiveRecordGuard()
+			{
+				if (active)
+					active->erase(id);
+			}
+		} active_guard{
+			tracks_active ? &_active_record_declarations : nullptr,
+			cursor_id
+		};
+
         // Iterate over each child element in the record declaration
         cursor.visitChildren(
             [this, &decl](const Cursor& cursor, const Cursor& parent_cursor) -> CXChildVisitResult
@@ -152,6 +179,15 @@ namespace lux::cxx::reflection
                     auto* field_raw = registerDeclaration(std::move(field_decl));
                     decl.field_decls.push_back(field_raw->index);
                     // parent_class will be back-patched when the CXXRecordDecl itself is registered
+                }
+                else if (cursor_kind == CXCursor_VarDecl)
+                {
+                    if (shouldExcludeMember(cursor)) return CXChildVisit_Continue;
+                    auto var_decl = std::make_unique<VarDecl>();
+                    var_decl->kind = EDeclKind::VAR_DECL;
+                    parseVarDecl(cursor, *var_decl);
+                    auto* var_raw = registerDeclaration(std::move(var_decl));
+                    decl.static_var_decls.push_back(var_raw->index);
                 }
                 else if (cursor_kind == CXCursor_CXXMethod)
                 {

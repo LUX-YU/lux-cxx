@@ -22,6 +22,7 @@
 
 #include <lux/cxx/reflection/parser/CxxParser.hpp>
 #include <lux/cxx/reflection/parser/CxxParserImpl.hpp>
+#include <lux/cxx/reflection/runtime/MetaIrJson.hpp>
 
 namespace lux::cxx::reflection
 {
@@ -33,6 +34,23 @@ namespace lux::cxx::reflection
     CxxParser::~CxxParser() = default;
 
     ParseResult CxxParser::parse(std::string_view file) const
+    {
+        auto [result, legacy] = _impl->parse(file);
+        if (result == EParseResult::FAILED)
+        {
+            ir::MetaUnitBuilder empty;
+            return {result, std::move(empty).freeze()};
+        }
+        auto projection = ir::makeMetaUnitFromTemplateJson(legacy.toJson());
+        if (!projection)
+        {
+            ir::MetaUnitBuilder empty;
+            return {EParseResult::FAILED, std::move(empty).freeze()};
+        }
+        return {result, std::move(*projection)};
+    }
+
+    LegacyParseResult CxxParser::parseLegacy(std::string_view file) const
     {
         return _impl->parse(file);
     }

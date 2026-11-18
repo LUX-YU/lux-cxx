@@ -76,6 +76,7 @@ namespace lux::cxx::reflection
         X(Enum,                     "EnumType")                               \
         X(ScopedEnum,               "ScopedEnumType")                         \
         X(UnscopedEnum,             "UnscopedEnumType")                       \
+        X(Array,                    "ArrayType")                              \
         X(Function,                 "FunctionType")
 
     inline std::string typeKindToString(ETypeKinds k)

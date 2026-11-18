@@ -14,8 +14,9 @@
 
 #include "test_header.hpp"
 
-#include <test_headermeta.hpp>
-#include <test_annotation_callbacksanno.hpp>
+#include <test_header.meta.hpp>
+#include <test_annotation_callbacks.anno.hpp>
+#include <template_layout_consumer.lineage.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -39,6 +40,17 @@ namespace
 
 int main()
 {
+    static_assert(lux::cxx::reflection::projection_input_value == 73);
+    static_assert(lux::cxx::reflection::test::generated::static_count == 2u);
+    static_assert(lux::cxx::reflection::test::generated::local_index == 1u);
+    static_assert(
+        lux::cxx::reflection::test::generated::local_template ==
+        "lux::cxx::reflection::test::Slot"
+    );
+    static_assert(
+        lux::cxx::reflection::test::generated::lineage_hashes.size() == 1u
+    );
+
     // ---------- test_meta<TestStruct> ----------
     using TS = test_meta<TestStruct>;
     static_assert(std::is_same_v<TS::type, TestStruct>,

@@ -8,107 +8,100 @@
 
 namespace lux::cxx
 {
-    template <typename Signature>
-    class function_ref;
-
-    template <typename Return, typename... Args>
-    class function_ref<Return(Args...)> final
+    namespace detail
     {
-      public:
-        using function_type = Return(Args...);
-
-        function_ref(Return (*function)(Args...)) noexcept
-            : target_(function), invoke_(&invokeFunction)
+        template <typename Signature, typename Return, bool Noexcept, typename... Args> class TFunctionRef
         {
-        }
+        public:
+            using function_type = Signature;
+            using FunctionPointer = Signature*;
 
-        template <typename Callable>
-        requires (
-            !std::is_function_v<Callable> &&
-            !std::same_as<std::remove_cv_t<Callable>, function_ref> &&
-            std::is_invocable_r_v<Return, Callable&, Args...>
-        )
-        function_ref(Callable& callable) noexcept
-            : target_(std::addressof(callable)),
-              invoke_(&invokeObject<Callable>)
-        {
-        }
+            TFunctionRef(FunctionPointer function) noexcept : target_(function), invoke_(&invokeFunction) {}
 
-        function_ref(const function_ref&) noexcept = default;
-        function_ref& operator=(const function_ref&) noexcept = default;
-
-        Return operator()(Args... args) const
-        {
-            if constexpr (std::is_void_v<Return>)
-            {
-                invoke_(target_, std::forward<Args>(args)...);
-            }
-            else
-            {
-                return invoke_(target_, std::forward<Args>(args)...);
-            }
-        }
-
-      private:
-        union Target
-        {
-            const void* object;
-            Return (*function)(Args...);
-
-            constexpr Target(const void* value) noexcept
-                : object(value)
+            template <typename Callable>
+                requires(!std::is_function_v<Callable> &&
+                         !std::is_base_of_v<TFunctionRef, std::remove_cv_t<Callable>> &&
+                         (std::is_invocable_r_v<Return, Callable&, Args...> &&
+                          (!Noexcept || std::is_nothrow_invocable_r_v<Return, Callable&, Args...>)))
+            TFunctionRef(Callable& callable) noexcept
+                : target_(std::addressof(callable)), invoke_(&invokeObject<Callable>)
             {
             }
 
-            constexpr Target(Return (*value)(Args...)) noexcept
-                : function(value)
+            TFunctionRef(const TFunctionRef&) noexcept = default;
+            TFunctionRef& operator=(const TFunctionRef&) noexcept = default;
+
+            Return operator()(Args... args) const noexcept(Noexcept)
             {
+                if constexpr (std::is_void_v<Return>)
+                {
+                    invoke_(target_, std::forward<Args>(args)...);
+                }
+                else
+                {
+                    return invoke_(target_, std::forward<Args>(args)...);
+                }
             }
+
+        private:
+            union Target
+            {
+                const void* object;
+                FunctionPointer function;
+
+                constexpr Target(const void* value) noexcept : object(value) {}
+
+                constexpr Target(FunctionPointer value) noexcept : function(value) {}
+            };
+
+            using Invoker = Return (*)(Target, Args&&...) noexcept(Noexcept);
+
+            static Return invokeFunction(Target target, Args&&... args) noexcept(Noexcept)
+            {
+                if constexpr (std::is_void_v<Return>)
+                {
+                    std::invoke(target.function, std::forward<Args>(args)...);
+                }
+                else
+                {
+                    return std::invoke(target.function, std::forward<Args>(args)...);
+                }
+            }
+
+            template <typename Callable> static Return invokeObject(Target target, Args&&... args) noexcept(Noexcept)
+            {
+                auto* callable = static_cast<Callable*>(const_cast<void*>(target.object));
+                if constexpr (std::is_void_v<Return>)
+                {
+                    std::invoke(*callable, std::forward<Args>(args)...);
+                }
+                else
+                {
+                    return std::invoke(*callable, std::forward<Args>(args)...);
+                }
+            }
+
+            Target target_;
+            Invoker invoke_;
+        };
+        template <typename Signature> struct TFunctionRefType;
+        template <typename Return, typename... Args> struct TFunctionRefType<Return(Args...)>
+        {
+            using Type = TFunctionRef<Return(Args...), Return, false, Args...>;
+        };
+        template <typename Return, typename... Args> struct TFunctionRefType<Return(Args...) noexcept>
+        {
+            using Type = TFunctionRef<Return(Args...) noexcept, Return, true, Args...>;
         };
 
-        using Invoker = Return (*)(Target, Args&&...);
+    } // namespace detail
+    template <typename Signature> class function_ref final : public detail::TFunctionRefType<Signature>::Type
+    {
+        using Base = typename detail::TFunctionRefType<Signature>::Type;
 
-        static Return invokeFunction(Target target, Args&&... args)
-        {
-            if constexpr (std::is_void_v<Return>)
-            {
-                std::invoke(
-                    target.function,
-                    std::forward<Args>(args)...
-                );
-            }
-            else
-            {
-                return std::invoke(
-                    target.function,
-                    std::forward<Args>(args)...
-                );
-            }
-        }
-
-        template <typename Callable>
-        static Return invokeObject(Target target, Args&&... args)
-        {
-            auto* callable = static_cast<Callable*>(
-                const_cast<void*>(target.object)
-            );
-            if constexpr (std::is_void_v<Return>)
-            {
-                std::invoke(
-                    *callable,
-                    std::forward<Args>(args)...
-                );
-            }
-            else
-            {
-                return std::invoke(
-                    *callable,
-                    std::forward<Args>(args)...
-                );
-            }
-        }
-
-        Target target_;
-        Invoker invoke_;
+    public:
+        using Base::Base;
+        function_ref(const function_ref&) noexcept = default;
+        function_ref& operator=(const function_ref&) noexcept = default;
     };
 } // namespace lux::cxx

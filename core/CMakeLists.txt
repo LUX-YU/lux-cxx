@@ -28,6 +28,7 @@ lux_add_header_self_containment(
     lux/cxx/core/Delegate.hpp
     lux/cxx/core/EnumFlags.hpp
     lux/cxx/core/FixedText.hpp
+    lux/cxx/core/Format.hpp
     lux/cxx/core/function_ref.hpp
     lux/cxx/core/move_only_function.hpp
     lux/cxx/core/Schema.hpp

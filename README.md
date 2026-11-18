@@ -16,7 +16,7 @@ Each module is designed independently and includes comprehensive documentation. 
 
 ### Core
 Header-only language-level facilities: SBO `move_only_function`, borrowed
-`function_ref`, `Delegate`, `scope_exit`, `FixedText`, `EnumFlags`, strong and
+`function_ref` (both callback wrappers support throwing and `noexcept` signatures), `Delegate`, `scope_exit`, `FixedText`, `EnumFlags`, strong and
 stable identifiers, schema identifiers, and checked constexpr arithmetic.
 The existing lowercase `expected` API remains in `compile_time`: C++23 uses
 `std::expected`, while C++20 uses the bundled external `tl::expected`.
@@ -56,7 +56,7 @@ Compile-time computation and metaprogramming tools for advanced template program
 
 **Key Features**: Sequence sorting, dependency resolution, computation pipelines, zero runtime cost
 
-### 📋 [Arguments](arguments/README.md)
+### 📋 [Arguments](arguments/readme.md)
 Modern command-line argument parsing library with type safety and automatic help generation.
 
 **Key Features**: Type-safe parsing, multi-value support, custom type extensions, descriptive errors
@@ -64,9 +64,10 @@ Modern command-line argument parsing library with type safety and automatic help
 ### 🔧 [Reflection](reflection/README.md)
 Reflection system based on Clang LibTooling for code analysis and metadata generation.
 
-**Key Features**: Clang-based analysis, JSON metadata export, runtime type
-queries, and an experimental flat/indexed `reflection::ir::MetaUnit` with a
-bounded deterministic binary format
+**Key Features**: Clang-based analysis, runtime type queries, and a compact,
+flat/indexed `reflection::ir::MetaUnit` used as the parser-to-generator
+transport, with a bounded deterministic binary format. The legacy object AST
+remains only as a transitional template projection while consumers migrate.
 
 ### 🚀 [Subprogram](subprogram/README.md)
 Subprogram registration and management system for building modular applications.
@@ -80,6 +81,10 @@ timeout and stop-token support, plus allocation-free admission and budget ticket
 ### 🧠 [Memory](memory/README.md)
 Intrusive ownership and object pools, explicit `SharedBytes`, and PMR decorators
 for allocation counting, byte budgets, and deterministic allocation failure.
+
+### [Execution](execution/README.md)
+Optional C++20 `ManualContext` with a stdexec scheduler, a multi-producer queue,
+and a manually driven single consumer.
 
 
 ## Build Requirements

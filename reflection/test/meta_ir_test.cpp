@@ -92,6 +92,13 @@ int main()
     require(!bad_magic);
     require(bad_magic.error().code == ir::EMetaIrBinaryErrorCode::INVALID_MAGIC);
 
+    auto version_one = writer.data();
+    version_one[ir::kMetaIrMagic.size()] = std::byte{1};
+    const auto unsupported_version = ir::readMetaUnitBinary(version_one);
+    require(!unsupported_version);
+    require(unsupported_version.error().code
+        == ir::EMetaIrBinaryErrorCode::UNSUPPORTED_VERSION);
+
     for (std::size_t size = 0; size < writer.data().size(); ++size)
     {
         const auto truncated = ir::readMetaUnitBinary(

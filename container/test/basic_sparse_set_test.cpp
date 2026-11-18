@@ -254,9 +254,14 @@ void test_auto_slotkey_clear()
         set.insert(i);
 
     TEST_ASSERT(set.size() == 50);
+    const auto old_keys = set.keys();
     set.clear();
     TEST_ASSERT(set.empty());
-    TEST_ASSERT(set.free_ids_count() == 0);
+    TEST_ASSERT(set.free_ids_count() == 50);
+    for (int i = 0; i < 50; ++i)
+        set.insert(i);
+    for (const auto key : old_keys)
+        TEST_ASSERT(!set.contains(key));
 }
 
 void test_auto_slotkey_extract()

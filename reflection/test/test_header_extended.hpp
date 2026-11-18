@@ -155,6 +155,15 @@ struct LUX_META(marked) StaticFieldStruct
     static int get_count() { return static_count; }
 };
 
+template<typename Owner, typename Payload>
+struct TemplateIdentityProbe {};
+
+struct LUX_META(marked) AliasedStaticTemplateStruct
+{
+    using probe_type = TemplateIdentityProbe<AliasedStaticTemplateStruct, int>;
+    inline static const probe_type probe{};
+};
+
 // ============================================================
 // 11. Const field
 // ============================================================

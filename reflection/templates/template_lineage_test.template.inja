@@ -1,0 +1,46 @@
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
+
+namespace lux::cxx::reflection::test::generated
+{
+{%- for rec_idx in marked_record_decls -%}
+    {%- set rec = decl_from_index(rec_idx) -%}
+    {%- if rec.name == "LayoutConsumer" -%}
+    inline constexpr std::size_t static_count = {{ template_lineage_static_count(
+        rec.id,
+        "lux::cxx::reflection::test::Lineage",
+        1,
+        "lux::cxx::reflection::test::Slot"
+    ) }}u;
+    {%- for var_id in rec.static_var_decls -%}
+        {%- set var = decl_from_id(var_id) -%}
+        {%- if type_is_specialization(var.type_id, "lux::cxx::reflection::test::Slot") -%}
+    inline constexpr std::size_t local_index = {{ template_lineage_static_index(
+        rec.id,
+        var.id,
+        "lux::cxx::reflection::test::Lineage",
+        1,
+        "lux::cxx::reflection::test::Slot"
+    ) }}u;
+    inline constexpr std::string_view local_template =
+        "{{ type_template_name(var.type_id) }}";
+        {%- endif -%}
+    {%- endfor -%}
+    {%- set lineage = template_lineage_record_hashes(
+        rec.id,
+        "lux::cxx::reflection::test::Lineage",
+        1
+    ) -%}
+    inline constexpr std::array<std::uint64_t, {{ length(lineage) }}u>
+        lineage_hashes{
+        {%- for parent in lineage %}
+        {{ parent.hash }}ull,
+        {%- endfor %}
+    };
+    {%- endif -%}
+{%- endfor %}
+}

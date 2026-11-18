@@ -40,7 +40,7 @@ A C++ reflection system based on **libclang**, designed for game engines and oth
 ### Code Generation
 - **inja template engine**: Flexible template-based code generation
 - **Annotation-aware template callbacks**: Query annotation heads/keys/defaults directly in inja
-- **CMake integration**: `add_meta()` + `target_add_meta()` for seamless build system integration
+- **CMake integration**: parse jobs plus isolated multi-output projections
 - **Incremental builds**: Only regenerates when source headers change
 - **Customizable output**: Any file format via templates (`.meta.hpp`, `.meta.cpp`, `.json`, etc.)
 
@@ -114,18 +114,20 @@ for (auto* record : meta.markedRecordDecls()) {
 ```cmake
 include(meta.cmake)
 
-add_meta(
-    NAME       my_meta
-    GENERATOR  $<TARGET_FILE:lux_meta_generator>
-    MARKER     "marked"
-    TEMPLATE   "${CMAKE_CURRENT_SOURCE_DIR}/templates/my_template.inja"
-    OUT_DIR    "${CMAKE_BINARY_DIR}/generated"
-    META_SUFFIX ".meta.hpp"
-    TARGET_FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/components/transform.hpp"
+lux_add_codegen_job(
+    NAME          my_meta
+    MARKER        marked
+    TARGET_FILES  "${CMAKE_CURRENT_SOURCE_DIR}/components/transform.hpp"
+    LOGICAL_PATHS components/transform.hpp
 )
-
-target_add_meta(NAME my_meta TARGET my_game_engine)
+lux_codegen_add_projection(
+    JOB           my_meta
+    NAME          header
+    TEMPLATE      "${CMAKE_CURRENT_SOURCE_DIR}/templates/my_template.inja"
+    OUTPUT_ROOT   "${CMAKE_BINARY_DIR}/generated"
+    OUTPUT_SUFFIX .meta.hpp
+)
+lux_target_add_codegen(TARGET my_game_engine JOB my_meta)
 ```
 
 ## Documentation
@@ -134,7 +136,7 @@ target_add_meta(NAME my_meta TARGET my_game_engine)
 |----------|-------------|
 | [Parser Features](docs/parser.md) | Supported C++ features, annotations, member exclusion, template argument parsing |
 | [Code Generation](docs/codegen.md) | inja template system, template callbacks, generation workflow |
-| [CMake Integration](docs/cmake-integration.md) | `add_meta()`, `target_add_meta()`, build system setup |
+| [CMake Integration](docs/cmake-integration.md) | parse jobs, projections, transactional publication |
 | [JSON Schema Reference](docs/json-schema.md) | Complete reference for the JSON metadata format |
 
 ## Supported C++ Features

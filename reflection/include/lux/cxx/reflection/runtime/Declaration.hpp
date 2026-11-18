@@ -300,6 +300,8 @@ namespace lux::cxx::reflection {
         std::vector<size_t> static_method_decls;
         /// Indices of FieldDecl entries.
         std::vector<size_t> field_decls;
+        /// Indices of static data-member VarDecl entries.
+        std::vector<size_t> static_var_decls;
 
 		bool is_abstract = false; ///< True if this class is abstract (has pure virtual methods).
 
@@ -472,6 +474,16 @@ namespace lux::cxx::reflection {
         static constexpr bool classof(EDeclKind k) noexcept
         {
             return k == EDeclKind::VAR_DECL || k == EDeclKind::PARAM_VAR_DECL;
+        }
+
+        EVisibility visibility = EVisibility::INVALID;
+        /// Index of the owning CXXRecordDecl for static data members.
+        size_t parent_class = INVALID_DECL_INDEX;
+        bool is_static_data_member = false;
+
+        void accept(DeclVisitor* visitor) override
+        {
+            visitor->visit(this);
         }
     };
 

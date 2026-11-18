@@ -3,6 +3,13 @@ set(REFLECTION_PUBLIC_DIR ${PARENT_DIR}/include)
 
 include_component_cmake_scripts(reflection_generator)
 
+add_executable(compile_environment_test compile_environment_test.cpp)
+target_link_libraries(compile_environment_test PRIVATE
+    lux::cxx::reflection_generator lux::cxx::reflection_parser lux::cxx::nlohmann_json)
+add_test(NAME compile_environment_test
+    COMMAND compile_environment_test "${CMAKE_CURRENT_BINARY_DIR}/compile-environment-fixture")
+set_tests_properties(compile_environment_test PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/..")
+
 add_executable(
 	meta_parse_test
 	${CMAKE_CURRENT_SOURCE_DIR}/meta_parse_test.cpp
@@ -101,17 +108,9 @@ target_link_libraries(
 )
 
 message(STATUS "REFLECTION_BINARY_DIR: ${REFLECTION_BINARY_DIR}")
-find_program(
-	LUX_GENERATOR
-	lux_meta_generator
-	PATHS ${REFLECTION_BINARY_DIR}
-	NO_CACHE
-	NO_DEFAULT_PATH
-	NO_CMAKE_INSTALL_PREFIX
-	NO_PACKAGE_ROOT_PATH
-	NO_CMAKE_PATH
-)
-if(LUX_GENERATOR)
+if(TARGET lux_meta_generator)
+    # The build dependency, not a leftover executable, controls fresh-tree test registration.
+    set(LUX_GENERATOR "$<TARGET_FILE:lux_meta_generator>")
 	add_executable(
 		generator_test
 		${CMAKE_CURRENT_SOURCE_DIR}/generator_test.cpp
@@ -127,56 +126,104 @@ if(LUX_GENERATOR)
 		generator_test
 		PROPERTIES WORKING_DIRECTORY ${REFLECTION_BINARY_DIR}
 	)
+	set(codegen_input "${CMAKE_CURRENT_BINARY_DIR}/projection-input.json")
+	file(GENERATE OUTPUT "${codegen_input}" CONTENT "{\"value\":73}\n")
 
-	add_meta(
-		NAME			test_meta
-		GENERATOR		${LUX_GENERATOR}
-		OUT_DIR			${CMAKE_BINARY_DIR}/metagen
-		META_SUFFIX     "meta.hpp"
-		MARKER          "marked"
-		META_GENERATOR  ${GENERATOR}
-		TEMPLATE		${TEST_TEMPLATE_DIR}/test_meta.template.inja
-		TARGET_FILES	${CMAKE_CURRENT_SOURCE_DIR}/test_header.hpp
-		JSON_FIELD		"{\"foo\":123,\"bar\":[1,2,3]}"
-						"{\"foo2\":345,\"bar2\":[456]}"
-		ECHO
+	lux_add_codegen_job(
+		NAME          test_meta_job
+		GENERATOR     ${LUX_GENERATOR}
+		MARKER        marked
+		SOURCE_FILE   ${CMAKE_CURRENT_SOURCE_DIR}/generator_test.cpp
+		TARGET_FILES  ${CMAKE_CURRENT_SOURCE_DIR}/test_header.hpp
+		LOGICAL_PATHS test_header.hpp
 	)
-
-	add_meta(
-		NAME			test_annotation_meta
-		GENERATOR		${LUX_GENERATOR}
-		OUT_DIR			${CMAKE_BINARY_DIR}/metagen
-		META_SUFFIX     "anno.hpp"
-		MARKER          "marked"
-		META_GENERATOR  ${GENERATOR}
-		TEMPLATE		${TEST_TEMPLATE_DIR}/annotation_callbacks_test.template.inja
-		TARGET_FILES	${CMAKE_CURRENT_SOURCE_DIR}/test_annotation_callbacks.hpp
-		ECHO
+	lux_codegen_add_projection(
+		JOB           test_meta_job
+		NAME          static_meta
+		TEMPLATE      ${TEST_TEMPLATE_DIR}/test_meta.template.inja
+		OUTPUT_ROOT   ${CMAKE_BINARY_DIR}/metagen
+		OUTPUT_SUFFIX .meta.hpp
+		JSON_FIELD    "{\n  \"foo\":123,\n  \"bar\":[1,2,3]\n}"
+		JSON_FILE     "external_data=${codegen_input}"
 	)
-
-	target_add_meta(
-		TARGET			generator_test
-		NAME			test_meta
-		ALWAYS_REGENERATE
+	# The second projection intentionally reuses the same parse and IR.
+	lux_codegen_add_projection(
+		JOB           test_meta_job
+		NAME          mirror_meta
+		TEMPLATE      ${TEST_TEMPLATE_DIR}/test_meta.template.inja
+		OUTPUT_ROOT   ${CMAKE_BINARY_DIR}/metagen
+		OUTPUT_SUFFIX .mirror.hpp
+	)
+	lux_target_add_codegen(
+		TARGET generator_test
+		JOB test_meta_job
 		DONT_ADD_TO_SOURCE
-		ECHO
 	)
 
-	target_add_meta(
-		TARGET			generator_test
-		NAME			test_annotation_meta
-		ALWAYS_REGENERATE
+	lux_add_codegen_job(
+		NAME          test_annotation_job
+		GENERATOR     ${LUX_GENERATOR}
+		MARKER        marked
+		SOURCE_FILE   ${CMAKE_CURRENT_SOURCE_DIR}/generator_test.cpp
+		TARGET_FILES  ${CMAKE_CURRENT_SOURCE_DIR}/test_annotation_callbacks.hpp
+		LOGICAL_PATHS test_annotation_callbacks.hpp
+	)
+	lux_codegen_add_projection(
+		JOB           test_annotation_job
+		NAME          annotation
+		TEMPLATE      ${TEST_TEMPLATE_DIR}/annotation_callbacks_test.template.inja
+		OUTPUT_ROOT   ${CMAKE_BINARY_DIR}/metagen
+		OUTPUT_SUFFIX .anno.hpp
+	)
+	lux_codegen_add_validation(
+		JOB           test_annotation_job
+		NAME          annotation_semantics
+		TEMPLATE      ${TEST_TEMPLATE_DIR}/annotation_callbacks_test.validation.inja
+	)
+	lux_target_add_codegen(
+		TARGET generator_test
+		JOB test_annotation_job
 		DONT_ADD_TO_SOURCE
-		ECHO
+	)
+	add_test(
+		NAME generator_validation_failure
+		COMMAND ${CMAKE_COMMAND}
+			-DGENERATOR=${LUX_GENERATOR}
+			-DCONFIG=${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/test_annotation_job.json
+			-DPASS_TEMPLATE=${TEST_TEMPLATE_DIR}/annotation_callbacks_test.validation.inja
+			-DFAIL_TEMPLATE=${TEST_TEMPLATE_DIR}/validation_failure_test.validation.inja
+			-DPUBLISHED_OUTPUT=${CMAKE_BINARY_DIR}/metagen/test_annotation_callbacks.anno.hpp
+			-DTEST_CONFIG=${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/test_annotation_failure.json
+			-P ${CMAKE_CURRENT_SOURCE_DIR}/generator_validation_failure_test.cmake
 	)
 
-	add_dependencies(
-		test_meta_gen
-		lux_meta_generator
+	lux_add_codegen_job(
+		NAME          test_lineage_job
+		GENERATOR     ${LUX_GENERATOR}
+		MARKER        marked
+		SOURCE_FILE   ${CMAKE_CURRENT_SOURCE_DIR}/generator_test.cpp
+		TARGET_FILES  ${CMAKE_CURRENT_SOURCE_DIR}/template_layout_consumer.hpp
+		LOGICAL_PATHS template_layout_consumer.hpp
+	)
+	lux_codegen_add_projection(
+		JOB           test_lineage_job
+		NAME          lineage
+		TEMPLATE      ${TEST_TEMPLATE_DIR}/template_lineage_test.template.inja
+		OUTPUT_ROOT   ${CMAKE_BINARY_DIR}/metagen
+		OUTPUT_SUFFIX .lineage.hpp
+	)
+	lux_target_add_codegen(
+		TARGET generator_test
+		JOB test_lineage_job
+		DONT_ADD_TO_SOURCE
 	)
 
-	add_dependencies(
-		test_annotation_meta_gen
-		lux_meta_generator
-	)
+	add_dependencies(test_meta_job_generate lux_meta_generator)
+	add_dependencies(test_annotation_job_generate lux_meta_generator)
+	add_dependencies(test_lineage_job_generate lux_meta_generator)
 endif()
+
+add_executable(array_type_test array_type_test.cpp)
+target_link_libraries(array_type_test PRIVATE lux::cxx::reflection_parser)
+add_test(NAME array_type_test COMMAND array_type_test "${CMAKE_CURRENT_BINARY_DIR}/array-type-fixture.hpp")
+set_tests_properties(array_type_test PROPERTIES WORKING_DIRECTORY "${REFLECTION_BINARY_DIR}")

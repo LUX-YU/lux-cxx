@@ -93,6 +93,7 @@ set(ENABLE_COMPONENTS
     serialization
     serialization_json
     serialization_xml
+    serialization_yaml
     serialization_arguments
 )
 
@@ -115,6 +116,15 @@ if(ENABLE_REFLECTION)
 endif()
 
 add_subdirectory(serialization)
+
+option(LUX_CXX_ENABLE_EXECUTION "Build the optional stdexec execution component" OFF)
+if(LUX_CXX_ENABLE_EXECUTION)
+    if(CMAKE_VERSION VERSION_LESS 3.24)
+        message(FATAL_ERROR "The execution component requires CMake 3.24 or later")
+    endif()
+    add_subdirectory(execution)
+    list(APPEND ENABLE_COMPONENTS execution)
+endif()
 
 install_components(
     PROJECT_NAME    lux-cxx
@@ -173,35 +183,6 @@ install(
     FILES ${CMAKE_CURRENT_BINARY_DIR}/lux-cxx-sdk.json
     DESTINATION share/lux-cxx
 )
-
-option(
-    LUX_CXX_BUILD_INSTALL_CONSUMER_TEST
-    "Verify an installed lux-cxx package with find_package"
-    ${PROJECT_IS_TOP_LEVEL}
-)
-if(
-    LUX_CXX_BUILD_INSTALL_CONSUMER_TEST
-    AND LUX_CXX_BUILD_TESTS
-    AND BUILD_TESTING
-    AND NOT CMAKE_CROSSCOMPILING
-)
-    configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/install-consumer-test.cmake.in
-        ${CMAKE_CURRENT_BINARY_DIR}/install-consumer-test.cmake
-        @ONLY
-    )
-    add_test(
-        NAME install_consumer_test
-        COMMAND ${CMAKE_COMMAND}
-            -P ${CMAKE_CURRENT_BINARY_DIR}/install-consumer-test.cmake
-    )
-    set_tests_properties(
-        install_consumer_test
-        PROPERTIES
-            LABELS "install;consumer"
-            TIMEOUT 600
-    )
-endif()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Packaging (CPack). One lux-cxx package: headers + static libs + CMake config

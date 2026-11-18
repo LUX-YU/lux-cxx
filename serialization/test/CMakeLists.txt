@@ -1,7 +1,7 @@
 # Serialization codegen test.
 #
 # Generating meta_info<T> requires the reflection generator toolchain
-# (lux_meta_generator + add_meta/target_add_meta). When ENABLE_REFLECTION is OFF
+# (lux_meta_generator + multi-projection CMake API). When ENABLE_REFLECTION is OFF
 # those are unavailable, so the codegen test is skipped.
 if(NOT TARGET lux_meta_generator OR NOT TARGET lux::cxx::reflection_generator)
     message(STATUS "[serialization/test] reflection generator toolchain unavailable "
@@ -9,7 +9,7 @@ if(NOT TARGET lux_meta_generator OR NOT TARGET lux::cxx::reflection_generator)
     return()
 endif()
 
-# Bring add_meta()/target_add_meta() and lux_target_add_serialization() into scope.
+# Bring the projection API and lux_target_add_serialization() into scope.
 include_component_cmake_scripts(reflection_generator)
 include_component_cmake_scripts(serialization)
 
@@ -67,6 +67,24 @@ lux_target_add_serialization(
     ALWAYS_REGENERATE
 )
 
+#[[==========================  YAML backend round-trip  =========================]]
+add_executable(yaml_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/yaml_test.cpp
+)
+
+target_link_libraries(yaml_test
+    PRIVATE
+        lux::cxx::serialization_yaml
+        lux::cxx::reflection_runtime
+)
+
+lux_target_add_serialization(
+    TARGET    yaml_test
+    HEADERS   ${CMAKE_CURRENT_SOURCE_DIR}/yaml_types.hpp
+    GENERATOR $<TARGET_FILE:lux_meta_generator>
+    ALWAYS_REGENERATE
+)
+
 #[[=================  External (non-intrusive) JSON round-trip  ==================]]
 add_executable(external_json_test
     ${CMAKE_CURRENT_SOURCE_DIR}/external_json_test.cpp
@@ -103,6 +121,24 @@ lux_target_add_serialization(
     ALWAYS_REGENERATE
 )
 
+#[[==================  External (non-intrusive) YAML round-trip  =================]]
+add_executable(external_yaml_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/external_yaml_test.cpp
+)
+
+target_link_libraries(external_yaml_test
+    PRIVATE
+        lux::cxx::serialization_yaml
+        lux::cxx::reflection_runtime
+)
+
+lux_target_add_serialization(
+    TARGET    external_yaml_test
+    HEADERS   ${CMAKE_CURRENT_SOURCE_DIR}/ext_yaml_register.hpp
+    GENERATOR $<TARGET_FILE:lux_meta_generator>
+    ALWAYS_REGENERATE
+)
+
 #[[========================  Arguments backend (CLI <-> struct)  ==================]]
 add_executable(serialization_arguments_test
     ${CMAKE_CURRENT_SOURCE_DIR}/arguments_test.cpp
@@ -125,8 +161,10 @@ foreach(_serialization_test
     serialization_test
     json_test
     xml_test
+    yaml_test
     external_json_test
     external_xml_test
+    external_yaml_test
     serialization_arguments_test
 )
     add_test(NAME ${_serialization_test} COMMAND ${_serialization_test})

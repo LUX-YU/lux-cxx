@@ -46,7 +46,7 @@ int main(int argc, char* argv[])
         }
     );
 
-    auto [rst, meta] = parser.parse(target_file.string());
+    auto [rst, meta] = parser.parseLegacy(target_file.string());
     if (rst != EParseResult::SUCCESS)
     {
         std::cerr << "Parse failed!" << std::endl;
@@ -234,21 +234,48 @@ int main(int argc, char* argv[])
         check(found, "ConversionClass found");
     }
 
-    // 10. Static field (note: static fields are typically not parsed as FieldDecl)
+    // 10. Static data member
     {
         bool found = false;
         for (auto* r : records) {
             if (r->full_qualified_name == "StaticFieldStruct") {
                 found = true;
-                // instance_val should be the field, static_count may not appear
-                std::cout << "  StaticFieldStruct fields: " << r->field_decls.size() << std::endl;
+                check(r->field_decls.size() == 1, "StaticFieldStruct has one instance field");
+                check(r->static_var_decls.size() == 1, "StaticFieldStruct has one static data member");
                 for (auto fidx : r->field_decls) {
                     auto* f = meta.getDeclAs<FieldDecl>(fidx);
                     if (f) std::cout << "    field: " << f->spelling << std::endl;
                 }
+                if (r->static_var_decls.size() == 1) {
+                    auto* var = meta.getDeclAs<VarDecl>(r->static_var_decls[0]);
+                    check(var && var->spelling == "static_count", "static_count spelling preserved");
+                    check(var && var->is_static_data_member, "static_count classified as static data member");
+                    check(var && var->parent_class == r->index, "static_count owner back-patched");
+                }
             }
         }
         check(found, "StaticFieldStruct found");
+    }
+
+    // Canonical template identity is independent of a source alias and cv.
+    {
+        bool found = false;
+        for (auto* r : records) {
+            if (r->full_qualified_name == "AliasedStaticTemplateStruct") {
+                found = true;
+                check(r->static_var_decls.size() == 1,
+                      "AliasedStaticTemplateStruct has one static member");
+                if (!r->static_var_decls.empty()) {
+                    auto* var = meta.getDeclAs<VarDecl>(r->static_var_decls.front());
+                    auto* type = var ? dynamic_cast<RecordType*>(var->type) : nullptr;
+                    check(type && type->template_name == "TemplateIdentityProbe",
+                          "static alias resolves to canonical template primary");
+                    check(type && type->template_arguments.size() == 2,
+                          "static alias preserves template arguments");
+                }
+            }
+        }
+        check(found, "AliasedStaticTemplateStruct found");
     }
 
     // 11. Const fields

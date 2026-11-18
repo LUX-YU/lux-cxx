@@ -155,6 +155,33 @@ component_add_internal_dependencies(
 target_include_directories(serialization_xml PRIVATE
     ${PROJECT_SOURCE_DIR}/third_party/tinyxml2/include)
 
+# YAML backend. rapidyaml's official single-header amalgamation is compiled in
+# yaml.cpp, while yaml.hpp contains only opaque lux archive/document handles.
+# The PRIVATE include keeps every rapidyaml type and build detail out of the
+# installed component interface.
+add_component(
+    COMPONENT_NAME serialization_yaml
+    NAMESPACE      lux::cxx
+    STATIC
+    SOURCE_FILES   ${CMAKE_CURRENT_SOURCE_DIR}/src/yaml.cpp
+)
+
+component_include_directories(
+    serialization_yaml
+    BUILD_TIME_EXPORT
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    INSTALL_TIME
+        include
+)
+
+component_add_internal_dependencies(
+    serialization_yaml
+        lux::cxx::serialization
+)
+
+target_include_directories(serialization_yaml PRIVATE
+    ${PROJECT_SOURCE_DIR}/third_party/rapidyaml/include)
+
 # Arguments backend — header-only; depends on the project's own arguments module
 # (no third-party type to hide), so it stays an INTERFACE component.
 add_interface_component(

@@ -108,10 +108,13 @@ namespace lux::cxx::reflection
 				auto* child = _meta_unit_data->declarations[child_idx].get();
 				if (auto* f = decl_cast<FieldDecl>(child))
 					f->parent_class = own_index;
+				else if (auto* v = decl_cast<VarDecl>(child))
+					v->parent_class = own_index;
 				else if (auto* m = decl_cast<CXXMethodDecl>(child))
 					m->parent_class = own_index;
 			};
 			for (auto idx : cxxr->field_decls)        back_patch(idx);
+			for (auto idx : cxxr->static_var_decls)   back_patch(idx);
 			for (auto idx : cxxr->method_decls)       back_patch(idx);
 			for (auto idx : cxxr->static_method_decls) back_patch(idx);
 			for (auto idx : cxxr->constructor_decls)  back_patch(idx);
@@ -345,7 +348,7 @@ namespace lux::cxx::reflection
 
 	CxxParserImpl::~CxxParserImpl() = default;
 
-	ParseResult CxxParserImpl::parse(std::string_view file)
+	LegacyParseResult CxxParserImpl::parse(std::string_view file)
 	{
 		auto translate_unit = translate(file, _options.commands);
 		if (!translate_unit.isValid())
@@ -361,6 +364,36 @@ namespace lux::cxx::reflection
 		}
 
 		const Cursor cursor(translate_unit);
+		if (translate_unit.hasErrors())
+			return {EParseResult::FAILED, MetaUnit{}};
+		if (_options.on_included_file)
+		{
+			struct InclusionVisit final
+			{
+				const ParseOptions* options{};
+				bool failed{};
+			} visit{&_options};
+			clang_getInclusions(translate_unit.get(), [](CXFile included, CXSourceLocation*, unsigned, CXClientData data)
+			{
+				auto& current = *static_cast<InclusionVisit*>(data);
+				const auto name = clang_getFileName(included);
+				try
+				{
+					if (const auto* text = clang_getCString(name); text != nullptr)
+						current.options->on_included_file(text);
+				}
+				catch (...)
+				{
+					current.failed = true;
+				}
+				clang_disposeString(name);
+			}, &visit);
+			if (visit.failed)
+			{
+				if (_callback) _callback("Failed to collect translation-unit dependencies");
+				return {EParseResult::FAILED, MetaUnit{}};
+			}
+		}
 		const auto marked_cursors = findMarkedCursors(cursor);
 
 		// set global parse context
@@ -680,22 +713,31 @@ namespace lux::cxx::reflection
 		const int num_template_args = clang_type.canonicalType().getNumTemplateArguments();
 		if (num_template_args > 0)
 		{
-			// Extract template name by stripping "<...>" from the type spelling
-			const auto& type_name = type.name;
-			auto angle_pos = type_name.find('<');
-			if (angle_pos != std::string::npos)
+			// The template primary is a semantic query key, so it must come from
+			// the canonical spelling rather than a source alias such as
+			// `signal_type<int>`. Preserve cv-qualification on Type itself, not in
+			// the primary name.
+			const auto& canonical_name = type.id;
+			const auto  angle_pos = canonical_name.find('<');
+			auto primary = std::string(lux::cxx::algorithm::trim(
+				angle_pos == std::string::npos
+					? std::string_view{canonical_name}
+					: std::string_view{canonical_name}.substr(0, angle_pos)));
+			for (;;)
 			{
-				type.template_name = type_name.substr(0, angle_pos);
+				if (primary.starts_with("const "))
+				{
+					primary.erase(0, 6);
+					continue;
+				}
+				if (primary.starts_with("volatile "))
+				{
+					primary.erase(0, 9);
+					continue;
+				}
+				break;
 			}
-			else
-			{
-				// Canonical name might have the angle brackets
-				const auto& canonical_name = type.id;
-				auto cangle_pos = canonical_name.find('<');
-				type.template_name = (cangle_pos != std::string::npos)
-					? canonical_name.substr(0, cangle_pos)
-					: type_name;
-			}
+			type.template_name = std::move(primary);
 
 			const auto canonical_type = clang_type.canonicalType();
 			for (int i = 0; i < num_template_args; i++)
@@ -708,6 +750,7 @@ namespace lux::cxx::reflection
 					targ.kind = TemplateArgument::Kind::Type;
 					targ.type = createOrFindType(arg_type);
 					targ.spelling = arg_type.typeSpelling().to_std();
+					hydrateMarkedRecordTemplateArgument(arg_type);
 				}
 				else
 				{
@@ -774,6 +817,45 @@ namespace lux::cxx::reflection
 				type.template_arguments.push_back(std::move(targ));
 			}
 		}
+	}
+
+	void CxxParserImpl::hydrateMarkedRecordTemplateArgument(
+		const ClangType& clang_type)
+	{
+		const auto canonical = clang_type.canonicalType();
+		if (canonical.kind() != CXType_Record)
+			return;
+
+		Cursor target = Cursor::declOfType(canonical);
+		if (!target.isValid())
+			return;
+
+		const auto definition = target.getDefinition();
+		if (definition.isValid())
+			target = definition;
+
+		const auto target_id = target.USR().to_std();
+		if (target_id.empty()
+			|| hasDeclaration(target_id)
+			|| _active_record_declarations.contains(target_id))
+		{
+			return;
+		}
+
+		const auto annotations = parseAnnotations(target);
+		const bool is_marked = std::ranges::any_of(
+			annotations,
+			[this](const std::string& annotation)
+			{
+				return annotation.find(_options.marker_symbol) != std::string::npos;
+			}
+		);
+		if (!is_marked)
+			return;
+
+		auto dependency = std::make_unique<CXXRecordDecl>();
+		parseCXXRecordDecl(target, *dependency);
+		registerDeclaration(std::move(dependency), false);
 	}
 
 	void CxxParserImpl::parseEnumType(const ClangType& clang_type, EnumType& type)
@@ -938,6 +1020,15 @@ namespace lux::cxx::reflection
 			r_reference_type->kind = ETypeKinds::RvalueReference;
 			return registerType(std::move(r_reference_type));
 		}
+        case CXType_ConstantArray:
+        {
+            auto array_type = std::make_unique<ArrayType>();
+            parseBasicType(clang_type, *array_type);
+            array_type->kind = ETypeKinds::Array;
+            array_type->element_type = createOrFindType(canonical_type.getArrayElementType());
+            array_type->array_size = canonical_type.getArraySize();
+            return registerType(std::move(array_type));
+        }
 		case CXType_Record:
 		{
 			auto record_type = std::make_unique<RecordType>();
@@ -959,7 +1050,6 @@ namespace lux::cxx::reflection
 		// case CXType_ObjCObjectPointer:
 		// case CXType_FunctionNoProto:
 		case CXType_FunctionProto:
-		// case CXType_ConstantArray:
 		// case CXType_Vector:
 		// case CXType_VariableArray:
 		// case CXType_DependentSizedArray:
