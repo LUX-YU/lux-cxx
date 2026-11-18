@@ -1,539 +1,144 @@
-# Arguments Module
+# Arguments
 
-Modern, header-only command-line argument parser for C++20/23.
+The `lux::cxx::arguments` component parses command-line options and structured values in C++20. In the source tree, link the header-only target directly. When consuming an installed SDK, request the `arguments` component first.
 
-## Overview
+```cmake
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS arguments)
+target_link_libraries(my_app PRIVATE lux::cxx::arguments)
+```
 
-The Arguments module provides a type-safe, easy-to-use command-line argument parsing library. It supports automatic type conversion, multi-value options, boolean flags, and generates formatted help text automatically.
+## Parse into an owning result
 
-## Features
-
-- **Type Safety**: Automatic type conversion with compile-time validation
-- **Modern C++**: Uses C++20 concepts and templates for clean APIs
-- **Header-Only**: No compilation required, just include and use
-- **Multi-Value Support**: Handle arrays, vectors, and other containers
-- **Boolean Flags**: Smart boolean handling with multiple formats
-- **Auto Help**: Generates formatted help text automatically
-- **Error Handling**: Descriptive error messages with suggestions
-- **Extensible**: Easy to add custom type parsers
-
-## Quick Start
+Declare options with `args::Option<T, "long-name", "s">`. The short name is optional and must be a single character. Check the result before reading its values. `get<"name">()` returns a reference to the option's `std::optional<T>`, and `supplied<"name">()` tells you whether the input supplied the option explicitly.
 
 ```cpp
-#include <lux/cxx/arguments/Arguments.hpp>
-#include <vector>
+#include <lux/cxx/arguments/Help.hpp>
+#include <lux/cxx/arguments/TypedOptions.hpp>
 #include <iostream>
 
-int main(int argc, char* argv[]) {
-    using namespace lux::cxx;
+namespace args = lux::cxx::args;
 
-    try {
-        Parser parser("myapp", "A sample application demonstrating argument parsing");
+int main(int argc, char** argv)
+{
+    constexpr auto port = args::Option<int, "port", "p">{}
+        .def(8080)
+        .check(args::inRange(1, 65535))
+        .desc("TCP port");
 
-        // Define options
-        auto port = parser.add<int>("port", "p")
-            .desc("TCP port to listen on")
-            .def(8080)
-            .required();
+    constexpr auto verbose = args::Option<bool, "verbose", "v">{}
+        .def(false)
+        .desc("Enable verbose logging");
 
-        auto files = parser.add<std::vector<std::string>>("file", "f")
-            .desc("Input files to process")
-            .multi();
-
-        auto verbose = parser.add<bool>("verbose", "v")
-            .desc("Enable verbose logging");
-
-        auto output = parser.add<std::string>("output", "o")
-            .desc("Output file")
-            .def("output.txt");
-
-        // Parse arguments
-        auto opts = parser.parse(argc, argv);
-
-        // Access parsed values
-        int port_num = opts.get("port").as<int>();
-        bool is_verbose = opts.get("verbose");  // Implicit conversion to bool
-        auto input_files = opts.get("file").as<std::vector<std::string>>();
-        std::string output_file = opts.get("output").as<std::string>();
-
-        // Use the values
-        std::cout << "Port: " << port_num << std::endl;
-        std::cout << "Verbose: " << (is_verbose ? "yes" : "no") << std::endl;
-        std::cout << "Output: " << output_file << std::endl;
-        
-        std::cout << "Input files (" << input_files.size() << "):" << std::endl;
-        for (const auto& file : input_files) {
-            std::cout << "  - " << file << std::endl;
+    const auto result = args::parse(argc, argv, port, verbose);
+    if (!result)
+    {
+        if (result.error().code == args::EErrorCode::HELP_REQUESTED)
+        {
+            std::cout << args::usage(argv[0], port, verbose);
+            return 0;
         }
-
-    } catch (const lux::cxx::parse_error& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << args::describe(result.error(), port, verbose) << '\n';
         return 1;
     }
 
-    return 0;
+    std::cout << "port=" << *result.get<"port">()
+              << " verbose=" << *result.get<"verbose">() << '\n';
 }
 ```
 
-## Command-Line Conventions
+`parse(argc, argv, ...)` skips `argv[0]`. `parse(text, ...)` takes option text beginning with the first option. `parse(span, ...)` takes a `std::span<const std::string_view>` of already separated tokens and reads every element. The text lexer handles quoting and escapes. With `argv` or a span, the caller has already split the input.
 
-The parser supports standard command-line conventions:
+Common forms include `--port 8080`, `--port=8080`, `-p8080` and `port=8080`. Boolean options accept `--verbose`, `--no-verbose` and `--verbose=false`. Short boolean flags can be grouped, as in `-abc`. Use `.positional()` to declare a positional option and `--` to end option processing. `-h` and `--help` are reserved.
 
-### Option Formats
+Use `args::Option<int>{"port", "p"}` when the name is determined at runtime. Read it with `result.get<int>("port", &port)`, which returns an `args::EReadStatus`. Use `get<"name">(&value)` to copy a compile-time named value and `take<"name">(&value)` to move it out of a mutable result.
 
-| Format | Example | Description |
-|--------|---------|-------------|
-| Long option | `--port 8080` | Standard long form |
-| Short option | `-p 8080` | Single character shorthand |
-| Inline value | `--port=8080` | Equals syntax |
-| Concatenated | `-p8080` | No space for short options |
-| Boolean flag | `--verbose` | Presence implies true |
-| Boolean values | `--debug=yes`, `--debug=1` | Explicit boolean values |
+## Bind directly to output objects
 
-### Multi-Value Options
-
-```bash
-# Multiple separate options
-myapp --file input1.txt --file input2.txt --file input3.txt
-
-# Space-separated values  
-myapp --file input1.txt input2.txt input3.txt
-
-# Mixed usage
-myapp --file input1.txt --verbose --file input2.txt input3.txt
-```
-
-### Boolean Handling
-
-```bash
-# Flag presence (default behavior)
-myapp --verbose              # verbose = true
-myapp                        # verbose = false
-
-# Explicit values
-myapp --verbose=true         # verbose = true
-myapp --verbose=false        # verbose = false
-myapp --verbose=yes          # verbose = true
-myapp --verbose=no           # verbose = false
-myapp --verbose=1            # verbose = true
-myapp --verbose=0            # verbose = false
-```
-
-## Detailed API
-
-### Parser Class
+Use `bind` with `parseInto` to write values into existing objects. An absent option leaves its destination alone unless its descriptor supplies a default. A returned `Error` converts to `true` on failure. Direct binding can leave destinations partially updated on error. Use an owning result if the application needs to validate all input before committing changes.
 
 ```cpp
-class Parser {
-public:
-    // Constructor
-    Parser(const std::string& program_name, 
-           const std::string& description = "");
+#include <lux/cxx/arguments/DirectBinding.hpp>
+#include <string>
 
-    // Add option
-    template<typename T>
-    OptionBuilder<T> add(const std::string& long_name, 
-                        const std::string& short_name = "");
+namespace args = lux::cxx::args;
 
-    // Parse arguments
-    ParseResult parse(int argc, char* argv[]);
-    ParseResult parse(const std::vector<std::string>& args);
-};
-```
+bool configure(int& port, std::string& label)
+{
+    constexpr auto port_option = args::Option<int, "port">{}.required();
+    constexpr auto label_option = args::Option<std::string, "label">{};
 
-### OptionBuilder Class
-
-Fluent interface for configuring options:
-
-```cpp
-template<typename T>
-class OptionBuilder {
-public:
-    // Set description
-    OptionBuilder& desc(const std::string& description);
-    
-    // Set default value
-    OptionBuilder& def(const T& default_value);
-    
-    // Mark as required
-    OptionBuilder& required(bool is_required = true);
-    
-    // Enable multi-value mode
-    OptionBuilder& multi(bool is_multi = true);
-    
-    // Set help category
-    OptionBuilder& category(const std::string& category);
-};
-```
-
-### ParseResult Class
-
-Container for parsed values:
-
-```cpp
-class ParseResult {
-public:
-    // Get option value
-    template<typename T>
-    T get(const std::string& name).as<T>();
-    
-    // Implicit conversion for common types
-    bool get(const std::string& name);  // For bool options
-    
-    // Check if option was provided
-    bool has(const std::string& name) const;
-    
-    // Get all provided option names
-    std::vector<std::string> provided_options() const;
-};
-```
-
-## Type System
-
-### Supported Types
-
-The parser automatically supports these types:
-
-- **Integral**: `int`, `long`, `size_t`, `uint32_t`, etc.
-- **Floating**: `float`, `double`, `long double`
-- **String**: `std::string`, `std::string_view`
-- **Boolean**: `bool` with smart parsing
-- **Containers**: `std::vector<T>`, `std::list<T>`, `std::set<T>`, etc.
-- **Optional**: `std::optional<T>`
-- **Filesystem**: `std::filesystem::path`
-
-### Custom Type Support
-
-Extend the parser with custom types by specializing `value_parser`:
-
-```cpp
-// Custom type
-struct Point {
-    float x, y;
-    Point(float x = 0, float y = 0) : x(x), y(y) {}
-};
-
-// Specialize parser
-template<>
-struct lux::cxx::value_parser<Point> {
-    static Point parse(std::string_view s) {
-        // Parse format "x,y"
-        auto comma = s.find(',');
-        if (comma == std::string_view::npos) {
-            throw parse_error("Point format should be 'x,y'");
-        }
-        
-        float x = value_parser<float>::parse(s.substr(0, comma));
-        float y = value_parser<float>::parse(s.substr(comma + 1));
-        
-        return Point{x, y};
-    }
-};
-
-// Usage
-auto position = parser.add<Point>("pos", "p")
-    .desc("Position as x,y coordinates")
-    .def(Point{0, 0});
-```
-
-### Container Support
-
-Containers with `push_back()` or `insert()` methods are automatically supported:
-
-```cpp
-// Vector of integers
-auto numbers = parser.add<std::vector<int>>("number", "n")
-    .desc("List of numbers")
-    .multi();
-
-// Set of strings (duplicates removed)
-auto unique_tags = parser.add<std::set<std::string>>("tag", "t")
-    .desc("Unique tags")
-    .multi();
-
-// Usage: myapp --number 1 2 3 --tag dev --tag prod --tag dev
-// Result: numbers = [1, 2, 3], unique_tags = {"dev", "prod"}
-```
-
-## Advanced Features
-
-### Option Categories
-
-Organize options in help output:
-
-```cpp
-Parser parser("myapp");
-
-// Network options
-parser.add<int>("port", "p").desc("Listen port").category("Network");
-parser.add<std::string>("host").desc("Host address").category("Network");
-
-// Logging options  
-parser.add<bool>("verbose", "v").desc("Verbose output").category("Logging");
-parser.add<std::string>("log-file").desc("Log file path").category("Logging");
-
-// Will generate categorized help:
-// Network Options:
-//   -p, --port        Listen port
-//   --host            Host address
-//
-// Logging Options:
-//   -v, --verbose     Verbose output
-//   --log-file        Log file path
-```
-
-### Conditional Options
-
-```cpp
-auto config_file = parser.add<std::string>("config", "c")
-    .desc("Configuration file path");
-
-auto inline_config = parser.add<std::string>("set")
-    .desc("Inline configuration key=value")
-    .multi();
-
-// Custom validation
-auto opts = parser.parse(argc, argv);
-if (!opts.has("config") && !opts.has("set")) {
-    throw parse_error("Either --config or --set must be provided");
+    const auto error = args::parseInto(
+        R"(port=8080 label="Development server")",
+        args::bind(port_option, port),
+        args::bind(label_option, label)
+    );
+    return !error;
 }
 ```
 
-### Environment Variable Integration
+For repeated parsing, pass a `Workspace` to `parseFrom` or `parseIntoFrom` along with a source. Use `TextSource` for ordinary text and `StructuredTextSource` for text containing bracketed values. Each concurrent call needs its own source, workspace and writable destinations. Input views must refer to storage that stays valid for the call and does not overlap mutable outputs.
+
+## Containers and structured values
+
+By default a container option reads one complete value. Include `StructuredValue.hpp` for bracketed values, or `ContainerTraits.hpp` for plain `.multi()` options.
 
 ```cpp
-// Not built-in, but easy to implement:
-std::string get_option_or_env(const ParseResult& opts, 
-                             const std::string& option_name,
-                             const std::string& env_name,
-                             const std::string& default_value = "") {
-    if (opts.has(option_name)) {
-        return opts.get(option_name).as<std::string>();
-    }
-    
-    if (const char* env_val = std::getenv(env_name.c_str())) {
-        return std::string(env_val);
-    }
-    
-    return default_value;
-}
+#include <lux/cxx/arguments/StructuredValue.hpp>
+#include <lux/cxx/arguments/TypedOptions.hpp>
+#include <array>
+#include <string>
+#include <vector>
 
-// Usage
-auto port = get_option_or_env(opts, "port", "MYAPP_PORT", "8080");
-```
+namespace args = lux::cxx::args;
 
-## Error Handling
+bool readOptions()
+{
+    constexpr auto position = args::Option<std::array<int, 3>, "position">{};
+    constexpr auto inputs = args::Option<std::vector<std::string>, "input", "i">{}.multi();
 
-The parser provides detailed error messages:
-
-```cpp
-try {
-    auto opts = parser.parse(argc, argv);
-} catch (const lux::cxx::parse_error& e) {
-    std::cerr << "Error: " << e.what() << std::endl;
-    
-    // Common error types:
-    // - "Required option '--port' not provided"
-    // - "Invalid value 'abc' for option '--count' (expected integer)"
-    // - "Unknown option '--unknown-flag'"
-    // - "Option '--file' expects a value"
-    
-    return EXIT_FAILURE;
+    const auto result = args::parse(
+        "position=[1, 2, 3] -i a.png b.png -i c.png",
+        position,
+        inputs
+    );
+    return static_cast<bool>(result);
 }
 ```
 
-### Error Recovery
+| Value type | Example |
+| --- | --- |
+| Sequence or set | `[1, 2, 3]` |
+| Fixed-size array, tuple or pair | `[1, true]`, with the exact declared number of elements |
+| Map | `{width:1920, height:1080}` |
+| Optional | `null` or a value of the wrapped type |
+| Nested container | `{camera:[1, 2, 3]}` |
 
-```cpp
-// Provide suggestions for unknown options
-try {
-    auto opts = parser.parse(argc, argv);
-} catch (const unknown_option_error& e) {
-    std::cerr << "Unknown option: " << e.option_name() << std::endl;
-    
-    auto suggestions = e.suggestions();  // Similar option names
-    if (!suggestions.empty()) {
-        std::cerr << "Did you mean:" << std::endl;
-        for (const auto& suggestion : suggestions) {
-            std::cerr << "  --" << suggestion << std::endl;
-        }
-    }
-}
+`.multi()` converts and accumulates individual elements. Use `.arity(min, max)` to bound the number of elements per occurrence or `.delimiter(',')` to split values. Repeated ordinary options keep the last value by default. Multi-value options append by default. Override the policy with `.onRepeat(args::ERepeat::REJECT)` or `ERepeat::FIRST`, `LAST` or `APPEND`. `APPEND` applies to multi-value options. Repeated keys inside a map are rejected by default. Use `.convert(args::structured(settings))` with `StructuredSettings` to configure duplicate keys, nesting depth and element limits.
+
+## Validation and extension
+
+- `.def(value)` stores a typed default in the descriptor. `.required()` still requires explicit input when a default is present.
+- `.check(predicate)` validates a complete value, or each element of a `.multi()` option. `inRange` and `oneOf` provide common validators.
+- `.convert(converter)` overrides conversion for one option by calling `converter(std::string_view, T&)`. Specialize `args::ValueParser<T>` and provide a static `parse(std::string_view, T&)` for a reusable type conversion. Both return `EErrorCode` or `ValueError`.
+- Specialize `SequenceTraits<T>`, `MapTraits<T>` or `TupleTraits<T>` to adapt containers. `parseStructured(text, out)` also parses a standalone structured value.
+- Values such as `std::string` own their data. Declare custom borrowed types with `BorrowsInput<T>` so they are rejected as outputs. Keep text passed to `.desc()` alive while using the descriptor.
+
+## Headers and migration
+
+| Header | API |
+| --- | --- |
+| `Arguments.hpp` | Includes the full module and the compatibility API |
+| `TypedOptions.hpp` | `Option`, `parse` and owning results |
+| `DirectBinding.hpp` | `bind` and `parseInto` |
+| `ContainerTraits.hpp` | STL container adapters for multi-value options |
+| `StructuredValue.hpp` | Complete container values and `parseStructured` |
+| `Help.hpp` | `usage` and `describe` |
+
+Existing `lux::cxx::Parser` callers, including the serialization backend, can continue to include `Arguments.hpp`. For new code, declare `lux::cxx::args::Option` descriptors, pass them to `parse` or `parseInto`, and use `.multi()` where the CLI accepts separate values. In the new API a text input starts at the first option, so remove the program name when migrating calls from `Parser::parse(text)`.
+
+With the project configured for testing, build and run the argument tests with the following commands.
+
+```sh
+cmake --build <build-dir>
+ctest --test-dir <build-dir> -R arguments --output-on-failure
 ```
-
-## Help Generation
-
-Automatic help generation with customizable formatting:
-
-```bash
-$ myapp --help
-Usage: myapp [OPTIONS]
-
-A sample application demonstrating argument parsing
-
-Options:
-  -p, --port PORT          TCP port to listen on (default: 8080, required)
-  -f, --file FILE          Input files to process (multi-value)
-  -v, --verbose            Enable verbose logging
-  -o, --output FILE        Output file (default: output.txt)
-  -h, --help               Show this help message and exit
-
-Examples:
-  myapp --port 3000 --verbose
-  myapp --file input1.txt input2.txt --output result.txt
-```
-
-### Custom Help Formatting
-
-```cpp
-Parser parser("myapp");
-parser.set_help_formatter([](const Parser& p) -> std::string {
-    // Custom help formatting logic
-    std::ostringstream oss;
-    oss << "=== " << p.program_name() << " ===\n";
-    // ... custom formatting
-    return oss.str();
-});
-```
-
-## Performance
-
-The Arguments module is designed for typical command-line parsing scenarios:
-
-- **Parsing Time**: O(n) where n is number of arguments
-- **Memory Usage**: Minimal, mostly string storage
-- **Compile Time**: Header-only with template instantiation
-- **Runtime Overhead**: Negligible for typical CLI apps
-
-### Benchmarks
-
-Parsing 100 arguments with mixed types:
-- **Parse Time**: ~50 microseconds
-- **Memory Usage**: ~2KB additional
-- **Binary Size Impact**: ~10KB (depends on types used)
-
-## Integration Examples
-
-### Configuration Management
-
-```cpp
-struct Config {
-    std::string host = "localhost";
-    int port = 8080;
-    bool verbose = false;
-    std::vector<std::string> input_files;
-    std::filesystem::path output_dir = ".";
-};
-
-Config parse_config(int argc, char* argv[]) {
-    Parser parser("myapp");
-    
-    auto host = parser.add<std::string>("host").def("localhost");
-    auto port = parser.add<int>("port", "p").def(8080);
-    auto verbose = parser.add<bool>("verbose", "v");
-    auto files = parser.add<std::vector<std::string>>("input", "i").multi();
-    auto output = parser.add<std::filesystem::path>("output", "o").def(".");
-    
-    auto opts = parser.parse(argc, argv);
-    
-    return Config{
-        .host = opts.get("host").as<std::string>(),
-        .port = opts.get("port").as<int>(),
-        .verbose = opts.get("verbose"),
-        .input_files = opts.get("input").as<std::vector<std::string>>(),
-        .output_dir = opts.get("output").as<std::filesystem::path>()
-    };
-}
-```
-
-### Subcommand Pattern
-
-```cpp
-// Not built-in, but can be implemented:
-int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cerr << "Usage: myapp <command> [options...]" << std::endl;
-        return 1;
-    }
-    
-    std::string command = argv[1];
-    
-    // Create new argv without the command
-    std::vector<char*> sub_argv(argv + 1, argv + argc);
-    sub_argv[0] = argv[0];  // Keep program name
-    
-    if (command == "server") {
-        return run_server(sub_argv.size(), sub_argv.data());
-    } else if (command == "client") {
-        return run_client(sub_argv.size(), sub_argv.data());
-    } else {
-        std::cerr << "Unknown command: " << command << std::endl;
-        return 1;
-    }
-}
-```
-
-## Building
-
-The Arguments module is header-only:
-
-```cmake
-# CMake
-target_link_libraries(your_target PRIVATE lux::cxx::arguments)
-
-# Manual include
-# Just include the header: #include <lux/cxx/arguments/Arguments.hpp>
-```
-
-### Dependencies
-
-```cmake
-# Internal dependencies
-lux::cxx::compile_time
-lux::cxx::container
-
-# External dependencies
-# C++ Standard Library only (C++20)
-```
-
-## Testing
-
-Comprehensive test suite:
-
-```bash
-cd build
-ctest -R arguments
-
-# Or run directly:
-./arguments/test/arguments_test
-```
-
-### Test Coverage
-
-- Type conversion for all supported types
-- Multi-value option handling
-- Boolean flag parsing variants
-- Error conditions and messages
-- Help generation
-- Edge cases (empty args, special characters, etc.)
-
-## Comparison with Other Libraries
-
-| Feature | LUX Arguments | CLI11 | cxxopts | Boost.Program_options |
-|---------|---------------|--------|---------|----------------------|
-| Header-only | ✅ | ✅ | ✅ | ❌ |
-| C++20 Support | ✅ | ✅ | ✅ | ❌ |
-| Type Safety | ✅ | ✅ | ✅ | ✅ |
-| Multi-value | ✅ | ✅ | ✅ | ✅ |
-| Custom Types | ✅ | ✅ | ✅ | ✅ |
-| Zero Dependencies | ✅ | ✅ | ✅ | ❌ |
-| Binary Size | Small | Small | Medium | Large |
-
-## Future Enhancements
-
-- [ ] Subcommand support
-- [ ] Configuration file integration
-- [ ] Shell completion generation
-- [ ] Internationalization support
-- [ ] More built-in validators
-- [ ] Integration with logging frameworks

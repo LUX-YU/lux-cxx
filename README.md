@@ -56,7 +56,7 @@ Compile-time computation and metaprogramming tools for advanced template program
 
 **Key Features**: Sequence sorting, dependency resolution, computation pipelines, zero runtime cost
 
-### 📋 [Arguments](arguments/README.md)
+### 📋 [Arguments](arguments/readme.md)
 Modern command-line argument parsing library with type safety and automatic help generation.
 
 **Key Features**: Type-safe parsing, multi-value support, custom type extensions, descriptive errors
