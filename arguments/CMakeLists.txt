@@ -18,12 +18,6 @@ component_add_internal_dependencies(
 
 target_compile_features(arguments INTERFACE cxx_std_20)
 
-component_add_assets(
-    arguments
-    licenses
-    ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
-)
-
 lux_add_header_self_containment(
     arguments_header_self_containment
     lux::cxx::arguments
